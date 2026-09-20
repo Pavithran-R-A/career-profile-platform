@@ -8,23 +8,67 @@ function makeRequest(path: string, method = 'GET', origin?: string): Request {
 }
 
 describe('Worker API handler', () => {
-  it('GET /api/health returns 200 with status ok', () => {
-    const res = handleRequest(makeRequest('/api/health'), {}, {} as ExecutionContext);
-    expect(res.status).toBe(200);
+  describe('health endpoint', () => {
+    it('GET /api/health returns 200 with status ok', () => {
+      const res = handleRequest(makeRequest('/api/health'), {}, {} as ExecutionContext);
+      expect(res.status).toBe(200);
+    });
+
+    it('health response contains timestamp', async () => {
+      const res = handleRequest(makeRequest('/api/health'), {}, {} as ExecutionContext);
+      const body = await res.json();
+      expect(body).toHaveProperty('status', 'ok');
+      expect(body).toHaveProperty('timestamp');
+    });
   });
 
-  it('returns 404 for unknown routes', () => {
-    const res = handleRequest(makeRequest('/api/unknown'), {}, {} as ExecutionContext);
-    expect(res.status).toBe(404);
+  describe('API 404 behavior', () => {
+    it('returns JSON 404 for unknown API routes', async () => {
+      const res = handleRequest(makeRequest('/api/unknown'), {}, {} as ExecutionContext);
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body).toHaveProperty('error', 'Not Found');
+    });
+
+    it('returns JSON content type for API 404', () => {
+      const res = handleRequest(makeRequest('/api/nonexistent'), {}, {} as ExecutionContext);
+      expect(res.headers.get('Content-Type')).toBe('application/json');
+    });
+
+    it('does NOT return SPA HTML for API routes', async () => {
+      const res = handleRequest(makeRequest('/api/does-not-exist'), {}, {} as ExecutionContext);
+      const text = await res.text();
+      expect(text).not.toContain('<!DOCTYPE html>');
+      expect(text).not.toContain('<html');
+    });
   });
 
-  it('handles CORS preflight', () => {
-    const res = handleRequest(
-      makeRequest('/api/health', 'OPTIONS', 'https://test.com'),
-      {},
-      {} as ExecutionContext
-    );
-    expect(res.status).toBe(204);
-    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://test.com');
+  describe('CORS behavior', () => {
+    it('handles OPTIONS preflight', () => {
+      const res = handleRequest(
+        makeRequest('/api/health', 'OPTIONS', 'https://test.com'),
+        {},
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(204);
+    });
+
+    it('sets Access-Control-Allow-Origin for credentialed requests', () => {
+      const res = handleRequest(
+        makeRequest('/api/health', 'GET', 'https://test.com'),
+        {},
+        {} as ExecutionContext
+      );
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://test.com');
+    });
+
+    it('sets allowed methods', () => {
+      const res = handleRequest(
+        makeRequest('/api/health', 'OPTIONS', 'https://test.com'),
+        {},
+        {} as ExecutionContext
+      );
+      expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, OPTIONS');
+    });
   });
 });

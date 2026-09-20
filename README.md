@@ -32,11 +32,11 @@ pnpm dev
 ### Supabase Configuration
 
 1. Create a Supabase project at https://supabase.com
-2. Get your project URL and anon key from Settings > API
+2. Get your project URL and publishable key from Settings > API
 3. Add them to `.env`:
    ```
    VITE_SUPABASE_URL=https://your-project.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-anon-key
+   VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
    ```
 4. Run the migrations in the Supabase SQL editor:
    - `supabase/migrations/20260920000000_initial.sql`
@@ -45,17 +45,17 @@ pnpm dev
 
 ### Commands
 
-| Command             | Description                    |
-|---------------------|--------------------------------|
-| `pnpm dev`          | Start development server       |
-| `pnpm build`        | Production build               |
-| `pnpm preview`      | Preview production build       |
-| `pnpm test`         | Run unit tests                 |
-| `pnpm test:coverage`| Run tests with coverage        |
-| `pnpm lint`         | Run ESLint                     |
-| `pnpm typecheck`    | Run TypeScript type checking   |
-| `pnpm format`       | Format code with Prettier      |
-| `pnpm format:check` | Check formatting               |
+| Command              | Description                  |
+| -------------------- | ---------------------------- |
+| `pnpm dev`           | Start development server     |
+| `pnpm build`         | Production build             |
+| `pnpm preview`       | Preview production build     |
+| `pnpm test`          | Run unit tests               |
+| `pnpm test:coverage` | Run tests with coverage      |
+| `pnpm lint`          | Run ESLint                   |
+| `pnpm typecheck`     | Run TypeScript type checking |
+| `pnpm format`        | Format code with Prettier    |
+| `pnpm format:check`  | Check formatting             |
 
 ## Project Structure
 

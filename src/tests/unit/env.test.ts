@@ -6,20 +6,20 @@ describe('validateClientEnv', () => {
     expect(
       validateClientEnv({
         VITE_SUPABASE_URL: 'https://abc.supabase.co',
-        VITE_SUPABASE_ANON_KEY: 'eyJ-test-key',
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'eyJ-test-key',
       })
     ).toBeDefined();
   });
 
   it('rejects missing supabase URL', () => {
-    expect(() => validateClientEnv({ VITE_SUPABASE_ANON_KEY: 'key' })).toThrow();
+    expect(() => validateClientEnv({ VITE_SUPABASE_PUBLISHABLE_KEY: 'key' })).toThrow();
   });
 
   it('rejects invalid URL', () => {
     expect(() =>
       validateClientEnv({
         VITE_SUPABASE_URL: 'not-a-url',
-        VITE_SUPABASE_ANON_KEY: 'key',
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'key',
       })
     ).toThrow();
   });
