@@ -1,0 +1,32 @@
+# Node.js / pnpm
+node_modules/
+pnpm-lock.yaml
+dist/
+.vite/
+.wrangler/
+tsconfig.tsbuildinfo
+
+# Environment files
+.env
+.env.*.local
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+pnpm-debug.log*
+
+# Coverage / reports
+coverage/
+
+# Misc
+*.local

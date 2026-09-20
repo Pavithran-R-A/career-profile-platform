@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "progress": false,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true
+  },
+  "include": ["**/*"]
+}
