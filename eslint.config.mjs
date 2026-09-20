@@ -3,7 +3,7 @@ import globals from 'globals';
 import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**'] },
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/database.types.ts'] },
   ...tseslint.configs.recommendedTypeChecked,
   prettier,
   {
@@ -29,6 +29,8 @@ export default tseslint.config(
       ],
       '@typescript-eslint/consistent-type-imports': ['error'],
       '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
+      '@typescript-eslint/require-await': 'off',
     },
   },
   {

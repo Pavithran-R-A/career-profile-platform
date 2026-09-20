@@ -1,26 +1,77 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
+import { getSupabaseClient } from '../../lib/supabase/client';
 
 export default function VerifyEmail() {
   const auth = useAuth();
+  const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
+  const [verified, setVerified] = useState(false);
 
   useEffect(() => {
     if (auth.status === 'authenticated' && auth.user.emailConfirmed) {
-      window.location.href = '/dashboard';
+      void navigate('/dashboard', { replace: true });
     }
-  }, [auth]);
+  }, [auth, navigate]);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+
+    const checkSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user?.email_confirmed_at) {
+          setVerified(true);
+        }
+      }
+    };
+
+    void checkSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user?.email_confirmed_at) {
+        setVerified(true);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (verified) {
+      void navigate('/dashboard', { replace: true });
+    }
+  }, [verified, navigate]);
 
   const handleCheckVerification = async () => {
     setChecking(true);
     await auth.refreshUser();
+    const supabase = getSupabaseClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.user) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user?.email_confirmed_at) {
+        setVerified(true);
+      }
+    }
     setChecking(false);
   };
 
-  const handleCheckClick = () => {
-    void handleCheckVerification();
-  };
+  if (auth.status === 'authenticated' && auth.user.emailConfirmed) {
+    return null;
+  }
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4">
@@ -33,7 +84,7 @@ export default function VerifyEmail() {
 
         <div className="space-y-4">
           <button
-            onClick={handleCheckClick}
+            onClick={() => void handleCheckVerification()}
             disabled={checking}
             className="w-full bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed">
             {checking ? 'Checking...' : "I've verified my email"}
@@ -41,7 +92,9 @@ export default function VerifyEmail() {
 
           <p className="text-sm text-gray-500">
             Didn't receive the email? Check your spam folder or{' '}
-            <button onClick={handleCheckClick} className="text-gray-900 hover:underline">
+            <button
+              onClick={() => void handleCheckVerification()}
+              className="text-gray-900 hover:underline">
               try again
             </button>
           </p>

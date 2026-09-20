@@ -17,6 +17,7 @@ export type AuthUser = {
 export type SignUpInput = {
   email: string;
   password: string;
+  emailRedirectTo?: string;
 };
 
 export type SignInInput = {

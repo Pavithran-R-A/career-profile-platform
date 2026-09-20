@@ -122,6 +122,11 @@ export default function Dashboard() {
               className="block w-full text-center bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800">
               Edit profile
             </Link>
+            <Link
+              to="/dashboard/resume"
+              className="block w-full text-center border border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50">
+              Import resume
+            </Link>
             <button
               onClick={handleSignOut}
               className="block w-full text-center border border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50">
