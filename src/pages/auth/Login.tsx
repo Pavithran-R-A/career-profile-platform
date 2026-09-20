@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
+import { isSafeRedirect } from '../../lib/validators/url';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -12,7 +13,9 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = (location.state as { from?: Location })?.from?.pathname || '/dashboard';
+  const locationState = location.state as { from?: { pathname?: string } } | undefined;
+  const rawFrom = locationState?.from?.pathname;
+  const from = rawFrom && isSafeRedirect(rawFrom) ? rawFrom : '/dashboard';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

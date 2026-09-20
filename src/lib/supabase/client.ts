@@ -7,13 +7,13 @@ export function getSupabaseClient() {
   if (client) return client;
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !publishableKey) {
+    throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY');
   }
 
-  client = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  client = createClient<Database>(supabaseUrl, publishableKey, {
     auth: { persistSession: true, autoRefreshToken: true },
   });
 
