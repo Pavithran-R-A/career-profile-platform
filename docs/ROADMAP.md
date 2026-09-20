@@ -13,10 +13,14 @@
 
 ## Stage 1 - Authentication + Profile
 
-- Supabase Auth integration (email/password, OAuth)
-- Profile creation and editing UI
-- Username reservation on signup
-- Draft/publish toggle
+- [x] Supabase Auth integration (email/password)
+- [x] Email verification handling
+- [x] Password reset flow
+- [x] Profile creation and editing UI
+- [x] Username reservation on signup
+- [x] Canonical profile with experience, education, projects, skills, links
+- [x] RLS policies for all tables
+- [x] Client-side routing with React Router
 
 ## Stage 2 - Resume Ingestion
 
