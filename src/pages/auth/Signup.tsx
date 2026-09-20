@@ -27,7 +27,11 @@ export default function Signup() {
     }
 
     setLoading(true);
-    const { error: authError } = await auth.signUp({ email, password });
+    const { error: authError } = await auth.signUp({
+      email,
+      password,
+      emailRedirectTo: `${window.location.origin}/auth/callback`,
+    });
     setLoading(false);
 
     if (authError) {

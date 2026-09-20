@@ -103,7 +103,7 @@ export default function ProfileEditor() {
       const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from('profile_experiences')
-        .insert(newExperience as never)
+        .insert(newExperience)
         .select()
         .single();
 
