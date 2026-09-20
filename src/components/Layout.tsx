@@ -1,16 +1,51 @@
-export default function Layout({ children }: { children: React.ReactNode }) {
+import { Outlet, Link } from 'react-router';
+import { useAuth } from '../lib/auth/context';
+
+export default function Layout() {
+  const auth = useAuth();
+
+  const handleSignOut = () => {
+    void auth.signOut();
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-[var(--border)] bg-[var(--background)]/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
-          <a href="/" className="text-lg font-semibold tracking-tight">
+          <Link to="/" className="text-lg font-semibold tracking-tight">
             Profile
-          </a>
-          <nav className="text-sm text-[var(--muted-foreground)]">Stage 0</nav>
+          </Link>
+          <nav className="flex items-center gap-4">
+            {auth.status === 'authenticated' ? (
+              <>
+                <Link to="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
+                  Dashboard
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="text-sm text-gray-600 hover:text-gray-900">
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="text-sm text-gray-600 hover:text-gray-900">
+                  Sign in
+                </Link>
+                <Link
+                  to="/signup"
+                  className="text-sm bg-gray-900 text-white px-4 py-2 rounded-md hover:bg-gray-800">
+                  Sign up
+                </Link>
+              </>
+            )}
+          </nav>
         </div>
       </header>
-      <main className="flex-1">{children}</main>
-      <footer className="border-t border-[var(--border)] py-8 text-center text-xs text-[var(--muted-foreground)]">
+      <main className="flex-1">
+        <Outlet />
+      </main>
+      <footer className="border-t border-gray-200 py-8 text-center text-xs text-gray-500">
         &copy; {new Date().getFullYear()} Career Profile Platform
       </footer>
     </div>

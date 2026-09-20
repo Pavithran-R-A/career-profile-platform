@@ -9,6 +9,7 @@
 - Tailwind CSS
 - Cloudflare Workers
 - Supabase (PostgreSQL, Auth, Storage)
+- React Router
 - Zod (validation)
 - Vitest (testing)
 
@@ -27,6 +28,20 @@ cp .env.example .env
 pnpm install
 pnpm dev
 ```
+
+### Supabase Configuration
+
+1. Create a Supabase project at https://supabase.com
+2. Get your project URL and anon key from Settings > API
+3. Add them to `.env`:
+   ```
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   ```
+4. Run the migrations in the Supabase SQL editor:
+   - `supabase/migrations/20260920000000_initial.sql`
+   - `supabase/migrations/20260920010000_expand_profile_schema.sql`
+5. Enable Email auth in Authentication > Providers
 
 ### Commands
 
@@ -49,17 +64,29 @@ src/
   components/    # Reusable UI components
   config/        # Environment and configuration
   lib/           # Domain logic and utilities
+    auth/        # Authentication context and types
     ai/          # AI provider abstraction
-    profiles/    # Canonical profile types and schemas
+    profiles/    # Canonical profile types, schemas, repository
     supabase/    # Supabase client boundaries
     validators/  # Input validation (username, etc.)
   pages/         # Route-level page components
+    auth/        # Authentication pages
   tests/         # Unit and UI tests
   workers/       # Cloudflare Worker handlers
 supabase/
   migrations/    # Database migrations
 docs/            # Architecture and product documentation
 ```
+
+## Features (Stage 1)
+
+- Email/password authentication
+- Email verification
+- Password reset
+- Profile creation with unique username
+- Profile editing (basics, experience, education, projects, skills, links)
+- Protected routes
+- Mobile-responsive design
 
 ## License
 
