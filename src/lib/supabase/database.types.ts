@@ -161,6 +161,56 @@ export type Database = {
           },
         ];
       };
+      profile_preferences: {
+        Row: {
+          created_at: string;
+          custom_domain: string | null;
+          id: string;
+          is_public: boolean;
+          profile_id: string;
+          published_at: string | null;
+          seo_description: string | null;
+          seo_title: string | null;
+          template_id: string;
+          theme: Json;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          custom_domain?: string | null;
+          id?: string;
+          is_public?: boolean;
+          profile_id: string;
+          published_at?: string | null;
+          seo_description?: string | null;
+          seo_title?: string | null;
+          template_id?: string;
+          theme?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          custom_domain?: string | null;
+          id?: string;
+          is_public?: boolean;
+          profile_id?: string;
+          published_at?: string | null;
+          seo_description?: string | null;
+          seo_title?: string | null;
+          template_id?: string;
+          theme?: Json;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'profile_preferences_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: true;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       profile_projects: {
         Row: {
           created_at: string;

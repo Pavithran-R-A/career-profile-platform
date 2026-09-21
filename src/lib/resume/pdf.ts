@@ -1,3 +1,5 @@
+import { getDocumentProxy, extractText } from 'unpdf';
+
 export const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6 MiB
 export const MAX_PAGES = 20;
 export const MAX_TEXT_LENGTH = 100_000;
@@ -29,7 +31,7 @@ export function validatePDFFile(file: File): PDFValidationResult {
   return { valid: true };
 }
 
-export function validatePDFContent(buffer: ArrayBuffer): PDFValidationResult {
+export function validatePDFMagicBytes(buffer: ArrayBuffer): PDFValidationResult {
   const header = new Uint8Array(buffer.slice(0, 8));
   const magic = String.fromCharCode(...header);
 
@@ -40,52 +42,47 @@ export function validatePDFContent(buffer: ArrayBuffer): PDFValidationResult {
   return { valid: true };
 }
 
-export function extractTextFromPDF(buffer: ArrayBuffer): ExtractedPDFContent {
-  const uint8Array = new Uint8Array(buffer);
+export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<ExtractedPDFContent> {
+  try {
+    const uint8Array = new Uint8Array(buffer);
 
-  const textChunks: string[] = [];
-  let pageCount = 0;
+    const doc = await getDocumentProxy(uint8Array);
 
-  const decoder = new TextDecoder('utf-8', { fatal: false });
-  const fullText = decoder.decode(uint8Array);
+    const pageCount = doc.numPages;
 
-  const pageMatches = fullText.match(/\/Type\s*\/Page[^s]/g);
-  pageCount = pageMatches ? pageMatches.length : 0;
-
-  if (pageCount > MAX_PAGES) {
-    throw new Error(`PDF has ${pageCount} pages. Maximum allowed is ${MAX_PAGES}.`);
-  }
-
-  const streamMatches = fullText.match(/stream\r?\n([\s\S]*?)\r?\nendstream/g);
-  if (streamMatches) {
-    for (const match of streamMatches) {
-      const streamContent = match.replace(/^stream\r?\n/, '').replace(/\r?\nendstream$/, '');
-      const cleaned = streamContent
-        .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      if (cleaned.length > 10) {
-        textChunks.push(cleaned);
-      }
+    if (pageCount > MAX_PAGES) {
+      throw new Error(`PDF has ${pageCount} pages. Maximum allowed is ${MAX_PAGES}.`);
     }
+
+    const { text: fullText } = await extractText(doc);
+
+    const extractedText = fullText.join('\n\n').replace(/\s+/g, ' ').trim();
+
+    if (extractedText.length < 50) {
+      throw new Error(
+        'This PDF appears to be scanned or contains too little readable text. ' +
+          'Please upload a text-based PDF.'
+      );
+    }
+
+    if (extractedText.length > MAX_TEXT_LENGTH) {
+      throw new Error(`Extracted text exceeds maximum length of ${MAX_TEXT_LENGTH} characters.`);
+    }
+
+    return {
+      text: extractedText,
+      pageCount,
+    };
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('Maximum allowed')) {
+      throw err;
+    }
+    if (err instanceof Error && err.message.includes('readable text')) {
+      throw err;
+    }
+    if (err instanceof Error && err.message.includes('maximum length')) {
+      throw err;
+    }
+    throw new Error('Failed to parse PDF. File may be corrupted or not a valid PDF.');
   }
-
-  const extractedText = textChunks.join('\n\n');
-
-  if (extractedText.trim().length < 50) {
-    throw new Error(
-      'This PDF appears to be scanned or contains too little readable text. ' +
-        'Please upload a text-based PDF.'
-    );
-  }
-
-  if (extractedText.length > MAX_TEXT_LENGTH) {
-    throw new Error(`Extracted text exceeds maximum length of ${MAX_TEXT_LENGTH} characters.`);
-  }
-
-  return {
-    text: extractedText,
-    pageCount: pageCount || 1,
-  };
 }
