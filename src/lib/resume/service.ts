@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/database.types';
 import type { ResumeExtraction } from '../ai/provider';
-import { validatePDFFile, validatePDFContent, extractTextFromPDF } from './pdf';
+import { validatePDFFile, validatePDFMagicBytes, extractTextFromPDF } from './pdf';
 
 export type ResumeStatus =
   | 'uploaded'
@@ -43,12 +43,12 @@ export class ResumeService {
     }
 
     const buffer = await file.arrayBuffer();
-    const contentValidation = validatePDFContent(buffer);
+    const contentValidation = validatePDFMagicBytes(buffer);
     if (!contentValidation.valid) {
       throw new Error(contentValidation.error || 'Invalid PDF content');
     }
 
-    const extraction = extractTextFromPDF(buffer);
+    const extraction = await extractTextFromPDF(buffer);
 
     const fileId = crypto.randomUUID();
     const storagePath = `${userId}/${fileId}.pdf`;
