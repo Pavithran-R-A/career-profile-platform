@@ -1,36 +1,40 @@
 import { useState } from 'react';
-import {
-  publishProfile,
-  unpublishProfile,
-  type ProfilePreferences,
-} from '../lib/profiles/preferences';
+import { getSupabaseClient } from '../lib/supabase/client';
 
 interface PublishControlsProps {
   profileId: string;
-  preferences: ProfilePreferences | null;
-  onPublishChange: (preferences: ProfilePreferences) => void;
+  isPublished: boolean;
+  onPublishChange: (published: boolean) => void;
 }
 
 export default function PublishControls({
   profileId,
-  preferences,
+  isPublished,
   onPublishChange,
 }: PublishControlsProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const isPublished = preferences?.is_public ?? false;
 
   const handleToggle = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const updated = isPublished
-        ? await unpublishProfile(profileId)
-        : await publishProfile(profileId);
+      const supabase = getSupabaseClient();
+      const newVisibility = isPublished ? 'draft' : 'published';
+      const publishedAt = isPublished ? null : new Date().toISOString();
 
-      onPublishChange(updated);
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          visibility: newVisibility,
+          published_at: publishedAt,
+        })
+        .eq('id', profileId);
+
+      if (updateError) throw updateError;
+
+      onPublishChange(!isPublished);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -48,11 +52,6 @@ export default function PublishControls({
               ? 'Your profile is live and publicly accessible.'
               : 'Your profile is in draft mode and not visible to others.'}
           </p>
-          {isPublished && preferences?.published_at && (
-            <p className="text-xs text-gray-400 mt-1">
-              Published {new Date(preferences.published_at).toLocaleDateString()}
-            </p>
-          )}
         </div>
 
         <button
@@ -78,15 +77,6 @@ export default function PublishControls({
       </div>
 
       {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
-
-      {isPublished && preferences?.custom_domain && (
-        <div className="mt-4 pt-3 border-t border-gray-100">
-          <p className="text-xs text-gray-500">
-            Custom domain:{' '}
-            <span className="font-medium text-gray-700">{preferences.custom_domain}</span>
-          </p>
-        </div>
-      )}
     </div>
   );
 }

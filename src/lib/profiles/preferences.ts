@@ -1,82 +1,132 @@
-import { z } from "zod";
-import { getSupabaseClient } from "../supabase/client";
+import { getSupabaseClient } from '../supabase/client';
 
-export const ProfilePreferencesSchema = z.object({
-  id: z.string().uuid(),
-  profile_id: z.string().uuid(),
-  is_public: z.boolean().default(false),
-  published_at: z.string().datetime().nullable().optional(),
-  custom_domain: z.string().nullable().optional(),
-  template_id: z.string().default("minimal"),
-  seo_title: z.string().nullable().optional(),
-  seo_description: z.string().nullable().optional(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
-});
-
-export type ProfilePreferences = z.infer<typeof ProfilePreferencesSchema>;
-
-export async function getProfilePreferences(profileId: string): Promise<ProfilePreferences | null> {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("profile_preferences")
-    .select("*")
-    .eq("profile_id", profileId)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") return null;
-    throw error;
-  }
-
-  return ProfilePreferencesSchema.parse(data);
+export interface ProfilePreferences {
+  id: string;
+  profile_id: string;
+  template_key: string;
+  accent_key: string;
+  section_order: string[];
+  hidden_sections: string[];
 }
 
-export async function publishProfile(profileId: string): Promise<ProfilePreferences> {
+const DEFAULT_TEMPLATE_KEY = 'minimal';
+const DEFAULT_ACCENT_KEY = 'blue';
+const DEFAULT_SECTION_ORDER = ['about', 'experience', 'education', 'projects', 'skills', 'links'];
+const DEFAULT_HIDDEN_SECTIONS: string[] = [];
+
+export async function getPreferences(profileId: string): Promise<ProfilePreferences | null> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
-    .from("profile_preferences")
+    .from('profile_preferences')
+    .select('*')
+    .eq('profile_id', profileId)
+    .single();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    profile_id: data.profile_id,
+    template_key: data.template_key || DEFAULT_TEMPLATE_KEY,
+    accent_key: data.accent_key || DEFAULT_ACCENT_KEY,
+    section_order: (data.section_order as string[]) || DEFAULT_SECTION_ORDER,
+    hidden_sections: (data.hidden_sections as string[]) || DEFAULT_HIDDEN_SECTIONS,
+  };
+}
+
+export async function upsertPreferences(
+  profileId: string,
+  updates: Partial<
+    Pick<ProfilePreferences, 'template_key' | 'accent_key' | 'section_order' | 'hidden_sections'>
+  >
+): Promise<{ error?: string }> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from('profile_preferences').upsert(
+    {
+      profile_id: profileId,
+      template_key: updates.template_key ?? DEFAULT_TEMPLATE_KEY,
+      accent_key: updates.accent_key ?? DEFAULT_ACCENT_KEY,
+      section_order: updates.section_order ?? DEFAULT_SECTION_ORDER,
+      hidden_sections: updates.hidden_sections ?? DEFAULT_HIDDEN_SECTIONS,
+    },
+    { onConflict: 'profile_id' }
+  );
+
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function updateSectionOrder(
+  profileId: string,
+  sectionOrder: string[]
+): Promise<{ error?: string }> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('profile_preferences')
+    .upsert({ profile_id: profileId, section_order: sectionOrder }, { onConflict: 'profile_id' });
+
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function updateHiddenSections(
+  profileId: string,
+  hiddenSections: string[]
+): Promise<{ error?: string }> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('profile_preferences')
     .upsert(
-      {
-        profile_id: profileId,
-        is_public: true,
-        published_at: new Date().toISOString(),
-      },
-      { onConflict: "profile_id" },
-    )
-    .select()
-    .single();
+      { profile_id: profileId, hidden_sections: hiddenSections },
+      { onConflict: 'profile_id' }
+    );
 
-  if (error) throw error;
-  return ProfilePreferencesSchema.parse(data);
+  if (error) return { error: error.message };
+  return {};
 }
 
-export async function unpublishProfile(profileId: string): Promise<ProfilePreferences> {
+export async function updateTemplate(
+  profileId: string,
+  templateKey: string
+): Promise<{ error?: string }> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('profile_preferences')
+    .upsert({ profile_id: profileId, template_key: templateKey }, { onConflict: 'profile_id' });
+
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function updateAccent(
+  profileId: string,
+  accentKey: string
+): Promise<{ error?: string }> {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase
+    .from('profile_preferences')
+    .upsert({ profile_id: profileId, accent_key: accentKey }, { onConflict: 'profile_id' });
+
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function getPublicPreferences(profileId: string): Promise<ProfilePreferences | null> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
-    .from("profile_preferences")
-    .upsert(
-      {
-        profile_id: profileId,
-        is_public: false,
-        published_at: null,
-      },
-      { onConflict: "profile_id" },
-    )
-    .select()
+    .from('profile_preferences')
+    .select('template_key, accent_key, section_order, hidden_sections')
+    .eq('profile_id', profileId)
     .single();
 
-  if (error) throw error;
-  return ProfilePreferencesSchema.parse(data);
-}
+  if (error || !data) return null;
 
-export function checkDomainAvailability(domain: string): { available: boolean; reason?: string } {
-  if (domain.length < 3) return { available: false, reason: "Domain too short" };
-  if (domain.length > 253) return { available: false, reason: "Domain too long" };
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(domain)) {
-    return { available: false, reason: "Invalid domain format" };
-  }
-  const reserved = ["api", "www", "admin", "mail", "smtp", "ftp", "cdn", "static"];
-  if (reserved.includes(domain)) return { available: false, reason: "Domain is reserved" };
-  return { available: true };
+  return {
+    id: "",
+    profile_id: profileId,
+    template_key: data.template_key || DEFAULT_TEMPLATE_KEY,
+    accent_key: data.accent_key || DEFAULT_ACCENT_KEY,
+    section_order: (data.section_order as string[]) || DEFAULT_SECTION_ORDER,
+    hidden_sections: (data.hidden_sections as string[]) || DEFAULT_HIDDEN_SECTIONS,
+  };
 }

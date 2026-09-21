@@ -23,11 +23,11 @@ function makeMinimalProfile(overrides: Record<string, unknown> = {}) {
 
 describe('Publishing logic', () => {
   describe('visibility state transitions', () => {
-    it("allows draft -> published", () => {
+    it('allows draft -> published', () => {
       const profile = makeMinimalProfile();
-      Object.assign(profile.preferences, { visibility: "published" });
+      Object.assign(profile.preferences, { visibility: 'published' });
       expect(() => profileSchema.parse(profile)).not.toThrow();
-      expect(profile.preferences.visibility).toBe("published");
+      expect(profile.preferences.visibility).toBe('published');
     });
 
     it('allows published -> draft', () => {

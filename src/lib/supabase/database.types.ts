@@ -62,6 +62,13 @@ export type Database = {
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'profile_education_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
         ];
       };
       profile_experiences: {
@@ -121,6 +128,13 @@ export type Database = {
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'profile_experiences_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
         ];
       };
       profile_links: {
@@ -159,46 +173,47 @@ export type Database = {
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'profile_links_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
         ];
       };
       profile_preferences: {
         Row: {
+          accent_key: string;
           created_at: string;
-          custom_domain: string | null;
+          hidden_sections: Json;
           id: string;
-          is_public: boolean;
           profile_id: string;
-          published_at: string | null;
-          seo_description: string | null;
-          seo_title: string | null;
+          section_order: Json;
           template_id: string;
-          theme: Json;
+          template_key: string;
           updated_at: string;
         };
         Insert: {
+          accent_key?: string;
           created_at?: string;
-          custom_domain?: string | null;
+          hidden_sections?: Json;
           id?: string;
-          is_public?: boolean;
           profile_id: string;
-          published_at?: string | null;
-          seo_description?: string | null;
-          seo_title?: string | null;
+          section_order?: Json;
           template_id?: string;
-          theme?: Json;
+          template_key?: string;
           updated_at?: string;
         };
         Update: {
+          accent_key?: string;
           created_at?: string;
-          custom_domain?: string | null;
+          hidden_sections?: Json;
           id?: string;
-          is_public?: boolean;
           profile_id?: string;
-          published_at?: string | null;
-          seo_description?: string | null;
-          seo_title?: string | null;
+          section_order?: Json;
           template_id?: string;
-          theme?: Json;
+          template_key?: string;
           updated_at?: string;
         };
         Relationships: [
@@ -207,6 +222,13 @@ export type Database = {
             columns: ['profile_id'];
             isOneToOne: true;
             referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profile_preferences_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: true;
+            referencedRelation: 'public_profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -253,6 +275,13 @@ export type Database = {
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'profile_projects_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
         ];
       };
       profile_skills: {
@@ -289,6 +318,13 @@ export type Database = {
             columns: ['profile_id'];
             isOneToOne: false;
             referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profile_skills_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -392,14 +428,62 @@ export type Database = {
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'resume_sources_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
         ];
       };
     };
     Views: {
-      [_ in never]: never;
+      public_profiles: {
+        Row: {
+          about: string | null;
+          avatar_url: string | null;
+          created_at: string | null;
+          display_name: string | null;
+          headline: string | null;
+          id: string | null;
+          location: string | null;
+          published_at: string | null;
+          updated_at: string | null;
+          username: string | null;
+          visibility: string | null;
+        };
+        Insert: {
+          about?: string | null;
+          avatar_url?: string | null;
+          created_at?: string | null;
+          display_name?: string | null;
+          headline?: string | null;
+          id?: string | null;
+          location?: string | null;
+          published_at?: string | null;
+          updated_at?: string | null;
+          username?: string | null;
+          visibility?: string | null;
+        };
+        Update: {
+          about?: string | null;
+          avatar_url?: string | null;
+          created_at?: string | null;
+          display_name?: string | null;
+          headline?: string | null;
+          id?: string | null;
+          location?: string | null;
+          published_at?: string | null;
+          updated_at?: string | null;
+          username?: string | null;
+          visibility?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
-      [_ in never]: never;
+      apply_resume_import: { Args: { payload: Json }; Returns: undefined };
     };
     Enums: {
       [_ in never]: never;

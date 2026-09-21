@@ -11,6 +11,7 @@ import AuthCallback from './pages/auth/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import ProfileEditor from './pages/ProfileEditor';
 import ResumeImport from './pages/ResumeImport';
+import AppearanceEditor from './pages/AppearanceEditor';
 import NotFound from './pages/NotFound';
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/dashboard/profile" element={<ProfileEditor />} />
+            <Route path="/dashboard/appearance" element={<AppearanceEditor />} />
             <Route path="/dashboard/resume" element={<ResumeImport />} />
             <Route path="*" element={<NotFound />} />
           </Route>
