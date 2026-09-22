@@ -42,10 +42,7 @@ export interface ProjectEntry {
 
 export async function applyResumeImport(payload: ResumeImportPayload): Promise<{ error?: string }> {
   const supabase = getSupabaseClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await supabase.rpc("apply_resume_import", {
-    payload: payload as any,
-  });
+  const { error } = await supabase.rpc('apply_resume_import' as never, payload as never);
 
   if (error) return { error: error.message };
   return {};

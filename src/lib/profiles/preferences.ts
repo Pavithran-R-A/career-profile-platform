@@ -122,7 +122,7 @@ export async function getPublicPreferences(profileId: string): Promise<ProfilePr
   if (error || !data) return null;
 
   return {
-    id: "",
+    id: '',
     profile_id: profileId,
     template_key: data.template_key || DEFAULT_TEMPLATE_KEY,
     accent_key: data.accent_key || DEFAULT_ACCENT_KEY,
