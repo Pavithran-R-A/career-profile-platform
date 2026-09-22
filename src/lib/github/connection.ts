@@ -216,7 +216,7 @@ export function getClientForConnection(connectionId: string): GitHubClient {
 
   let client = clients.get(conn.installation_id);
   if (!client) {
-    client = new GitHubClient();
+    client = new GitHubClient(conn.installation_id);
     clients.set(conn.installation_id, client);
   }
   return client;
@@ -225,7 +225,7 @@ export function getClientForConnection(connectionId: string): GitHubClient {
 export function getClientForInstallation(installationId: number): GitHubClient {
   let client = clients.get(installationId);
   if (!client) {
-    client = new GitHubClient();
+    client = new GitHubClient(installationId);
     clients.set(installationId, client);
   }
   return client;

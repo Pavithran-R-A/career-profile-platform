@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
+import type {
+  GitHubConnection,
+  GitHubRepositoryRecord,
+  ProfileEvidence,
+} from '../lib/github/types';
 import GitHubConnectionCard from '../components/GitHubConnectionCard';
 import RepositoryList from '../components/RepositoryList';
 import EvidenceList from '../components/EvidenceList';
@@ -10,9 +15,9 @@ import { getSupabaseClient } from '../lib/supabase/client';
 
 interface SyncState {
   loading: boolean;
-  repositories: Record<string, unknown>[];
-  evidence: Record<string, unknown>[];
-  connection: Record<string, unknown> | null;
+  repositories: GitHubRepositoryRecord[];
+  evidence: ProfileEvidence[];
+  connection: GitHubConnection | null;
   error: string | null;
 }
 
@@ -61,7 +66,7 @@ export default function GitHubDashboard() {
         .order('created_at', { ascending: false })
         .limit(1);
 
-      const connection = (connections as Record<string, unknown>[] | null)?.[0] ?? null;
+      const connection = (connections as unknown as GitHubConnection[] | null)?.[0] ?? null;
 
       if (!connection) {
         setSyncState({
@@ -74,13 +79,11 @@ export default function GitHubDashboard() {
         return;
       }
 
-      const connectionId = (connection as { id: string }).id;
-
       const [reposResult, evidenceResult] = await Promise.all([
         supabase
           .from('github_repositories' as never)
           .select('*')
-          .eq('connection_id', connectionId)
+          .eq('connection_id', connection.id)
           .order('stars_count', { ascending: false }),
         supabase
           .from('profile_evidence' as never)
@@ -91,8 +94,8 @@ export default function GitHubDashboard() {
 
       setSyncState({
         loading: false,
-        repositories: reposResult.data ?? [],
-        evidence: evidenceResult.data ?? [],
+        repositories: (reposResult.data as unknown as GitHubRepositoryRecord[]) ?? [],
+        evidence: (evidenceResult.data as unknown as ProfileEvidence[]) ?? [],
         connection,
         error: null,
       });

@@ -668,6 +668,51 @@ export type Database = {
           },
         ];
       };
+      profile_variants: {
+        Row: {
+          company: string | null;
+          created_at: string;
+          customizations: Json;
+          id: string;
+          job_description_sha256: string | null;
+          job_id: string;
+          job_requirements: Json | null;
+          job_title: string;
+          match_score: number;
+          profile_id: string;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          company?: string | null;
+          created_at?: string;
+          customizations?: Json;
+          id?: string;
+          job_description_sha256?: string | null;
+          job_id: string;
+          job_requirements?: Json | null;
+          job_title: string;
+          match_score?: number;
+          profile_id: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          company?: string | null;
+          created_at?: string;
+          customizations?: Json;
+          id?: string;
+          job_description_sha256?: string | null;
+          job_id?: string;
+          job_requirements?: Json | null;
+          job_title?: string;
+          match_score?: number;
+          profile_id?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       public_profiles: {

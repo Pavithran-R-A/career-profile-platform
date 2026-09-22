@@ -111,9 +111,7 @@ export interface GitHubLicense {
   node_id: string;
 }
 
-export interface GitHubLanguage {
-  [language: string]: number;
-}
+export type GitHubLanguage = Record<string, number>;
 
 export interface GitHubCommit {
   sha: string;
@@ -351,7 +349,7 @@ export interface SyncResult {
   pullRequests: GitHubPullRequest[];
   issues: GitHubIssue[];
   releases: GitHubRelease[];
-  languages: GitHubLanguage[];
+  languages: Record<string, number>;
   topics: string[];
   defaultBranchSha: string | null;
 }
