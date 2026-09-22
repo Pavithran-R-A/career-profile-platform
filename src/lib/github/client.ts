@@ -6,7 +6,6 @@ import type {
   GitHubIssue,
   GitHubRelease,
   GitHubCodeReview,
-  GitHubLanguage,
   SyncResult,
 } from './types';
 import { getInstallationToken } from './installation';
@@ -53,13 +52,24 @@ interface PaginatedResponse<T> {
 }
 
 export class GitHubClient {
+  private installationId: number;
+
+  constructor(installationId: number) {
+    this.installationId = installationId;
+  }
+
+  private async getToken(): Promise<string> {
+    const result = await getInstallationToken(this.installationId);
+    return result.token;
+  }
+
   async getUser(): Promise<GitHubUser> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     return githubFetch<GitHubUser>('/user', token);
   }
 
   async listRepositories(page = 1, perPage = 100): Promise<PaginatedResponse<GitHubRepository>> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     const { data, headers } = await githubFetchWithMeta<{ repositories: GitHubRepository[] }>(
       `/installation/repositories?page=${page}&per_page=${perPage}`,
       token
@@ -84,23 +94,23 @@ export class GitHubClient {
   }
 
   async getRepository(owner: string, name: string): Promise<GitHubRepository> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     return githubFetch<GitHubRepository>(`/repos/${owner}/${name}`, token);
   }
 
   async getRepositoryLanguages(owner: string, name: string): Promise<Record<string, number>> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     return githubFetch<Record<string, number>>(`/repos/${owner}/${name}/languages`, token);
   }
 
   async getRepositoryTopics(owner: string, name: string): Promise<string[]> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     const data = await githubFetch<{ names: string[] }>(`/repos/${owner}/${name}/topics`, token);
     return data.names || [];
   }
 
   async getDefaultBranchSha(owner: string, name: string, branch: string): Promise<string | null> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     try {
       const data = await githubFetch<{ commit: { sha: string } }>(
         `/repos/${owner}/${name}/branches/${branch}`,
@@ -113,7 +123,7 @@ export class GitHubClient {
   }
 
   async listCommits(owner: string, name: string, page = 1, perPage = 30): Promise<GitHubCommit[]> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     return githubFetch<GitHubCommit[]>(
       `/repos/${owner}/${name}/commits?page=${page}&per_page=${perPage}`,
       token
@@ -126,7 +136,7 @@ export class GitHubClient {
     page = 1,
     perPage = 30
   ): Promise<GitHubPullRequest[]> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     return githubFetch<GitHubPullRequest[]>(
       `/repos/${owner}/${name}/pulls?state=all&page=${page}&per_page=${perPage}`,
       token
@@ -134,7 +144,7 @@ export class GitHubClient {
   }
 
   async listIssues(owner: string, name: string, page = 1, perPage = 30): Promise<GitHubIssue[]> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     return githubFetch<GitHubIssue[]>(
       `/repos/${owner}/${name}/issues?state=all&page=${page}&per_page=${perPage}`,
       token
@@ -142,7 +152,7 @@ export class GitHubClient {
   }
 
   async listReleases(owner: string, name: string, page = 1, perPage = 5): Promise<GitHubRelease[]> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     return githubFetch<GitHubRelease[]>(
       `/repos/${owner}/${name}/releases?page=${page}&per_page=${perPage}`,
       token
@@ -150,7 +160,7 @@ export class GitHubClient {
   }
 
   async getCodeReviews(owner: string, name: string, prNumber: number): Promise<GitHubCodeReview[]> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     return githubFetch<GitHubCodeReview[]>(
       `/repos/${owner}/${name}/pulls/${prNumber}/reviews`,
       token
@@ -163,7 +173,7 @@ export class GitHubClient {
     path: string,
     ref?: string
   ): Promise<string | null> {
-    const token = await getInstallationToken();
+    const token = await this.getToken();
     try {
       const data = await githubFetch<{ content?: string }>(
         `/repos/${owner}/${name}/contents/${path}${ref ? `?ref=${ref}` : ''}`,
@@ -181,7 +191,7 @@ export class GitHubClient {
       pullRequests: [],
       issues: [],
       releases: [],
-      languages: [],
+      languages: {},
       topics: [],
       defaultBranchSha: null,
     };
@@ -197,8 +207,8 @@ export class GitHubClient {
       result.pullRequests = await this.listPullRequests(owner, name, 1, 30);
       result.issues = await this.listIssues(owner, name, 1, 30);
       result.releases = await this.listReleases(owner, name, 1, 5);
-    } catch (err) {
-      throw err;
+    } catch {
+      // Sync errors are collected per-repo
     }
 
     return result;

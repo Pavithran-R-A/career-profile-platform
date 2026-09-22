@@ -5,7 +5,7 @@ import type {
   GitHubInstallation,
   GitHubUser,
 } from './types';
-import type { GitHubClient } from './client';
+import { GitHubClient } from './client';
 
 // ─── Types ────────────────────────────────────────────────────
 

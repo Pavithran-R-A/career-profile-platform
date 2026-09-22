@@ -8,12 +8,11 @@ import RepositoryList from '../components/RepositoryList';
 import EvidenceList from '../components/EvidenceList';
 import { getSupabaseClient } from '../lib/supabase/client';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface SyncState {
   loading: boolean;
-  repositories: any[];
-  evidence: any[];
-  connection: any;
+  repositories: Record<string, unknown>[];
+  evidence: Record<string, unknown>[];
+  connection: Record<string, unknown> | null;
   error: string | null;
 }
 
@@ -202,14 +201,17 @@ export default function GitHubDashboard() {
         <div className="mt-8">
           <RepositoryList
             repositories={syncState.repositories}
-            onToggleRepository={handleToggleRepository}
+            onToggleRepository={(id, selected) => void handleToggleRepository(id, selected)}
           />
         </div>
       )}
 
       {syncState.evidence.length > 0 && (
         <div className="mt-8">
-          <EvidenceList evidence={syncState.evidence} onTogglePublic={handleToggleEvidencePublic} />
+          <EvidenceList
+            evidence={syncState.evidence}
+            onTogglePublic={(id, val) => void handleToggleEvidencePublic(id, val)}
+          />
         </div>
       )}
 
