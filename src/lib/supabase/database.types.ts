@@ -8,6 +8,164 @@ export type Database = {
   };
   public: {
     Tables: {
+      github_connections: {
+        Row: {
+          connected_at: string;
+          created_at: string;
+          github_account_id: number;
+          github_account_login: string;
+          github_account_type: string;
+          id: string;
+          installation_id: number;
+          last_error_code: string | null;
+          last_sync_status: string | null;
+          last_synced_at: string | null;
+          profile_id: string;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          connected_at?: string;
+          created_at?: string;
+          github_account_id: number;
+          github_account_login: string;
+          github_account_type?: string;
+          id?: string;
+          installation_id: number;
+          last_error_code?: string | null;
+          last_sync_status?: string | null;
+          last_synced_at?: string | null;
+          profile_id: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          connected_at?: string;
+          created_at?: string;
+          github_account_id?: number;
+          github_account_login?: string;
+          github_account_type?: string;
+          id?: string;
+          installation_id?: number;
+          last_error_code?: string | null;
+          last_sync_status?: string | null;
+          last_synced_at?: string | null;
+          profile_id?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'github_connections_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'github_connections_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      github_repositories: {
+        Row: {
+          connection_id: string;
+          created_at: string;
+          default_branch: string;
+          default_branch_sha: string | null;
+          description: string | null;
+          forks_count: number;
+          full_name: string;
+          github_created_at: string | null;
+          github_pushed_at: string | null;
+          github_repo_id: number;
+          github_updated_at: string | null;
+          html_url: string;
+          id: string;
+          is_archived: boolean;
+          is_fork: boolean;
+          is_private: boolean;
+          languages: Json;
+          last_synced_at: string | null;
+          name: string;
+          owner_login: string;
+          primary_language: string | null;
+          selected_for_evidence: boolean;
+          show_publicly: boolean;
+          stars_count: number;
+          topics: Json;
+          updated_at: string;
+        };
+        Insert: {
+          connection_id: string;
+          created_at?: string;
+          default_branch?: string;
+          default_branch_sha?: string | null;
+          description?: string | null;
+          forks_count?: number;
+          full_name: string;
+          github_created_at?: string | null;
+          github_pushed_at?: string | null;
+          github_repo_id: number;
+          github_updated_at?: string | null;
+          html_url: string;
+          id?: string;
+          is_archived?: boolean;
+          is_fork?: boolean;
+          is_private?: boolean;
+          languages?: Json;
+          last_synced_at?: string | null;
+          name: string;
+          owner_login: string;
+          primary_language?: string | null;
+          selected_for_evidence?: boolean;
+          show_publicly?: boolean;
+          stars_count?: number;
+          topics?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          connection_id?: string;
+          created_at?: string;
+          default_branch?: string;
+          default_branch_sha?: string | null;
+          description?: string | null;
+          forks_count?: number;
+          full_name?: string;
+          github_created_at?: string | null;
+          github_pushed_at?: string | null;
+          github_repo_id?: number;
+          github_updated_at?: string | null;
+          html_url?: string;
+          id?: string;
+          is_archived?: boolean;
+          is_fork?: boolean;
+          is_private?: boolean;
+          languages?: Json;
+          last_synced_at?: string | null;
+          name?: string;
+          owner_login?: string;
+          primary_language?: string | null;
+          selected_for_evidence?: boolean;
+          show_publicly?: boolean;
+          stars_count?: number;
+          topics?: Json;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'github_repositories_connection_id_fkey';
+            columns: ['connection_id'];
+            isOneToOne: false;
+            referencedRelation: 'github_connections';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       profile_education: {
         Row: {
           created_at: string;
@@ -64,6 +222,79 @@ export type Database = {
           },
           {
             foreignKeyName: 'profile_education_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      profile_evidence: {
+        Row: {
+          created_at: string;
+          evidence_type: string;
+          github_repository_id: string | null;
+          id: string;
+          is_public: boolean;
+          metadata: Json;
+          observed_at: string;
+          profile_id: string;
+          source_commit_sha: string | null;
+          source_path: string | null;
+          source_url: string | null;
+          subject: string;
+          summary: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          evidence_type: string;
+          github_repository_id?: string | null;
+          id?: string;
+          is_public?: boolean;
+          metadata?: Json;
+          observed_at?: string;
+          profile_id: string;
+          source_commit_sha?: string | null;
+          source_path?: string | null;
+          source_url?: string | null;
+          subject: string;
+          summary: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          evidence_type?: string;
+          github_repository_id?: string | null;
+          id?: string;
+          is_public?: boolean;
+          metadata?: Json;
+          observed_at?: string;
+          profile_id?: string;
+          source_commit_sha?: string | null;
+          source_path?: string | null;
+          source_url?: string | null;
+          subject?: string;
+          summary?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'profile_evidence_github_repository_id_fkey';
+            columns: ['github_repository_id'];
+            isOneToOne: false;
+            referencedRelation: 'github_repositories';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profile_evidence_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profile_evidence_profile_id_fkey';
             columns: ['profile_id'];
             isOneToOne: false;
             referencedRelation: 'public_profiles';
@@ -480,6 +711,40 @@ export type Database = {
           visibility?: string | null;
         };
         Relationships: [];
+      };
+      published_evidence: {
+        Row: {
+          evidence_type: string | null;
+          id: string | null;
+          metadata: Json | null;
+          observed_at: string | null;
+          profile_id: string | null;
+          repository_full_name: string | null;
+          repository_language: string | null;
+          repository_topics: Json | null;
+          repository_url: string | null;
+          source_commit_sha: string | null;
+          source_path: string | null;
+          source_url: string | null;
+          subject: string | null;
+          summary: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'profile_evidence_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profile_evidence_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
+        ];
       };
     };
     Functions: {
