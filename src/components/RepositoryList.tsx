@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { GitHubRepositoryRecord } from '../lib/github/types';
+import { sanitizeUrl } from '../lib/validators/url';
 
 interface RepositoryListProps {
   repositories: GitHubRepositoryRecord[];
@@ -73,7 +74,7 @@ export default function RepositoryList({ repositories, onToggleRepository }: Rep
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <a
-                    href={repo.html_url}
+                    href={sanitizeUrl(repo.html_url)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-medium text-sm hover:underline truncate">

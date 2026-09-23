@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
+import { sanitizeUrl } from '../lib/validators/url';
 import ATSPreview from '../components/ATSPreview';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 
@@ -414,7 +415,7 @@ export default function ATSResumeBuilder() {
                       <div key={index} className="flex items-center gap-2 text-sm">
                         <span className="font-medium">{link.label}:</span>
                         <a
-                          href={link.url}
+                          href={sanitizeUrl(link.url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline">

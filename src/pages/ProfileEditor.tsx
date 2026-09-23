@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
+import { sanitizeUrl } from '../lib/validators/url';
 import { getSupabaseClient } from '../lib/supabase/client';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 
@@ -845,7 +846,7 @@ export default function ProfileEditor() {
                           <div className="flex gap-4 mt-2 text-sm text-gray-500">
                             {project.project_url && (
                               <a
-                                href={project.project_url}
+                                href={sanitizeUrl(project.project_url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="hover:text-gray-900">
@@ -854,7 +855,7 @@ export default function ProfileEditor() {
                             )}
                             {project.repository_url && (
                               <a
-                                href={project.repository_url}
+                                href={sanitizeUrl(project.repository_url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="hover:text-gray-900">
@@ -1014,7 +1015,7 @@ export default function ProfileEditor() {
                         <div>
                           <h3 className="font-medium">{link.label}</h3>
                           <a
-                            href={link.url}
+                            href={sanitizeUrl(link.url)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-sm text-gray-600 hover:text-gray-900">

@@ -19,3 +19,16 @@ export const safeUrlSchema = z.string().url().refine(isSafeUrl, {
 });
 
 export const optionalSafeUrlSchema = safeUrlSchema.nullable();
+
+export function sanitizeUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return url;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
