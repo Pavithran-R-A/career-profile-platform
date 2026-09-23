@@ -1,13 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type {
-  getAvailableModels as GetAvailableModelsType,
-  assertModelAvailable as AssertModelAvailableType,
-  AIModelUnavailableError as AIModelUnavailableErrorType,
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  getAvailableModels,
+  assertModelAvailable,
+  AIModelUnavailableError,
+  _resetCatalogCache,
 } from '../../lib/ai/catalog';
-
-let getAvailableModels: typeof GetAvailableModelsType;
-let assertModelAvailable: typeof AssertModelAvailableType;
-let AIModelUnavailableError: typeof AIModelUnavailableErrorType;
 
 function mockFetch(body: unknown, status = 200) {
   vi.stubGlobal(
@@ -16,23 +13,13 @@ function mockFetch(body: unknown, status = 200) {
   );
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   delete process.env.BHARATCODE_API_KEY;
   delete process.env.BHARATCODE_BASE_URL;
-  vi.resetModules();
-  const mod = await import('../../lib/ai/catalog');
-  getAvailableModels = mod.getAvailableModels;
-  assertModelAvailable = mod.assertModelAvailable;
-  AIModelUnavailableError = mod.AIModelUnavailableError;
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-  delete process.env.BHARATCODE_API_KEY;
-  delete process.env.BHARATCODE_BASE_URL;
+  _resetCatalogCache();
+  mockFetch({ models: [] });
 });
 
 describe('getAvailableModels', () => {
