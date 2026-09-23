@@ -32,6 +32,11 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 let cachedModels: ModelInfo[] | null = null;
 let cachedModelsFetchedAt = 0;
 
+export function _resetCatalogCache(): void {
+  cachedModels = null;
+  cachedModelsFetchedAt = 0;
+}
+
 export async function getAvailableModels(): Promise<ModelInfo[]> {
   const now = Date.now();
   if (cachedModels && now - cachedModelsFetchedAt < CACHE_TTL_MS) {
