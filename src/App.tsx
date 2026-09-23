@@ -12,6 +12,7 @@ import Dashboard from './pages/Dashboard';
 import ProfileEditor from './pages/ProfileEditor';
 import ResumeImport from './pages/ResumeImport';
 import AppearanceEditor from './pages/AppearanceEditor';
+import Onboarding from './pages/Onboarding';
 import NotFound from './pages/NotFound';
 import Pricing from './pages/Pricing';
 import Billing from './pages/Billing';
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="/dashboard/billing" element={<Billing />} />
             <Route path="/dashboard/domains" element={<Domains />} />
             <Route path="/pricing" element={<Pricing />} />
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
