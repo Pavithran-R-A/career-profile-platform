@@ -3,8 +3,7 @@ compatibility_date = "2026-09-20"
 compatibility_flags = ["nodejs_compat"]
 
 [assets]
-directory = "./dist/client"
-binding = "ASSETS"
+directory = "./dist/assets"
 
 # Native Cloudflare Rate Limiting binding (Worker-side).
 # Applied to recruiter AI / public API routes; not a product quota.
