@@ -1,5 +1,6 @@
 import type { ProfileWithRelations } from '../../lib/profiles/repository';
 import type { TemplateConfig } from '../../lib/templates/types';
+import { sanitizeUrl } from '../../lib/validators/url';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -154,7 +155,7 @@ export default function TechnicalTemplate({
             {profile.links.map((link) => (
               <a
                 key={link.id}
-                href={link.url}
+                href={sanitizeUrl(link.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: accent }}>
@@ -179,7 +180,7 @@ export default function TechnicalTemplate({
           <div className="flex items-start gap-6">
             {profile.avatar_url && (
               <img
-                src={profile.avatar_url}
+                src={sanitizeUrl(profile.avatar_url)}
                 alt={profile.display_name ?? profile.username}
                 className="w-16 h-16 rounded object-cover"
               />

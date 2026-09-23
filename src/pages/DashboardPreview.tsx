@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
+import { sanitizeUrl } from '../lib/validators/url';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 
 export default function DashboardPreview() {
@@ -139,7 +140,7 @@ export default function DashboardPreview() {
                     <div className="flex gap-4 mt-2 text-sm">
                       {project.project_url && (
                         <a
-                          href={project.project_url}
+                          href={sanitizeUrl(project.project_url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline">
@@ -148,7 +149,7 @@ export default function DashboardPreview() {
                       )}
                       {project.repository_url && (
                         <a
-                          href={project.repository_url}
+                          href={sanitizeUrl(project.repository_url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline">
@@ -169,7 +170,7 @@ export default function DashboardPreview() {
                 {profile.links.map((link) => (
                   <a
                     key={link.id}
-                    href={link.url}
+                    href={sanitizeUrl(link.url)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 hover:underline">

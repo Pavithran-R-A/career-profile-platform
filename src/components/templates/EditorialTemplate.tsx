@@ -1,5 +1,6 @@
 import type { ProfileWithRelations } from '../../lib/profiles/repository';
 import type { TemplateConfig } from '../../lib/templates/types';
+import { sanitizeUrl } from '../../lib/validators/url';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -161,7 +162,7 @@ export default function EditorialTemplate({
             {profile.links.map((link) => (
               <a
                 key={link.id}
-                href={link.url}
+                href={sanitizeUrl(link.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs underline"
@@ -187,7 +188,7 @@ export default function EditorialTemplate({
           <div className="sticky top-12">
             {profile.avatar_url && (
               <img
-                src={profile.avatar_url}
+                src={sanitizeUrl(profile.avatar_url)}
                 alt={profile.display_name ?? profile.username}
                 className="w-20 h-20 rounded-lg mb-4 object-cover"
               />

@@ -1,5 +1,6 @@
 import type { ProfileWithRelations } from '../../lib/profiles/repository';
 import type { TemplateConfig } from '../../lib/templates/types';
+import { sanitizeUrl } from '../../lib/validators/url';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -120,7 +121,7 @@ function renderLinks(profile: ProfileWithRelations, config: TemplateConfig) {
         {profile.links.map((link) => (
           <a
             key={link.id}
-            href={link.url}
+            href={sanitizeUrl(link.url)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs underline"
@@ -159,7 +160,7 @@ export default function MinimalTemplate({ profile, config, preferences }: Minima
         <header className="mb-12">
           {profile.avatar_url && (
             <img
-              src={profile.avatar_url}
+              src={sanitizeUrl(profile.avatar_url)}
               alt={profile.display_name ?? profile.username}
               className="w-16 h-16 rounded-full mb-4 object-cover"
             />

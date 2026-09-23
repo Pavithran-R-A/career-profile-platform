@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ProfileEvidence } from '../lib/github/types';
+import { sanitizeUrl } from '../lib/validators/url';
 
 interface EvidenceListProps {
   evidence: ProfileEvidence[];
@@ -93,7 +94,7 @@ export default function EvidenceList({ evidence, onTogglePublic }: EvidenceListP
                 <div className="flex items-center gap-2">
                   {item.source_url ? (
                     <a
-                      href={item.source_url}
+                      href={sanitizeUrl(item.source_url)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-medium text-sm hover:underline truncate">
