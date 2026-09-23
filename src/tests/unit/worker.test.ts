@@ -20,6 +20,14 @@ describe('Worker API handler', () => {
       expect(body).toHaveProperty('status', 'ok');
       expect(body).toHaveProperty('timestamp');
     });
+
+    it('returns security headers', async () => {
+      const res = await handleRequest(makeRequest('/api/health'), {}, {} as ExecutionContext);
+      expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+      expect(res.headers.get('X-Frame-Options')).toBe('DENY');
+      expect(res.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
+      expect(res.headers.get('Permissions-Policy')).toContain('camera=');
+    });
   });
 
   describe('API 404 behavior', () => {
@@ -48,28 +56,78 @@ describe('Worker API handler', () => {
   });
 
   describe('CORS behavior', () => {
-    it('handles OPTIONS preflight', async () => {
+    it('allows localhost origin in development', async () => {
       const res = await handleRequest(
-        makeRequest('/api/health', 'OPTIONS', 'https://test.com'),
-        {},
+        makeRequest('/api/health', 'OPTIONS', 'http://localhost:5173'),
+        { ENVIRONMENT: 'development' },
         {} as ExecutionContext
       );
       expect(res.status).toBe(204);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
     });
 
-    it('sets Access-Control-Allow-Origin for credentialed requests', async () => {
+    it('allows 127.0.0.1 in development', async () => {
       const res = await handleRequest(
-        makeRequest('/api/health', 'GET', 'https://test.com'),
+        makeRequest('/api/health', 'OPTIONS', 'http://127.0.0.1:3000'),
+        { ENVIRONMENT: 'development' },
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(204);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://127.0.0.1:3000');
+    });
+
+    it('rejects unknown origin in production', async () => {
+      const res = await handleRequest(
+        makeRequest('/api/health', 'OPTIONS', 'https://evil.com'),
+        { ENVIRONMENT: 'production' },
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(403);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    });
+
+    it('allows listed origin in production', async () => {
+      const res = await handleRequest(
+        makeRequest('/api/health', 'OPTIONS', 'https://app.example.com'),
+        { ENVIRONMENT: 'production', ALLOWED_ORIGINS: 'https://app.example.com' },
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(204);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example.com');
+    });
+
+    it('rejects unlisted origin in production', async () => {
+      const res = await handleRequest(
+        makeRequest('/api/health', 'OPTIONS', 'https://other.com'),
+        { ENVIRONMENT: 'production', ALLOWED_ORIGINS: 'https://app.example.com' },
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it('sets Vary: Origin header', async () => {
+      const res = await handleRequest(
+        makeRequest('/api/health', 'GET', 'http://localhost:5173'),
+        { ENVIRONMENT: 'development' },
+        {} as ExecutionContext
+      );
+      expect(res.headers.get('Vary')).toBe('Origin');
+    });
+
+    it('allows requests with no Origin header (same-origin)', async () => {
+      const res = await handleRequest(
+        makeRequest('/api/health', 'GET'),
         {},
         {} as ExecutionContext
       );
-      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://test.com');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
     });
 
-    it('sets allowed methods', async () => {
+    it('sets allowed methods on CORS response', async () => {
       const res = await handleRequest(
-        makeRequest('/api/health', 'OPTIONS', 'https://test.com'),
-        {},
+        makeRequest('/api/health', 'OPTIONS', 'http://localhost:5173'),
+        { ENVIRONMENT: 'development' },
         {} as ExecutionContext
       );
       expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, OPTIONS');
