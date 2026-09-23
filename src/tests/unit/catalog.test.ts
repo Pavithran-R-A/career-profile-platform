@@ -19,6 +19,8 @@ function mockFetch(body: unknown, status = 200) {
 beforeEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  delete process.env.BHARATCODE_API_KEY;
+  delete process.env.BHARATCODE_BASE_URL;
   vi.resetModules();
   const mod = await import('../../lib/ai/catalog');
   getAvailableModels = mod.getAvailableModels;
