@@ -58,10 +58,15 @@
 
 ## Stage 7 - Monetization / Domains
 
-- Premium tier
-- Optional .cv domain add-on (paid)
-- Custom domain support
-- Subscription management
+- [x] Free / Pro plan entitlements (centralized policy)
+- [x] Usage counters and quotas (day / month / total windows)
+- [x] Razorpay Orders + Checkout (server-side amount authority)
+- [x] Webhook HMAC verification + event-id idempotency
+- [x] Billing UI (`/pricing`, `/dashboard/billing`)
+- [x] Custom domains (Cloudflare for SaaS) + `/dashboard/domains`
+- [x] .CV domain provider adapter (disabled by default, live quote only)
+- [ ] Live payments and live domain purchases (pending production credentials)
+- [ ] Subscription cancellation / downgrade flows
 
 ## Stage 8 - Real-User Validation
 

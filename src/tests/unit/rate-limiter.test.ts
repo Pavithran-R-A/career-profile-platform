@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  InMemoryRateLimiter,
-  CloudflareRateLimiter,
-  privacyKey,
-} from '../../lib/ai/rate-limiter';
+import { InMemoryRateLimiter, CloudflareRateLimiter, privacyKey } from '../../lib/ai/rate-limiter';
 
 describe('privacyKey', () => {
   it('produces deterministic output', () => {
@@ -114,7 +110,7 @@ describe('CloudflareRateLimiter', () => {
     const limiter = new CloudflareRateLimiter(kv);
     await limiter.check('user-abc');
 
-    expect(kv.put).toHaveBeenCalled();
+    expect(kv.put).toHaveBeenCalled(); // eslint-disable-line @typescript-eslint/unbound-method
     const putCall = (kv.put as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(putCall[0]).toMatch(/^rl:user-abc:\d+$/);
   });

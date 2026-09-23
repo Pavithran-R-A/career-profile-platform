@@ -1,15 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type {
+  getAvailableModels as GetAvailableModelsType,
+  assertModelAvailable as AssertModelAvailableType,
+  AIModelUnavailableError as AIModelUnavailableErrorType,
+} from '../../lib/ai/catalog';
 
-type GetAvailableModelsFn = typeof import("../../lib/ai/catalog").getAvailableModels;
-type AssertModelAvailableFn = typeof import("../../lib/ai/catalog").assertModelAvailable;
-
-let getAvailableModels: GetAvailableModelsFn;
-let assertModelAvailable: AssertModelAvailableFn;
+let getAvailableModels: typeof GetAvailableModelsType;
+let assertModelAvailable: typeof AssertModelAvailableType;
+let AIModelUnavailableError: typeof AIModelUnavailableErrorType;
 
 function mockFetch(body: unknown, status = 200) {
   vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => new Response(JSON.stringify(body), { status })),
+    'fetch',
+    vi.fn(async () => new Response(JSON.stringify(body), { status }))
   );
 }
 
@@ -17,9 +20,10 @@ beforeEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.resetModules();
-  const mod = await import("../../lib/ai/catalog");
+  const mod = await import('../../lib/ai/catalog');
   getAvailableModels = mod.getAvailableModels;
   assertModelAvailable = mod.assertModelAvailable;
+  AIModelUnavailableError = mod.AIModelUnavailableError;
 });
 
 describe('getAvailableModels', () => {
@@ -44,32 +48,45 @@ describe('getAvailableModels', () => {
     expect(models[0].id).toBe('test-model');
   });
 
-  it('returns fallback when no API key', async () => {
+  it('throws AI_MODEL_UNAVAILABLE when no API key', async () => {
     delete process.env.BHARATCODE_API_KEY;
-    const models = await getAvailableModels();
-    expect(models.length).toBeGreaterThan(0);
-    expect(models[0].id).toBe('deepseek-v4.1-flash');
+    await expect(getAvailableModels()).rejects.toMatchObject({
+      code: 'AI_MODEL_UNAVAILABLE',
+    });
   });
 
-  it('returns fallback on fetch error', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network'); }));
+  it('throws AI_MODEL_UNAVAILABLE on fetch error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network');
+      })
+    );
     process.env.BHARATCODE_API_KEY = 'test-key';
-    const models = await getAvailableModels();
-    expect(models.length).toBeGreaterThan(0);
+    await expect(getAvailableModels()).rejects.toMatchObject({
+      code: 'AI_MODEL_UNAVAILABLE',
+    });
   });
 
-  it('returns fallback on non-200 response', async () => {
+  it('throws AI_MODEL_UNAVAILABLE on non-200 response', async () => {
     mockFetch({ error: 'unauthorized' }, 401);
     process.env.BHARATCODE_API_KEY = 'test-key';
-    const models = await getAvailableModels();
-    expect(models.length).toBeGreaterThan(0);
+    await expect(getAvailableModels()).rejects.toMatchObject({
+      code: 'AI_MODEL_UNAVAILABLE',
+    });
   });
 
-  it('returns fallback on invalid schema', async () => {
+  it('throws AI_MODEL_UNAVAILABLE on invalid schema', async () => {
     mockFetch({ models: 'not-an-array' });
     process.env.BHARATCODE_API_KEY = 'test-key';
-    const models = await getAvailableModels();
-    expect(models.length).toBeGreaterThan(0);
+    await expect(getAvailableModels()).rejects.toMatchObject({
+      code: 'AI_MODEL_UNAVAILABLE',
+    });
+  });
+
+  it('does not substitute a fallback model list', async () => {
+    delete process.env.BHARATCODE_API_KEY;
+    await expect(getAvailableModels()).rejects.toBeInstanceOf(AIModelUnavailableError);
   });
 });
 
@@ -93,7 +110,7 @@ describe('assertModelAvailable', () => {
     expect(model.id).toBe('deepseek-v4.1-flash');
   });
 
-  it('throws when model not found', async () => {
+  it('throws AI_MODEL_UNAVAILABLE when model not found', async () => {
     mockFetch({
       models: [
         {
@@ -108,8 +125,15 @@ describe('assertModelAvailable', () => {
       ],
     });
     process.env.BHARATCODE_API_KEY = 'test-key';
-    await expect(assertModelAvailable('nonexistent')).rejects.toThrow(
-      'Model "nonexistent" is not available'
-    );
+    await expect(assertModelAvailable('nonexistent')).rejects.toMatchObject({
+      code: 'AI_MODEL_UNAVAILABLE',
+    });
+  });
+
+  it('throws AI_MODEL_UNAVAILABLE when catalog unavailable', async () => {
+    delete process.env.BHARATCODE_API_KEY;
+    await expect(assertModelAvailable('deepseek-v4.1-flash')).rejects.toMatchObject({
+      code: 'AI_MODEL_UNAVAILABLE',
+    });
   });
 });
