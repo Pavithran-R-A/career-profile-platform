@@ -2,8 +2,17 @@ name = "career-profile-platform"
 compatibility_date = "2026-09-20"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+ENVIRONMENT = "production"
+
+[previews.vars]
+ENVIRONMENT = "preview"
+
 [assets]
 directory = "./dist/assets"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
 
 # Native Cloudflare Rate Limiting binding (Worker-side).
 # Applied to recruiter AI / public API routes; not a product quota.
