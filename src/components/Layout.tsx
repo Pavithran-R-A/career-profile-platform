@@ -16,10 +16,16 @@ export default function Layout() {
             Profile
           </Link>
           <nav className="flex items-center gap-4">
+            <Link to="/pricing" className="text-sm text-gray-600 hover:text-gray-900">
+              Pricing
+            </Link>
             {auth.status === 'authenticated' ? (
               <>
                 <Link to="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
                   Dashboard
+                </Link>
+                <Link to="/dashboard/billing" className="text-sm text-gray-600 hover:text-gray-900">
+                  Billing
                 </Link>
                 <button
                   onClick={handleSignOut}

@@ -29,11 +29,14 @@ Browser <-> Cloudflare Worker (API + static assets)
 - `/signup` - Registration form
 - `/forgot-password` - Password reset request
 - `/reset-password` - Password reset form
+- `/pricing` - Plan comparison and upgrade CTA
 
 ### Protected Routes (require authentication)
 
 - `/dashboard` - User dashboard
 - `/dashboard/profile` - Profile editor
+- `/dashboard/billing` - Subscription, usage, and upgrade
+- `/dashboard/domains` - Custom domains and .cv quotes
 
 ### Guest-Only Routes (redirect to dashboard if authenticated)
 

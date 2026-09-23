@@ -1,5 +1,97 @@
 # Data Model
 
+## Stage 7 Tables
+
+### user_subscriptions
+
+| Column               | Type        | Constraints                                |
+| -------------------- | ----------- | ------------------------------------------ |
+| user_id              | uuid        | PK, FK -> auth.users, cascade              |
+| plan                 | text        | NOT NULL, default 'free', CHECK (free/pro) |
+| status               | text        | NOT NULL, default 'active', CHECK          |
+| current_period_start | timestamptz | nullable                                   |
+| current_period_end   | timestamptz | nullable                                   |
+| provider             | text        | NOT NULL, default 'razorpay'               |
+| provider_customer_id | text        | nullable                                   |
+| created_at           | timestamptz | NOT NULL, default now()                    |
+| updated_at           | timestamptz | NOT NULL, auto-updated via trigger         |
+
+RLS: owner SELECT only. Server writes via secret key.
+
+### billing_orders
+
+| Column              | Type        | Constraints                          |
+| ------------------- | ----------- | ------------------------------------ |
+| id                  | uuid        | PK, gen_random_uuid()                |
+| user_id             | uuid        | FK -> auth.users, cascade            |
+| plan_id             | text        | NOT NULL, default 'pro', CHECK (pro) |
+| amount_paise        | integer     | NOT NULL, > 0                        |
+| currency            | text        | NOT NULL, default 'INR'              |
+| status              | text        | NOT NULL, default 'created', CHECK   |
+| razorpay_order_id   | text        | UNIQUE, nullable                     |
+| razorpay_payment_id | text        | nullable                             |
+| created_at          | timestamptz | NOT NULL, default now()              |
+| updated_at          | timestamptz | NOT NULL, auto-updated via trigger   |
+| paid_at             | timestamptz | nullable                             |
+
+RLS: owner SELECT only.
+
+### billing_webhook_events
+
+| Column      | Type        | Constraints              |
+| ----------- | ----------- | ------------------------ |
+| event_id    | text        | PK (x-razorpay-event-id) |
+| event_type  | text        | nullable                 |
+| received_at | timestamptz | NOT NULL, default now()  |
+
+No client RLS (service role only). Idempotency claim.
+
+### usage_counters
+
+| Column     | Type        | Constraints                                                                    |
+| ---------- | ----------- | ------------------------------------------------------------------------------ |
+| user_id    | uuid        | FK -> auth.users, cascade                                                      |
+| metric     | text        | CHECK (resume_variants, github_repos, recruiter_ai, tailoring, custom_domains) |
+| window_key | text        | 'YYYY-MM-DD' / 'YYYY-MM' / 'total'                                             |
+| count      | integer     | NOT NULL, default 0, >= 0                                                      |
+| updated_at | timestamptz | NOT NULL, auto-updated via trigger                                             |
+
+PK: (user_id, metric, window_key). RLS: owner SELECT only.
+
+### custom_domains
+
+| Column                 | Type        | Constraints                        |
+| ---------------------- | ----------- | ---------------------------------- |
+| id                     | uuid        | PK, gen_random_uuid()              |
+| profile_id             | uuid        | FK -> profiles, cascade            |
+| hostname               | text        | NOT NULL, UNIQUE                   |
+| status                 | text        | default 'pending', CHECK           |
+| verification_token     | text        | nullable                           |
+| cloudflare_hostname_id | text        | nullable                           |
+| last_error             | text        | nullable                           |
+| created_at             | timestamptz | NOT NULL, default now()            |
+| updated_at             | timestamptz | NOT NULL, auto-updated via trigger |
+
+RLS: owner (via profiles) SELECT/INSERT/DELETE.
+
+### dotcv_domains
+
+| Column             | Type        | Constraints                        |
+| ------------------ | ----------- | ---------------------------------- |
+| id                 | uuid        | PK, gen_random_uuid()              |
+| profile_id         | uuid        | FK -> profiles, cascade            |
+| domain_label       | text        | NOT NULL (label without .cv)       |
+| domain_name        | text        | NOT NULL, UNIQUE                   |
+| status             | text        | default 'quoted', CHECK            |
+| provider           | text        | NOT NULL, default 'ola'            |
+| provider_reference | text        | nullable                           |
+| quote_price_paise  | integer     | nullable, > 0                      |
+| last_error         | text        | nullable                           |
+| created_at         | timestamptz | NOT NULL, default now()            |
+| updated_at         | timestamptz | NOT NULL, auto-updated via trigger |
+
+RLS: owner (via profiles) SELECT/INSERT/DELETE.
+
 ## Current Tables (Stage 1)
 
 ### profiles

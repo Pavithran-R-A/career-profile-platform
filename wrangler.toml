@@ -5,3 +5,10 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = "./dist/client"
 binding = "ASSETS"
+
+# Native Cloudflare Rate Limiting binding (Worker-side).
+# Applied to recruiter AI / public API routes; not a product quota.
+[[ratelimits]]
+name = "RECRUITER_RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }

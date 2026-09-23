@@ -8,6 +8,174 @@ export type Database = {
   };
   public: {
     Tables: {
+      billing_orders: {
+        Row: {
+          amount_paise: number;
+          created_at: string;
+          currency: string;
+          id: string;
+          paid_at: string | null;
+          plan_id: string;
+          razorpay_order_id: string | null;
+          razorpay_payment_id: string | null;
+          status: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          amount_paise: number;
+          created_at?: string;
+          currency?: string;
+          id?: string;
+          paid_at?: string | null;
+          plan_id?: string;
+          razorpay_order_id?: string | null;
+          razorpay_payment_id?: string | null;
+          status?: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          amount_paise?: number;
+          created_at?: string;
+          currency?: string;
+          id?: string;
+          paid_at?: string | null;
+          plan_id?: string;
+          razorpay_order_id?: string | null;
+          razorpay_payment_id?: string | null;
+          status?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      billing_webhook_events: {
+        Row: {
+          event_id: string;
+          event_type: string | null;
+          received_at: string;
+        };
+        Insert: {
+          event_id: string;
+          event_type?: string | null;
+          received_at?: string;
+        };
+        Update: {
+          event_id?: string;
+          event_type?: string | null;
+          received_at?: string;
+        };
+        Relationships: [];
+      };
+      custom_domains: {
+        Row: {
+          cloudflare_hostname_id: string | null;
+          created_at: string;
+          hostname: string;
+          id: string;
+          last_error: string | null;
+          profile_id: string;
+          status: string;
+          updated_at: string;
+          verification_token: string | null;
+        };
+        Insert: {
+          cloudflare_hostname_id?: string | null;
+          created_at?: string;
+          hostname: string;
+          id?: string;
+          last_error?: string | null;
+          profile_id: string;
+          status?: string;
+          updated_at?: string;
+          verification_token?: string | null;
+        };
+        Update: {
+          cloudflare_hostname_id?: string | null;
+          created_at?: string;
+          hostname?: string;
+          id?: string;
+          last_error?: string | null;
+          profile_id?: string;
+          status?: string;
+          updated_at?: string;
+          verification_token?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'custom_domains_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'custom_domains_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      dotcv_domains: {
+        Row: {
+          created_at: string;
+          domain_label: string;
+          domain_name: string;
+          id: string;
+          last_error: string | null;
+          profile_id: string;
+          provider: string;
+          provider_reference: string | null;
+          quote_price_paise: number | null;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          domain_label: string;
+          domain_name: string;
+          id?: string;
+          last_error?: string | null;
+          profile_id: string;
+          provider?: string;
+          provider_reference?: string | null;
+          quote_price_paise?: number | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          domain_label?: string;
+          domain_name?: string;
+          id?: string;
+          last_error?: string | null;
+          profile_id?: string;
+          provider?: string;
+          provider_reference?: string | null;
+          quote_price_paise?: number | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'dotcv_domains_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'dotcv_domains_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       github_connections: {
         Row: {
           connected_at: string;
@@ -560,6 +728,63 @@ export type Database = {
           },
         ];
       };
+      profile_variants: {
+        Row: {
+          created_at: string;
+          id: string;
+          job_description_sha256: string | null;
+          job_requirements: Json | null;
+          name: string;
+          profile_id: string;
+          status: string;
+          target_company: string | null;
+          target_role: string | null;
+          updated_at: string;
+          variant_data: Json;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          job_description_sha256?: string | null;
+          job_requirements?: Json | null;
+          name: string;
+          profile_id: string;
+          status?: string;
+          target_company?: string | null;
+          target_role?: string | null;
+          updated_at?: string;
+          variant_data?: Json;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          job_description_sha256?: string | null;
+          job_requirements?: Json | null;
+          name?: string;
+          profile_id?: string;
+          status?: string;
+          target_company?: string | null;
+          target_role?: string | null;
+          updated_at?: string;
+          variant_data?: Json;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'profile_variants_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profile_variants_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       profiles: {
         Row: {
           about: string | null;
@@ -668,48 +893,63 @@ export type Database = {
           },
         ];
       };
-      profile_variants: {
+      usage_counters: {
         Row: {
-          company: string | null;
-          created_at: string;
-          customizations: Json;
-          id: string;
-          job_description_sha256: string | null;
-          job_id: string;
-          job_requirements: Json | null;
-          job_title: string;
-          match_score: number;
-          profile_id: string;
-          status: string;
+          count: number;
+          metric: string;
           updated_at: string;
+          user_id: string;
+          window_key: string;
         };
         Insert: {
-          company?: string | null;
-          created_at?: string;
-          customizations?: Json;
-          id?: string;
-          job_description_sha256?: string | null;
-          job_id: string;
-          job_requirements?: Json | null;
-          job_title: string;
-          match_score?: number;
-          profile_id: string;
-          status?: string;
+          count?: number;
+          metric: string;
           updated_at?: string;
+          user_id: string;
+          window_key: string;
         };
         Update: {
-          company?: string | null;
+          count?: number;
+          metric?: string;
+          updated_at?: string;
+          user_id?: string;
+          window_key?: string;
+        };
+        Relationships: [];
+      };
+      user_subscriptions: {
+        Row: {
+          created_at: string;
+          current_period_end: string | null;
+          current_period_start: string | null;
+          plan: string;
+          provider: string;
+          provider_customer_id: string | null;
+          status: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
           created_at?: string;
-          customizations?: Json;
-          id?: string;
-          job_description_sha256?: string | null;
-          job_id?: string;
-          job_requirements?: Json | null;
-          job_title?: string;
-          match_score?: number;
-          profile_id?: string;
+          current_period_end?: string | null;
+          current_period_start?: string | null;
+          plan?: string;
+          provider?: string;
+          provider_customer_id?: string | null;
           status?: string;
           updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          current_period_end?: string | null;
+          current_period_start?: string | null;
+          plan?: string;
+          provider?: string;
+          provider_customer_id?: string | null;
+          status?: string;
+          updated_at?: string;
+          user_id?: string;
         };
         Relationships: [];
       };

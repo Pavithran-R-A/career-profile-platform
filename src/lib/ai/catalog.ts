@@ -16,6 +16,17 @@ const modelsResponseSchema = z.object({
 
 export type ModelInfo = z.infer<typeof modelSchema>;
 
+export class AIModelUnavailableError extends Error {
+  readonly code = 'AI_MODEL_UNAVAILABLE' as const;
+
+  constructor(modelId?: string) {
+    super(
+      modelId ? `AI_MODEL_UNAVAILABLE: model "${modelId}" unavailable` : 'AI_MODEL_UNAVAILABLE'
+    );
+    this.name = 'AIModelUnavailableError';
+  }
+}
+
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 let cachedModels: ModelInfo[] | null = null;
@@ -32,7 +43,7 @@ export async function getAvailableModels(): Promise<ModelInfo[]> {
 
   if (!apiKey) {
     if (cachedModels) return cachedModels;
-    return FALLBACK_MODELS;
+    throw new AIModelUnavailableError();
   }
 
   try {
@@ -42,7 +53,7 @@ export async function getAvailableModels(): Promise<ModelInfo[]> {
 
     if (!res.ok) {
       if (cachedModels) return cachedModels;
-      return FALLBACK_MODELS;
+      throw new AIModelUnavailableError();
     }
 
     const raw = (await res.json()) as unknown;
@@ -50,39 +61,35 @@ export async function getAvailableModels(): Promise<ModelInfo[]> {
 
     if (!parsed.success) {
       if (cachedModels) return cachedModels;
-      return FALLBACK_MODELS;
+      throw new AIModelUnavailableError();
     }
 
     cachedModels = parsed.data.models;
     cachedModelsFetchedAt = now;
     return cachedModels;
-  } catch {
+  } catch (err) {
+    if (err instanceof AIModelUnavailableError) throw err;
     if (cachedModels) return cachedModels;
-    return FALLBACK_MODELS;
+    throw new AIModelUnavailableError();
   }
 }
 
 export async function assertModelAvailable(modelId: string): Promise<ModelInfo> {
-  const models = await getAvailableModels();
+  let models: ModelInfo[];
+  try {
+    models = await getAvailableModels();
+  } catch (err) {
+    if (err instanceof AIModelUnavailableError) {
+      throw new AIModelUnavailableError(modelId);
+    }
+    throw err;
+  }
+
   const found = models.find((m) => m.id === modelId);
 
   if (!found) {
-    throw new Error(
-      `Model "${modelId}" is not available. Available models: ${models.map((m) => m.id).join(', ')}`
-    );
+    throw new AIModelUnavailableError(modelId);
   }
 
   return found;
 }
-
-const FALLBACK_MODELS: ModelInfo[] = [
-  {
-    id: 'deepseek-v4.1-flash',
-    name: 'DeepSeek V4.1 Flash',
-    maxTokens: 8192,
-    contextWindow: 128_000,
-    inputCostPer1k: 0,
-    outputCostPer1k: 0,
-    capabilities: ['chat', 'extraction'],
-  },
-];

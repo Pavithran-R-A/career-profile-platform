@@ -1,20 +1,57 @@
+import { createServerClient } from '../lib/supabase/server';
+import { readProAnnualPricePaise, buildPublicPlans } from '../lib/billing/plans';
+import {
+  normalizeSubscriptionRow,
+  resolveEntitlements,
+  freeSubscription,
+} from '../lib/billing/entitlements';
+import { checkUsage, windowKeyFor } from '../lib/billing/usage';
+import { createRazorpayOrder, isRazorpayConfigured } from '../lib/billing/razorpay';
+import { processRazorpayWebhook, makeVerifier } from '../lib/billing/webhooks';
+import { validateAddDomain, buildVerificationToken } from '../lib/domains/custom';
+import { quoteDotCvDomain, isDotCvEnabled, isDotCvPurchaseEnabled } from '../lib/domains/dotcv';
+import { parseDotCvInput } from '../lib/domains/validators';
+import { createCustomHostname, isCloudflareSaaSConfigured } from '../lib/domains/cloudflare';
+import type { PlanEntitlements } from '../lib/billing/plans';
+import type { SubscriptionState } from '../lib/billing/entitlements';
+
 interface Env {
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
+  SUPABASE_SECRET_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   BHARATCODE_API_KEY?: string;
   BHARATCODE_BASE_URL?: string;
   BHARATCODE_MODEL?: string;
+  RAZORPAY_KEY_ID?: string;
+  RAZORPAY_KEY_SECRET?: string;
+  RAZORPAY_WEBHOOK_SECRET?: string;
+  PRO_ANNUAL_PRICE_PAISE?: string;
+  CURRENCY?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_ZONE_ID?: string;
+  PLATFORM_PROFILE_ORIGIN?: string;
+  DOTCV_ENABLED?: string;
+  DOTCV_PURCHASE_ENABLED?: string;
+  DOTCV_API_BASE_URL?: string;
+  DOTCV_API_KEY?: string;
+  RATE_LIMIT_KEY_SECRET?: string;
 }
 
 function getEnvValue(env: Env, key: keyof Env): string {
   return env[key] || '';
 }
 
+function getAdminKey(env: Env): string {
+  return getEnvValue(env, 'SUPABASE_SECRET_KEY') || getEnvValue(env, 'SUPABASE_SERVICE_ROLE_KEY');
+}
+
 function corsHeaders(origin: string | null): Record<string, string> {
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, x-razorpay-signature, x-razorpay-event-id',
   };
   if (origin) headers['Access-Control-Allow-Origin'] = origin;
   return headers;
@@ -78,7 +115,7 @@ async function handleResumeExtract(
     }
 
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
-    const serviceKey = getEnvValue(env, 'SUPABASE_SERVICE_ROLE_KEY');
+    const serviceKey = getAdminKey(env);
 
     if (!supabaseUrl || !serviceKey) {
       return json({ error: 'Server configuration error' }, 500, origin);
@@ -185,6 +222,411 @@ async function handleResumeExtract(
   }
 }
 
+async function getSubscription(env: Env, userId: string): Promise<SubscriptionState> {
+  const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+  const adminKey = getAdminKey(env);
+  if (!supabaseUrl || !adminKey) return freeSubscription();
+
+  const supabase = createServerClient(supabaseUrl, adminKey);
+  const { data } = await supabase
+    .from('user_subscriptions' as never)
+    .select('*')
+    .eq('user_id', userId as never)
+    .maybeSingle();
+
+  if (!data) return freeSubscription();
+  return normalizeSubscriptionRow(data as Record<string, unknown>);
+}
+
+async function getUsageCount(
+  env: Env,
+  userId: string,
+  metric: string,
+  windowKey: string
+): Promise<number> {
+  const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+  const adminKey = getAdminKey(env);
+  if (!supabaseUrl || !adminKey) return 0;
+
+  const supabase = createServerClient(supabaseUrl, adminKey);
+  const { data } = await supabase
+    .from('usage_counters' as never)
+    .select('count')
+    .eq('user_id', userId as never)
+    .eq('metric', metric as never)
+    .eq('window_key', windowKey as never)
+    .maybeSingle();
+
+  return (data as { count?: number } | null)?.count ?? 0;
+}
+
+async function handleGetPlans(origin: string | null, env: Env): Promise<Response> {
+  const price = readProAnnualPricePaise(getEnvValue(env, 'PRO_ANNUAL_PRICE_PAISE'));
+  const currency = getEnvValue(env, 'CURRENCY') || 'INR';
+  return json({ plans: buildPublicPlans(price, currency) }, 200, origin);
+}
+
+async function handleGetBillingStatus(
+  request: Request,
+  origin: string | null,
+  env: Env
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth) return json({ error: 'Unauthorized' }, 401, origin);
+
+  try {
+    const subscription = await getSubscription(env, auth.userId);
+    const entitlements = resolveEntitlements(subscription);
+
+    const metrics = [
+      'resume_variants',
+      'github_repos',
+      'recruiter_ai',
+      'tailoring',
+      'custom_domains',
+    ] as const;
+    const usage: Record<
+      string,
+      { used: number; limit: number; remaining: number; allowed: boolean }
+    > = {};
+
+    for (const metric of metrics) {
+      const windowKey = windowKeyFor(metric);
+      const used = await getUsageCount(env, auth.userId, metric, windowKey);
+      const check = checkUsage(metric, used, entitlements);
+      usage[metric] = check;
+    }
+
+    return json(
+      {
+        subscription,
+        entitlements,
+        usage,
+        pricePaise: readProAnnualPricePaise(getEnvValue(env, 'PRO_ANNUAL_PRICE_PAISE')),
+        currency: getEnvValue(env, 'CURRENCY') || 'INR',
+        razorpayConfigured: isRazorpayConfigured({
+          keyId: getEnvValue(env, 'RAZORPAY_KEY_ID'),
+          keySecret: getEnvValue(env, 'RAZORPAY_KEY_SECRET'),
+          webhookSecret: getEnvValue(env, 'RAZORPAY_WEBHOOK_SECRET'),
+        }),
+      },
+      200,
+      origin
+    );
+  } catch (err) {
+    console.error('Billing status failed:', err);
+    return json({ error: 'Failed to load billing status' }, 500, origin);
+  }
+}
+
+async function handleCreateOrder(
+  request: Request,
+  origin: string | null,
+  env: Env
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth) return json({ error: 'Unauthorized' }, 401, origin);
+
+  try {
+    const amountPaise = readProAnnualPricePaise(getEnvValue(env, 'PRO_ANNUAL_PRICE_PAISE'));
+    if (!amountPaise) {
+      return json({ error: 'PRO_ANNUAL_PRICE_PAISE not configured' }, 503, origin);
+    }
+
+    const razorpayConfig = {
+      keyId: getEnvValue(env, 'RAZORPAY_KEY_ID'),
+      keySecret: getEnvValue(env, 'RAZORPAY_KEY_SECRET'),
+      webhookSecret: getEnvValue(env, 'RAZORPAY_WEBHOOK_SECRET'),
+    };
+
+    if (!isRazorpayConfigured(razorpayConfig)) {
+      return json({ error: 'Billing is not configured' }, 503, origin);
+    }
+
+    const currency = getEnvValue(env, 'CURRENCY') || 'INR';
+    const receipt = `user_${auth.userId}_${Date.now()}`;
+
+    const razorpayOrder = await createRazorpayOrder(razorpayConfig, {
+      amount: amountPaise,
+      currency,
+      receipt,
+      notes: { userId: auth.userId, plan: 'pro' },
+    });
+
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin);
+    }
+
+    const supabase = createServerClient(supabaseUrl, adminKey);
+    const { data: order, error } = await supabase
+      .from('billing_orders' as never)
+      .insert({
+        user_id: auth.userId,
+        plan_id: 'pro',
+        amount_paise: amountPaise,
+        currency,
+        status: 'created',
+        razorpay_order_id: razorpayOrder.id,
+      } as never)
+      .select()
+      .single();
+
+    if (error || !order) {
+      console.error('Order insert failed:', error);
+      return json({ error: 'Failed to create order' }, 500, origin);
+    }
+
+    return json(
+      {
+        orderId: (order as { id: string }).id,
+        razorpayOrderId: razorpayOrder.id,
+        amountPaise,
+        currency,
+        keyId: razorpayConfig.keyId,
+      },
+      200,
+      origin
+    );
+  } catch (err) {
+    console.error('Order creation failed:', err);
+    return json({ error: 'Failed to create order' }, 500, origin);
+  }
+}
+
+async function handleWebhook(request: Request, origin: string | null, env: Env): Promise<Response> {
+  try {
+    const rawBody = await request.text();
+    const signature = request.headers.get('x-razorpay-signature') || '';
+    const webhookSecret = getEnvValue(env, 'RAZORPAY_WEBHOOK_SECRET');
+
+    if (!webhookSecret) {
+      return json({ error: 'Webhook not configured' }, 503, origin);
+    }
+
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin);
+    }
+
+    const supabase = createServerClient(supabaseUrl, adminKey);
+
+    const result = await processRazorpayWebhook({
+      rawBody,
+      signature,
+      deps: {
+        verifySignature: makeVerifier(webhookSecret),
+        claimEvent: async (eventId: string) => {
+          const { error } = await supabase
+            .from('billing_webhook_events' as never)
+            .insert({ event_id: eventId } as never);
+          if (error) {
+            if (error.code === '23505') return false;
+          }
+          return true;
+        },
+        markOrderPaid: async ({ razorpayOrderId, razorpayPaymentId }) => {
+          const { error } = await supabase
+            .from('billing_orders' as never)
+            .update({
+              status: 'paid',
+              razorpay_payment_id: razorpayPaymentId,
+              paid_at: new Date().toISOString(),
+            } as never)
+            .eq('razorpay_order_id', razorpayOrderId as never);
+
+          if (error) {
+            console.error('Failed to mark order paid:', error);
+            throw new Error('ORDER_UPDATE_FAILED');
+          }
+
+          const { data: order } = await supabase
+            .from('billing_orders' as never)
+            .select('user_id')
+            .eq('razorpay_order_id', razorpayOrderId as never)
+            .maybeSingle();
+
+          const userId = (order as { user_id?: string } | null)?.user_id;
+          if (!userId) return;
+
+          const periodEnd = new Date();
+          periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+
+          const { error: subError } = await supabase.from('user_subscriptions' as never).upsert({
+            user_id: userId,
+            plan: 'pro',
+            status: 'active',
+            current_period_start: new Date().toISOString(),
+            current_period_end: periodEnd.toISOString(),
+            provider: 'razorpay',
+          } as never);
+
+          if (subError) {
+            console.error('Failed to activate subscription:', subError);
+          }
+        },
+      },
+    });
+
+    return json(result.body, result.status, origin);
+  } catch (err) {
+    console.error('Webhook failed:', err);
+    return json({ error: 'Webhook processing failed' }, 500, origin);
+  }
+}
+
+async function handleAddCustomDomain(
+  request: Request,
+  origin: string | null,
+  env: Env
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth) return json({ error: 'Unauthorized' }, 401, origin);
+
+  try {
+    const body = (await request.json()) as { hostname?: string; profileId?: string };
+    if (!body.hostname || !body.profileId) {
+      return json({ error: 'hostname and profileId are required' }, 400, origin);
+    }
+
+    const subscription = await getSubscription(env, auth.userId);
+    const entitlements = resolveEntitlements(subscription);
+
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin);
+    }
+
+    const supabase = createServerClient(supabaseUrl, adminKey);
+
+    const { count: existingCount } = await supabase
+      .from('custom_domains' as never)
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', body.profileId as never)
+      .neq('status', 'removed' as never);
+
+    const validation = validateAddDomain(
+      body.hostname,
+      existingCount ?? 0,
+      entitlements as PlanEntitlements
+    );
+
+    if (!validation.ok || !validation.hostname) {
+      return json({ error: validation.error }, 400, origin);
+    }
+
+    const verificationToken = buildVerificationToken(
+      validation.hostname,
+      getEnvValue(env, 'RATE_LIMIT_KEY_SECRET') || 'cv'
+    );
+
+    const { data: domain, error } = await supabase
+      .from('custom_domains' as never)
+      .insert({
+        profile_id: body.profileId,
+        hostname: validation.hostname,
+        status: 'pending',
+        verification_token: verificationToken,
+      } as never)
+      .select()
+      .single();
+
+    if (error || !domain) {
+      if (error?.code === '23505') {
+        return json({ error: 'Domain already in use' }, 409, origin);
+      }
+      console.error('Domain insert failed:', error);
+      return json({ error: 'Failed to add domain' }, 500, origin);
+    }
+
+    const cloudflareConfig = {
+      apiToken: getEnvValue(env, 'CLOUDFLARE_API_TOKEN'),
+      accountId: getEnvValue(env, 'CLOUDFLARE_ACCOUNT_ID'),
+      zoneId: getEnvValue(env, 'CLOUDFLARE_ZONE_ID'),
+    };
+
+    if (isCloudflareSaaSConfigured(cloudflareConfig)) {
+      try {
+        const hostnameResult = await createCustomHostname(cloudflareConfig, {
+          hostname: validation.hostname,
+          originHost: getEnvValue(env, 'PLATFORM_PROFILE_ORIGIN') || 'profile.example.com',
+        });
+
+        await supabase
+          .from('custom_domains' as never)
+          .update({
+            cloudflare_hostname_id: hostnameResult.id,
+            status: hostnameResult.status === 'active' ? 'active' : 'pending_validation',
+          } as never)
+          .eq('id', (domain as { id: string }).id as never);
+      } catch (cfErr) {
+        console.error('Cloudflare hostname creation failed:', cfErr);
+      }
+    }
+
+    return json(
+      {
+        id: (domain as { id: string }).id,
+        hostname: validation.hostname,
+        verificationToken,
+        status: 'pending',
+      },
+      201,
+      origin
+    );
+  } catch (err) {
+    console.error('Add domain failed:', err);
+    return json({ error: 'Failed to add domain' }, 500, origin);
+  }
+}
+
+async function handleDotCvQuote(
+  request: Request,
+  origin: string | null,
+  env: Env
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth) return json({ error: 'Unauthorized' }, 401, origin);
+
+  try {
+    const body = (await request.json()) as { domain?: string };
+    if (!body.domain) {
+      return json({ error: 'domain is required' }, 400, origin);
+    }
+
+    const parsed = parseDotCvInput(body.domain);
+    if (!parsed) {
+      return json({ error: 'Invalid .cv domain' }, 400, origin);
+    }
+
+    const config = {
+      enabled: getEnvValue(env, 'DOTCV_ENABLED') === 'true',
+      purchaseEnabled: getEnvValue(env, 'DOTCV_PURCHASE_ENABLED') === 'true',
+      apiBaseUrl: getEnvValue(env, 'DOTCV_API_BASE_URL'),
+      apiKey: getEnvValue(env, 'DOTCV_API_KEY'),
+    };
+
+    const quote = await quoteDotCvDomain(config, parsed.fqdn);
+
+    return json(
+      {
+        ...quote,
+        label: parsed.label,
+        providerEnabled: isDotCvEnabled(config),
+        purchaseEnabled: isDotCvPurchaseEnabled(config),
+      },
+      200,
+      origin
+    );
+  } catch (err) {
+    console.error('DotCV quote failed:', err);
+    return json({ error: 'Failed to quote domain' }, 500, origin);
+  }
+}
+
 export async function handleRequest(
   request: Request,
   env: Env,
@@ -199,6 +641,30 @@ export async function handleRequest(
 
   if (url.pathname === '/api/health') {
     return json({ status: 'ok', timestamp: new Date().toISOString() }, 200, origin);
+  }
+
+  if (url.pathname === '/api/billing/plans' && request.method === 'GET') {
+    return handleGetPlans(origin, env);
+  }
+
+  if (url.pathname === '/api/billing/status' && request.method === 'GET') {
+    return handleGetBillingStatus(request, origin, env);
+  }
+
+  if (url.pathname === '/api/billing/order' && request.method === 'POST') {
+    return handleCreateOrder(request, origin, env);
+  }
+
+  if (url.pathname === '/api/billing/webhook' && request.method === 'POST') {
+    return handleWebhook(request, origin, env);
+  }
+
+  if (url.pathname === '/api/domains/custom' && request.method === 'POST') {
+    return handleAddCustomDomain(request, origin, env);
+  }
+
+  if (url.pathname === '/api/domains/dotcv/quote' && request.method === 'POST') {
+    return handleDotCvQuote(request, origin, env);
   }
 
   if (url.pathname === '/api/resume/extract' && request.method === 'POST') {
