@@ -103,20 +103,3 @@ export function clearInstallationTokenCache(installationId?: number): void {
     tokenCache.clear();
   }
 }
-
-/**
- * Verifies a webhook signature from GitHub.
- * Uses HMAC-SHA256 with the configured webhook secret.
- */
-export function verifyWebhookSignature(
-  payload: string,
-  signature: string | null,
-  secret: string
-): boolean {
-  if (!signature) return false;
-  // Webhook signature verification requires server-side crypto
-  // This is a placeholder for the actual implementation
-  void secret;
-  void payload;
-  return false;
-}

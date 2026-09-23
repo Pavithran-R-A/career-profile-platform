@@ -4,42 +4,38 @@ import { getGitHubJWT, clearGitHubJWTCache, isGitHubConfigured } from '../../lib
 describe('getGitHubJWT', () => {
   beforeEach(() => {
     clearGitHubJWTCache();
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_PRIVATE_KEY;
   });
 
   afterEach(() => {
-    clearGitHubJWTCache();
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_PRIVATE_KEY;
   });
 
   it('throws when GitHub App is not configured', async () => {
     await expect(getGitHubJWT()).rejects.toThrow('GitHub App not configured');
   });
 
-  it('returns a string token', async () => {
+  it('throws when key is invalid but env is set', async () => {
     process.env.GITHUB_APP_ID = '12345';
-    process.env.GITHUB_APP_PRIVATE_KEY = 'test-key';
-
-    try {
-      await expect(getGitHubJWT()).rejects.toThrow();
-    } finally {
-      delete process.env.GITHUB_APP_ID;
-      delete process.env.GITHUB_APP_PRIVATE_KEY;
-    }
-  });
-
-  it('caches the token', async () => {
-    process.env.GITHUB_APP_ID = '12345';
-    process.env.GITHUB_APP_PRIVATE_KEY = 'test-key';
-
-    try {
-      await expect(getGitHubJWT()).rejects.toThrow();
-    } finally {
-      delete process.env.GITHUB_APP_ID;
-      delete process.env.GITHUB_APP_PRIVATE_KEY;
-    }
+    process.env.GITHUB_APP_PRIVATE_KEY = 'not-a-real-pem-key';
+    await expect(getGitHubJWT()).rejects.toThrow();
   });
 });
 
 describe('clearGitHubJWTCache', () => {
+  beforeEach(() => {
+    clearGitHubJWTCache();
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_PRIVATE_KEY;
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_PRIVATE_KEY;
+  });
+
   it('clears the cached JWT', () => {
     clearGitHubJWTCache();
     expect(isGitHubConfigured()).toBe(false);
@@ -47,32 +43,34 @@ describe('clearGitHubJWTCache', () => {
 });
 
 describe('isGitHubConfigured', () => {
-  it('returns false when not configured', () => {
+  beforeEach(() => {
+    clearGitHubJWTCache();
     delete process.env.GITHUB_APP_ID;
     delete process.env.GITHUB_APP_PRIVATE_KEY;
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_PRIVATE_KEY;
+  });
+
+  it('returns false when not configured', () => {
     expect(isGitHubConfigured()).toBe(false);
   });
 
-  it('returns true when configured', () => {
+  it('returns true when both appId and privateKey are set', () => {
     process.env.GITHUB_APP_ID = '12345';
     process.env.GITHUB_APP_PRIVATE_KEY = 'test-key';
-
-    try {
-      expect(isGitHubConfigured()).toBe(true);
-    } finally {
-      delete process.env.GITHUB_APP_ID;
-      delete process.env.GITHUB_APP_PRIVATE_KEY;
-    }
+    expect(isGitHubConfigured()).toBe(true);
   });
 
   it('returns false when only appId is set', () => {
     process.env.GITHUB_APP_ID = '12345';
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
+    expect(isGitHubConfigured()).toBe(false);
+  });
 
-    try {
-      expect(isGitHubConfigured()).toBe(false);
-    } finally {
-      delete process.env.GITHUB_APP_ID;
-    }
+  it('returns false when only privateKey is set', () => {
+    process.env.GITHUB_APP_PRIVATE_KEY = 'test-key';
+    expect(isGitHubConfigured()).toBe(false);
   });
 });

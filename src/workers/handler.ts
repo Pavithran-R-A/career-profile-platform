@@ -16,6 +16,8 @@ import type { PlanEntitlements } from '../lib/billing/plans';
 import type { SubscriptionState } from '../lib/billing/entitlements';
 
 interface Env {
+  ENVIRONMENT?: string;
+  ALLOWED_ORIGINS?: string;
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SECRET_KEY?: string;
@@ -47,25 +49,70 @@ function getAdminKey(env: Env): string {
   return getEnvValue(env, 'SUPABASE_SECRET_KEY') || getEnvValue(env, 'SUPABASE_SERVICE_ROLE_KEY');
 }
 
-function corsHeaders(origin: string | null): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers':
-      'Content-Type, Authorization, x-razorpay-signature, x-razorpay-event-id',
+// ─── CORS ───────────────────────────────────────────────────────
+
+function isOriginAllowed(origin: string | null, env: Env): boolean {
+  if (!origin) return true;
+  const environment = getEnvValue(env, 'ENVIRONMENT').toLowerCase();
+  const isDev = environment === 'development' || environment === 'local';
+
+  if (isDev) {
+    try {
+      const url = new URL(origin);
+      const hostname = url.hostname;
+      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  const allowedRaw = getEnvValue(env, 'ALLOWED_ORIGINS');
+  if (!allowedRaw) return false;
+  const allowed = allowedRaw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return allowed.includes(origin);
+}
+
+function securityHeaders(): Record<string, string> {
+  return {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
-  if (origin) headers['Access-Control-Allow-Origin'] = origin;
+}
+
+function corsHeaders(origin: string | null, env: Env): Record<string, string> {
+  const headers: Record<string, string> = {
+    ...securityHeaders(),
+    Vary: 'Origin',
+  };
+
+  if (origin && isOriginAllowed(origin, env)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
+    headers['Access-Control-Allow-Headers'] =
+      'Content-Type, Authorization, x-razorpay-signature, x-razorpay-event-id';
+  }
+
   return headers;
 }
 
-function json(data: unknown, status = 200, origin?: string | null): Response {
+function json(data: unknown, status = 200, origin?: string | null, env?: Env): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...corsHeaders(origin ?? null),
+      ...corsHeaders(origin ?? null, env ?? ({} as Env)),
     },
   });
 }
+
+// ─── Auth ───────────────────────────────────────────────────────
 
 async function verifyAuth(request: Request, env: Env): Promise<{ userId: string } | null> {
   const authHeader = request.headers.get('Authorization');
@@ -96,6 +143,26 @@ async function verifyAuth(request: Request, env: Env): Promise<{ userId: string 
   return { userId: user.id };
 }
 
+// ─── Storage authorization ──────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidStoragePath(path: string): boolean {
+  if (!path || path.length > 512) return false;
+  if (path.includes('..') || path.includes('\\') || path.includes('\0')) return false;
+  if (path.startsWith('/') || path.includes('//')) return false;
+  if (path.includes('\r') || path.includes('\n') || path.includes('\t')) return false;
+  const segments = path.split('/');
+  if (segments.length !== 2) return false;
+  const [userId, filename] = segments;
+  if (!UUID_RE.test(userId)) return false;
+  if (!filename.endsWith('.pdf')) return false;
+  if (filename.length > 128) return false;
+  return true;
+}
+
+// ─── Resume Extract ─────────────────────────────────────────────
+
 async function handleResumeExtract(
   request: Request,
   origin: string | null,
@@ -103,33 +170,65 @@ async function handleResumeExtract(
 ): Promise<Response> {
   const auth = await verifyAuth(request, env);
   if (!auth) {
-    return json({ error: 'Unauthorized' }, 401, origin);
+    return json({ error: 'Unauthorized' }, 401, origin, env);
   }
 
   try {
-    const body = (await request.json()) as { storagePath?: string };
-    const { storagePath } = body;
+    const body = (await request.json()) as { resumeSourceId?: string };
+    const { resumeSourceId } = body;
 
-    if (!storagePath) {
-      return json({ error: 'storagePath is required' }, 400, origin);
+    if (!resumeSourceId) {
+      return json({ error: 'resumeSourceId is required' }, 400, origin, env);
     }
 
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const serviceKey = getAdminKey(env);
 
     if (!supabaseUrl || !serviceKey) {
-      return json({ error: 'Server configuration error' }, 500, origin);
+      return json({ error: 'Server configuration error' }, 500, origin, env);
     }
 
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(supabaseUrl, serviceKey);
+
+    const { data: sourceRow, error: sourceError } = await supabase
+      .from('resume_sources' as never)
+      .select('id, storage_path, profile_id')
+      .eq('id', resumeSourceId as never)
+      .maybeSingle();
+
+    if (sourceError || !sourceRow) {
+      return json({ error: 'Resume source not found' }, 404, origin, env);
+    }
+
+    const sourceRecord = sourceRow as { storage_path: string; profile_id: string };
+
+    const { data: profileRow } = await supabase
+      .from('profiles' as never)
+      .select('user_id')
+      .eq('id', sourceRecord.profile_id as never)
+      .maybeSingle();
+
+    const profileOwner = (profileRow as { user_id?: string } | null)?.user_id;
+    if (!profileOwner || profileOwner !== auth.userId) {
+      return json({ error: 'Forbidden' }, 403, origin, env);
+    }
+
+    const storagePath = sourceRecord.storage_path;
+    if (!isValidStoragePath(storagePath)) {
+      return json({ error: 'Invalid storage path' }, 400, origin, env);
+    }
+
+    if (!storagePath.startsWith(`${auth.userId}/`)) {
+      return json({ error: 'Forbidden' }, 403, origin, env);
+    }
 
     const { data: fileData, error: downloadError } = await supabase.storage
       .from('resumes')
       .download(storagePath);
 
     if (downloadError || !fileData) {
-      return json({ error: 'Failed to download resume' }, 500, origin);
+      return json({ error: 'Failed to download resume' }, 500, origin, env);
     }
 
     const buffer = await fileData.arrayBuffer();
@@ -159,14 +258,15 @@ async function handleResumeExtract(
       return json(
         { error: 'This PDF appears to be scanned or contains too little readable text.' },
         422,
-        origin
+        origin,
+        env
       );
     }
 
     const bharatcodeKey = getEnvValue(env, 'BHARATCODE_API_KEY');
 
     if (!bharatcodeKey) {
-      return json({ error: 'AI extraction is not configured' }, 503, origin);
+      return json({ error: 'AI extraction is not configured' }, 503, origin, env);
     }
 
     const aiResponse = await fetch(
@@ -196,7 +296,7 @@ async function handleResumeExtract(
     );
 
     if (!aiResponse.ok) {
-      return json({ error: 'AI provider error' }, 502, origin);
+      return json({ error: 'AI provider error' }, 502, origin, env);
     }
 
     const aiData = (await aiResponse.json()) as {
@@ -205,22 +305,24 @@ async function handleResumeExtract(
     const content = aiData.choices?.[0]?.message?.content;
 
     if (!content) {
-      return json({ error: 'AI provider returned empty response' }, 502, origin);
+      return json({ error: 'AI provider returned empty response' }, 502, origin, env);
     }
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return json({ error: 'AI response does not contain valid JSON' }, 502, origin);
+      return json({ error: 'AI response does not contain valid JSON' }, 502, origin, env);
     }
 
     const extraction = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
 
-    return json(extraction, 200, origin);
+    return json(extraction, 200, origin, env);
   } catch (err) {
     console.error('Resume extraction failed:', err);
-    return json({ error: 'Extraction failed' }, 500, origin);
+    return json({ error: 'Extraction failed' }, 500, origin, env);
   }
 }
+
+// ─── Billing helpers ────────────────────────────────────────────
 
 async function getSubscription(env: Env, userId: string): Promise<SubscriptionState> {
   const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
@@ -260,10 +362,12 @@ async function getUsageCount(
   return (data as { count?: number } | null)?.count ?? 0;
 }
 
+// ─── Route handlers ─────────────────────────────────────────────
+
 async function handleGetPlans(origin: string | null, env: Env): Promise<Response> {
   const price = readProAnnualPricePaise(getEnvValue(env, 'PRO_ANNUAL_PRICE_PAISE'));
   const currency = getEnvValue(env, 'CURRENCY') || 'INR';
-  return json({ plans: buildPublicPlans(price, currency) }, 200, origin);
+  return json({ plans: buildPublicPlans(price, currency) }, 200, origin, env);
 }
 
 async function handleGetBillingStatus(
@@ -272,7 +376,7 @@ async function handleGetBillingStatus(
   env: Env
 ): Promise<Response> {
   const auth = await verifyAuth(request, env);
-  if (!auth) return json({ error: 'Unauthorized' }, 401, origin);
+  if (!auth) return json({ error: 'Unauthorized' }, 401, origin, env);
 
   try {
     const subscription = await getSubscription(env, auth.userId);
@@ -311,11 +415,12 @@ async function handleGetBillingStatus(
         }),
       },
       200,
-      origin
+      origin,
+      env
     );
   } catch (err) {
     console.error('Billing status failed:', err);
-    return json({ error: 'Failed to load billing status' }, 500, origin);
+    return json({ error: 'Failed to load billing status' }, 500, origin, env);
   }
 }
 
@@ -325,12 +430,12 @@ async function handleCreateOrder(
   env: Env
 ): Promise<Response> {
   const auth = await verifyAuth(request, env);
-  if (!auth) return json({ error: 'Unauthorized' }, 401, origin);
+  if (!auth) return json({ error: 'Unauthorized' }, 401, origin, env);
 
   try {
     const amountPaise = readProAnnualPricePaise(getEnvValue(env, 'PRO_ANNUAL_PRICE_PAISE'));
     if (!amountPaise) {
-      return json({ error: 'PRO_ANNUAL_PRICE_PAISE not configured' }, 503, origin);
+      return json({ error: 'PRO_ANNUAL_PRICE_PAISE not configured' }, 503, origin, env);
     }
 
     const razorpayConfig = {
@@ -340,7 +445,7 @@ async function handleCreateOrder(
     };
 
     if (!isRazorpayConfigured(razorpayConfig)) {
-      return json({ error: 'Billing is not configured' }, 503, origin);
+      return json({ error: 'Billing is not configured' }, 503, origin, env);
     }
 
     const currency = getEnvValue(env, 'CURRENCY') || 'INR';
@@ -356,7 +461,7 @@ async function handleCreateOrder(
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const adminKey = getAdminKey(env);
     if (!supabaseUrl || !adminKey) {
-      return json({ error: 'Server configuration error' }, 500, origin);
+      return json({ error: 'Server configuration error' }, 500, origin, env);
     }
 
     const supabase = createServerClient(supabaseUrl, adminKey);
@@ -375,7 +480,7 @@ async function handleCreateOrder(
 
     if (error || !order) {
       console.error('Order insert failed:', error);
-      return json({ error: 'Failed to create order' }, 500, origin);
+      return json({ error: 'Failed to create order' }, 500, origin, env);
     }
 
     return json(
@@ -387,11 +492,12 @@ async function handleCreateOrder(
         keyId: razorpayConfig.keyId,
       },
       200,
-      origin
+      origin,
+      env
     );
   } catch (err) {
     console.error('Order creation failed:', err);
-    return json({ error: 'Failed to create order' }, 500, origin);
+    return json({ error: 'Failed to create order' }, 500, origin, env);
   }
 }
 
@@ -402,13 +508,13 @@ async function handleWebhook(request: Request, origin: string | null, env: Env):
     const webhookSecret = getEnvValue(env, 'RAZORPAY_WEBHOOK_SECRET');
 
     if (!webhookSecret) {
-      return json({ error: 'Webhook not configured' }, 503, origin);
+      return json({ error: 'Webhook not configured' }, 503, origin, env);
     }
 
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const adminKey = getAdminKey(env);
     if (!supabaseUrl || !adminKey) {
-      return json({ error: 'Server configuration error' }, 500, origin);
+      return json({ error: 'Server configuration error' }, 500, origin, env);
     }
 
     const supabase = createServerClient(supabaseUrl, adminKey);
@@ -470,10 +576,10 @@ async function handleWebhook(request: Request, origin: string | null, env: Env):
       },
     });
 
-    return json(result.body, result.status, origin);
+    return json(result.body, result.status, origin, env);
   } catch (err) {
     console.error('Webhook failed:', err);
-    return json({ error: 'Webhook processing failed' }, 500, origin);
+    return json({ error: 'Webhook processing failed' }, 500, origin, env);
   }
 }
 
@@ -483,12 +589,12 @@ async function handleAddCustomDomain(
   env: Env
 ): Promise<Response> {
   const auth = await verifyAuth(request, env);
-  if (!auth) return json({ error: 'Unauthorized' }, 401, origin);
+  if (!auth) return json({ error: 'Unauthorized' }, 401, origin, env);
 
   try {
     const body = (await request.json()) as { hostname?: string; profileId?: string };
     if (!body.hostname || !body.profileId) {
-      return json({ error: 'hostname and profileId are required' }, 400, origin);
+      return json({ error: 'hostname and profileId are required' }, 400, origin, env);
     }
 
     const subscription = await getSubscription(env, auth.userId);
@@ -497,7 +603,7 @@ async function handleAddCustomDomain(
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const adminKey = getAdminKey(env);
     if (!supabaseUrl || !adminKey) {
-      return json({ error: 'Server configuration error' }, 500, origin);
+      return json({ error: 'Server configuration error' }, 500, origin, env);
     }
 
     const supabase = createServerClient(supabaseUrl, adminKey);
@@ -515,7 +621,7 @@ async function handleAddCustomDomain(
     );
 
     if (!validation.ok || !validation.hostname) {
-      return json({ error: validation.error }, 400, origin);
+      return json({ error: validation.error }, 400, origin, env);
     }
 
     const verificationToken = buildVerificationToken(
@@ -536,10 +642,10 @@ async function handleAddCustomDomain(
 
     if (error || !domain) {
       if (error?.code === '23505') {
-        return json({ error: 'Domain already in use' }, 409, origin);
+        return json({ error: 'Domain already in use' }, 409, origin, env);
       }
       console.error('Domain insert failed:', error);
-      return json({ error: 'Failed to add domain' }, 500, origin);
+      return json({ error: 'Failed to add domain' }, 500, origin, env);
     }
 
     const cloudflareConfig = {
@@ -575,11 +681,12 @@ async function handleAddCustomDomain(
         status: 'pending',
       },
       201,
-      origin
+      origin,
+      env
     );
   } catch (err) {
     console.error('Add domain failed:', err);
-    return json({ error: 'Failed to add domain' }, 500, origin);
+    return json({ error: 'Failed to add domain' }, 500, origin, env);
   }
 }
 
@@ -589,17 +696,17 @@ async function handleDotCvQuote(
   env: Env
 ): Promise<Response> {
   const auth = await verifyAuth(request, env);
-  if (!auth) return json({ error: 'Unauthorized' }, 401, origin);
+  if (!auth) return json({ error: 'Unauthorized' }, 401, origin, env);
 
   try {
     const body = (await request.json()) as { domain?: string };
     if (!body.domain) {
-      return json({ error: 'domain is required' }, 400, origin);
+      return json({ error: 'domain is required' }, 400, origin, env);
     }
 
     const parsed = parseDotCvInput(body.domain);
     if (!parsed) {
-      return json({ error: 'Invalid .cv domain' }, 400, origin);
+      return json({ error: 'Invalid .cv domain' }, 400, origin, env);
     }
 
     const config = {
@@ -619,13 +726,16 @@ async function handleDotCvQuote(
         purchaseEnabled: isDotCvPurchaseEnabled(config),
       },
       200,
-      origin
+      origin,
+      env
     );
   } catch (err) {
     console.error('DotCV quote failed:', err);
-    return json({ error: 'Failed to quote domain' }, 500, origin);
+    return json({ error: 'Failed to quote domain' }, 500, origin, env);
   }
 }
+
+// ─── Router ─────────────────────────────────────────────────────
 
 export async function handleRequest(
   request: Request,
@@ -636,11 +746,17 @@ export async function handleRequest(
   const origin = request.headers.get('Origin');
 
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    if (origin && !isOriginAllowed(origin, env)) {
+      return new Response(null, {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...securityHeaders() },
+      });
+    }
+    return new Response(null, { status: 204, headers: corsHeaders(origin, env) });
   }
 
   if (url.pathname === '/api/health') {
-    return json({ status: 'ok', timestamp: new Date().toISOString() }, 200, origin);
+    return json({ status: 'ok', timestamp: new Date().toISOString() }, 200, origin, env);
   }
 
   if (url.pathname === '/api/billing/plans' && request.method === 'GET') {
@@ -671,5 +787,5 @@ export async function handleRequest(
     return handleResumeExtract(request, origin, env);
   }
 
-  return json({ error: 'Not Found' }, 404, origin);
+  return json({ error: 'Not Found' }, 404, origin, env);
 }
