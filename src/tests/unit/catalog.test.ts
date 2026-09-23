@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type {
   getAvailableModels as GetAvailableModelsType,
   assertModelAvailable as AssertModelAvailableType,
@@ -26,6 +26,13 @@ beforeEach(async () => {
   getAvailableModels = mod.getAvailableModels;
   assertModelAvailable = mod.assertModelAvailable;
   AIModelUnavailableError = mod.AIModelUnavailableError;
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  delete process.env.BHARATCODE_API_KEY;
+  delete process.env.BHARATCODE_BASE_URL;
 });
 
 describe('getAvailableModels', () => {
