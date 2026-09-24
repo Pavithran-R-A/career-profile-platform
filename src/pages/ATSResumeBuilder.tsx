@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
 import { sanitizeUrl } from '../lib/validators/url';
+import { toATSExportModel } from '../lib/resume/ats-export';
+import { generatePDFBlob } from '../lib/resume/pdf-renderer';
 import ATSPreview from '../components/ATSPreview';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 
@@ -76,7 +78,7 @@ export default function ATSResumeBuilder() {
   const auth = useAuth();
   const navigate = useNavigate();
   const [state, setState] = useState<BuilderState>('loading');
-  const [_profile, setProfile] = useState<ProfileWithRelations | null>(null);
+  const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [atsData, setAtsData] = useState<ATSResumeData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<
@@ -84,6 +86,8 @@ export default function ATSResumeBuilder() {
   >('identity');
   const [headlineOverride, setHeadlineOverride] = useState('');
   const [aboutOverride, setAboutOverride] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
   const [selectedExps, setSelectedExps] = useState<Set<number>>(new Set());
   const [selectedEdus, setSelectedEdus] = useState<Set<number>>(new Set());
@@ -176,9 +180,40 @@ export default function ATSResumeBuilder() {
     setState('preview');
   };
 
-  const handleExportPDF = () => {
-    window.print();
+  const handleExportPDF = async () => {
+    if (!profile) return;
+    setState('generating');
+    setError(null);
+    try {
+      const model = toATSExportModel(profile, {
+        headline: headlineOverride,
+        summary: aboutOverride,
+        email: contactEmail,
+        phone: contactPhone,
+        selectedSkills,
+        selectedExperiences: selectedExps,
+        selectedEducation: selectedEdus,
+        selectedProjects,
+      });
+      const blob = await generatePDFBlob(model);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${profile.username}-resume.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setState('preview');
+    } catch {
+      setError('Could not generate the PDF. Please try again.');
+      setState('preview');
+    }
   };
+
+  if (auth.status === 'unauthenticated') {
+    return null;
+  }
 
   if (auth.status === 'loading' || state === 'loading') {
     return (
@@ -186,10 +221,6 @@ export default function ATSResumeBuilder() {
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
       </div>
     );
-  }
-
-  if (auth.status === 'unauthenticated') {
-    return null;
   }
 
   const sections: { id: typeof activeSection; label: string }[] = [
@@ -278,6 +309,30 @@ export default function ATSResumeBuilder() {
                     rows={4}
                     placeholder="Brief professional summary for ATS..."
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="resume-email" className="block text-sm font-medium mb-1">
+                    Contact email (optional; never taken from your sign-in account)
+                  </label>
+                  <input
+                    id="resume-email"
+                    type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="resume-phone" className="block text-sm font-medium mb-1">
+                    Contact phone (optional)
+                  </label>
+                  <input
+                    id="resume-phone"
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
                 </div>
               </div>
@@ -436,7 +491,7 @@ export default function ATSResumeBuilder() {
               </button>
               {state === 'preview' && (
                 <button
-                  onClick={handleExportPDF}
+                  onClick={() => void handleExportPDF()}
                   className="border border-gray-300 text-gray-700 py-2 px-6 rounded-md hover:bg-gray-50">
                   Export PDF
                 </button>

@@ -35,8 +35,8 @@ export default function PublishControls({
       if (updateError) throw updateError;
 
       onPublishChange(!isPublished);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } catch {
+      setError("We couldn't update publishing. Please try again.");
     } finally {
       setLoading(false);
     }

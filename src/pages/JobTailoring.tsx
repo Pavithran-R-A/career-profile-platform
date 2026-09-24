@@ -284,7 +284,7 @@ export default function JobTailoring() {
   const handleFinish = () => {
     setState('complete');
     setTimeout(() => {
-      void navigate('/dashboard/ats');
+      void navigate('/dashboard/resume/ats');
     }, 2000);
   };
 

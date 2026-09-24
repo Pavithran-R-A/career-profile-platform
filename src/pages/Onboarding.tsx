@@ -65,7 +65,16 @@ export default function Onboarding() {
     setError(null);
 
     try {
-      await profileService.createProfile(auth.user.id, username);
+      const created = await profileService.createProfile(auth.user.id, username);
+      // Persist the basic information collected in step 2. Without this,
+      // the dashboard completion check never sees a display name.
+      const basics: Record<string, string | null> = {
+        display_name: displayName.trim(),
+        headline: headline.trim() || null,
+        about: about.trim() || null,
+        location: location.trim() || null,
+      };
+      await profileService.updateProfile(created.id, basics);
       setStep('complete');
       setTimeout(() => {
         void navigate('/dashboard');
@@ -85,9 +94,26 @@ export default function Onboarding() {
     return null;
   }
 
+  const stepIndex = step === 'username' ? 0 : step === 'basics' ? 1 : 2;
+
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-4">
+    <div className="min-h-[80vh] flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
+        <ol className="flex items-center gap-2 mb-8" aria-label="Setup progress">
+          {['Profile URL', 'Basics', 'Done'].map((label, index) => (
+            <li key={label} className="flex-1">
+              <span
+                className={`block h-1.5 rounded-full ${index <= stepIndex ? 'bg-gray-900' : 'bg-gray-200'}`}
+                aria-hidden="true"
+              />
+              <span
+                className={`mt-1.5 block text-[11px] font-medium ${index <= stepIndex ? 'text-gray-900' : 'text-gray-400'}`}
+                aria-current={index === stepIndex ? 'step' : undefined}>
+                {label}
+              </span>
+            </li>
+          ))}
+        </ol>
         {step === 'username' && (
           <>
             <h1 className="text-2xl font-semibold text-center mb-4">Choose your profile URL</h1>
