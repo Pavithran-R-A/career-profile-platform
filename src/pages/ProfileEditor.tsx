@@ -30,6 +30,12 @@ export default function ProfileEditor() {
   }, [auth]);
 
   useEffect(() => {
+    if (auth.status === 'unauthenticated') {
+      setLoading(false);
+    }
+  }, [auth]);
+
+  useEffect(() => {
     if (auth.status === 'unauthenticated' && !loading) {
       void navigate('/login');
     }
