@@ -20,6 +20,8 @@ interface Env {
   ALLOWED_ORIGINS?: string;
   SUPABASE_URL?: string;
   SUPABASE_PUBLISHABLE_KEY?: string;
+  VITE_SUPABASE_URL?: string;
+  VITE_SUPABASE_PUBLISHABLE_KEY?: string;
   SUPABASE_SECRET_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   BHARATCODE_API_KEY?: string;
@@ -114,15 +116,22 @@ function json(data: unknown, status = 200, origin?: string | null, env?: Env): R
 
 // ─── Auth ───────────────────────────────────────────────────────
 
-async function verifyAuth(request: Request, env: Env): Promise<{ userId: string } | null> {
+async function verifyAuth(
+  request: Request,
+  env: Env
+): Promise<{ userId: string; token: string } | null> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
     return null;
   }
 
   const token = authHeader.slice(7);
-  const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
-  const publishableKey = getEnvValue(env, 'SUPABASE_PUBLISHABLE_KEY');
+  // VITE_ variants are the same public values under the names this
+  // deployment actually provides.
+  const supabaseUrl = getEnvValue(env, 'SUPABASE_URL') || getEnvValue(env, 'VITE_SUPABASE_URL');
+  const publishableKey =
+    getEnvValue(env, 'SUPABASE_PUBLISHABLE_KEY') ||
+    getEnvValue(env, 'VITE_SUPABASE_PUBLISHABLE_KEY');
 
   if (!supabaseUrl || !publishableKey) {
     return null;
@@ -140,7 +149,7 @@ async function verifyAuth(request: Request, env: Env): Promise<{ userId: string 
   }
 
   const user = (await response.json()) as { id: string };
-  return { userId: user.id };
+  return { userId: user.id, token };
 }
 
 // ─── Storage authorization ──────────────────────────────────────
@@ -181,15 +190,21 @@ async function handleResumeExtract(
       return json({ error: 'resumeSourceId is required' }, 400, origin, env);
     }
 
-    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
-    const serviceKey = getAdminKey(env);
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL') || getEnvValue(env, 'VITE_SUPABASE_URL');
+    const publishableKey =
+      getEnvValue(env, 'SUPABASE_PUBLISHABLE_KEY') ||
+      getEnvValue(env, 'VITE_SUPABASE_PUBLISHABLE_KEY');
 
-    if (!supabaseUrl || !serviceKey) {
+    if (!supabaseUrl || !publishableKey) {
       return json({ error: 'Server configuration error' }, 500, origin, env);
     }
 
+    // User-scoped client: RLS already restricts rows and storage to the
+    // owner, so no service key is required for this endpoint.
     const { createClient } = await import('@supabase/supabase-js');
-    const supabase = createClient(supabaseUrl, serviceKey);
+    const supabase = createClient(supabaseUrl, publishableKey, {
+      global: { headers: { Authorization: `Bearer ${auth.token}` } },
+    });
 
     const { data: sourceRow, error: sourceError } = await supabase
       .from('resume_sources' as never)

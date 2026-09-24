@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../supabase/database.types';
 import type { ResumeExtraction } from '../ai/provider';
 import { validatePDFFile, validatePDFMagicBytes, extractTextFromPDF } from './pdf';
+import { assertProfileId, toCustomerMessage } from './errors';
 
 export type ResumeStatus =
   | 'uploaded'
@@ -32,11 +33,20 @@ export interface ResumeSource {
 export class ResumeService {
   private supabase: ReturnType<typeof createClient<Database>>;
 
-  constructor(supabaseUrl: string, publishableKey: string) {
-    this.supabase = createClient<Database>(supabaseUrl, publishableKey);
+  constructor(
+    supabaseUrl: string,
+    publishableKey: string,
+    client?: ReturnType<typeof createClient<Database>>
+  ) {
+    // A caller-provided client carries the authenticated session. A fresh
+    // client has no session, so storage/RLS calls fail as "Unauthorized".
+    this.supabase = client ?? createClient<Database>(supabaseUrl, publishableKey);
   }
 
   async uploadResume(userId: string, profileId: string, file: File): Promise<ResumeSource> {
+    // Never let a pseudo-ID like "current" reach the uuid column.
+    assertProfileId(profileId);
+
     const validation = validatePDFFile(file);
     if (!validation.valid) {
       throw new Error(validation.error || 'Invalid file');
@@ -61,7 +71,7 @@ export class ResumeService {
       });
 
     if (uploadError) {
-      throw new Error(`Upload failed: ${uploadError.message}`);
+      throw new Error(toCustomerMessage(uploadError, 'save'));
     }
 
     const { data: resumeData, error: insertError } = await this.supabase
@@ -78,7 +88,7 @@ export class ResumeService {
       .single();
 
     if (insertError) {
-      throw new Error(`Failed to save resume metadata: ${insertError.message}`);
+      throw new Error(toCustomerMessage(insertError, 'save'));
     }
 
     return resumeData as unknown as ResumeSource;
@@ -105,7 +115,7 @@ export class ResumeService {
       .eq('id', resumeId);
 
     if (error) {
-      throw new Error(`Failed to update resume status: ${error.message}`);
+      throw new Error(toCustomerMessage(error, 'save'));
     }
   }
 
@@ -131,7 +141,7 @@ export class ResumeService {
       .order('created_at', { ascending: false });
 
     if (error) {
-      throw new Error(`Failed to fetch resumes: ${error.message}`);
+      throw new Error(toCustomerMessage(error, 'load'));
     }
 
     return (data || []) as unknown as ResumeSource[];
@@ -157,7 +167,7 @@ export class ResumeService {
       .eq('id', resumeId);
 
     if (dbError) {
-      throw new Error(`Failed to delete resume: ${dbError.message}`);
+      throw new Error(toCustomerMessage(dbError, 'delete'));
     }
   }
 }
