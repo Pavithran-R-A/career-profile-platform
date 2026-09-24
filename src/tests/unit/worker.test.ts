@@ -133,4 +133,32 @@ describe('Worker API handler', () => {
       expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, OPTIONS');
     });
   });
+
+  describe('resume extract auth', () => {
+    function extractRequest(body: unknown, token?: string): Request {
+      const headers = new Headers({ 'Content-Type': 'application/json' });
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+      return new Request('https://example.com/api/resume/extract', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+    }
+
+    it('rejects missing credentials with 401 before touching any backend', async () => {
+      const res = await handleRequest(
+        extractRequest({ resumeSourceId: '550e8400-e29b-41d4-a716-446655440000' }),
+        {},
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: 'Unauthorized' });
+    });
+
+    it('rejects malformed bodies only after auth, never with 500', async () => {
+      const res = await handleRequest(extractRequest({}), {}, {} as ExecutionContext);
+      // Still 401: no valid session was presented.
+      expect(res.status).toBe(401);
+    });
+  });
 });

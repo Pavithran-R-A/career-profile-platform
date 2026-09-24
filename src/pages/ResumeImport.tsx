@@ -2,6 +2,8 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ResumeService } from '../lib/resume/service';
+import { ProfileService } from '../lib/profiles/service';
+import { toCustomerMessage } from '../lib/resume/errors';
 import type { ResumeExtraction } from '../lib/ai/provider';
 
 type ResumeState =
@@ -20,6 +22,7 @@ export default function ResumeImport() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<ResumeState>('empty');
   const [error, setError] = useState<string | null>(null);
+  const [extractionBlocked, setExtractionBlocked] = useState(false);
   const [draft, setDraft] = useState<ResumeExtraction | null>(null);
   const [selectedSections, setSelectedSections] = useState<Set<string>>(new Set());
   const [resumeService, setResumeService] = useState<ResumeService | null>(null);
@@ -34,37 +37,64 @@ export default function ResumeImport() {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
       const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-      const service = new ResumeService(supabaseUrl, publishableKey);
-      setResumeService(service);
+      const supabase = (await import('../lib/supabase/client')).getSupabaseClient();
 
       const {
         data: { session },
-      } = await (await import('../lib/supabase/client')).getSupabaseClient().auth.getSession();
+      } = await supabase.auth.getSession();
 
       if (!session?.user) {
         throw new Error('Not authenticated');
       }
 
-      const resume = await service.uploadResume(session.user.id, 'current', file);
+      // Share the authenticated client so storage/RLS calls carry the session.
+      const service = new ResumeService(supabaseUrl, publishableKey, supabase);
+      setResumeService(service);
+
+      // Resolve the authenticated user's canonical owned profile first.
+      // Never pass a pseudo-ID into the uuid column.
+      const profileService = new ProfileService();
+      const profile = await profileService.getProfile(session.user.id);
+      if (!profile) {
+        void navigate('/onboarding');
+        return;
+      }
+
+      const resume = await service.uploadResume(session.user.id, profile.id, file);
       setState('extracting');
 
-      const extractionResult = await extractAndStructure(resume.storage_path);
+      const extractionResult = await extractAndStructure(resume.id);
 
       setDraft(extractionResult);
       setState('review');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      // The upload itself succeeded here; only automatic extraction is
+      // unavailable. Say so plainly instead of a generic failure.
+      if (err instanceof Error && err.message === 'AI extraction is not configured') {
+        setExtractionBlocked(true);
+        setState('empty');
+        return;
+      }
+      setError(toCustomerMessage(err, 'save'));
       setState('error');
     }
   };
 
-  const extractAndStructure = async (storagePath: string): Promise<ResumeExtraction> => {
+  const extractAndStructure = async (resumeSourceId: string): Promise<ResumeExtraction> => {
     setState('structuring');
+
+    const supabase = (await import('../lib/supabase/client')).getSupabaseClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
     const response = await fetch('/api/resume/extract', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storagePath }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({ resumeSourceId }),
     });
 
     if (!response.ok) {
@@ -124,7 +154,7 @@ export default function ResumeImport() {
         void navigate('/dashboard/profile');
       }, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to apply changes');
+      setError(toCustomerMessage(err, 'save'));
       setState('error');
     }
   };
@@ -159,6 +189,28 @@ export default function ResumeImport() {
           className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6"
           role="alert">
           {error}
+        </div>
+      )}
+
+      {extractionBlocked && state === 'empty' && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg mb-6">
+          <p className="font-medium">Resume saved.</p>
+          <p className="text-sm mt-1">
+            Automatic extraction isn&apos;t available on this environment, so nothing was filled in
+            for you. You can add the details manually in the profile editor.
+          </p>
+          <div className="flex flex-wrap gap-3 mt-3">
+            <button
+              onClick={() => void navigate('/dashboard/profile')}
+              className="bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 text-sm">
+              Go to profile editor
+            </button>
+            <button
+              onClick={() => setExtractionBlocked(false)}
+              className="border border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50 text-sm">
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
