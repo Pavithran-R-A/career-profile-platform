@@ -2,7 +2,40 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
+import { profileCompletion } from '../lib/profiles/completion';
+import PublishControls from '../components/PublishControls';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
+
+const ACTION_GROUPS: {
+  title: string;
+  links: { to: string; label: string; hint: string; primary?: boolean }[];
+}[] = [
+  {
+    title: 'Profile',
+    links: [
+      {
+        to: '/dashboard/profile',
+        label: 'Edit profile',
+        hint: 'Basics, experience, skills and links',
+        primary: true,
+      },
+      { to: '/dashboard/preview', label: 'Preview portfolio', hint: 'See what visitors will see' },
+      { to: '/dashboard/appearance', label: 'Appearance', hint: 'Template, accent and sections' },
+    ],
+  },
+  {
+    title: 'Resume',
+    links: [
+      {
+        to: '/dashboard/resume',
+        label: 'Import resume',
+        hint: 'Upload a PDF to fill your profile',
+      },
+      { to: '/dashboard/resume/ats', label: 'ATS resume', hint: 'Generate a parseable PDF' },
+      { to: '/dashboard/resume/tailor', label: 'Job tailoring', hint: 'Match a job description' },
+    ],
+  },
+];
 
 export default function Dashboard() {
   const auth = useAuth();
@@ -22,6 +55,12 @@ export default function Dashboard() {
   }, [auth]);
 
   useEffect(() => {
+    if (auth.status === 'unauthenticated') {
+      setLoading(false);
+    }
+  }, [auth]);
+
+  useEffect(() => {
     if (auth.status === 'unauthenticated' && !loading) {
       void navigate('/login');
     }
@@ -35,8 +74,15 @@ export default function Dashboard() {
 
   if (auth.status === 'loading' || loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      <div className="page-shell">
+        <div className="space-y-4" aria-label="Loading dashboard" role="status">
+          <div className="skeleton h-8 w-56" />
+          <div className="skeleton h-4 w-72" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+            <div className="skeleton h-48" />
+            <div className="skeleton h-48" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -45,99 +91,161 @@ export default function Dashboard() {
     return null;
   }
 
-  const completionItems = [
-    { label: 'Profile basics', completed: !!profile.display_name },
-    { label: 'Experience', completed: profile.experiences.length > 0 },
-    { label: 'Education', completed: profile.education.length > 0 },
-    { label: 'Skills', completed: profile.skills.length > 0 },
-    { label: 'Links', completed: profile.links.length > 0 },
-  ];
-
-  const completedCount = completionItems.filter((item) => item.completed).length;
-  const completionPercentage = Math.round((completedCount / completionItems.length) * 100);
+  const { items: completionItems, completedCount, percentage } = profileCompletion(profile);
+  const isPublished = profile.visibility === 'published';
 
   const handleSignOut = () => {
     void auth.signOut();
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold mb-2">
-          Welcome, {profile.display_name || profile.username}
-        </h1>
-        <p className="text-gray-600">
-          Your profile is <span className="font-medium">{completionPercentage}%</span> complete
+    <div className="page-shell">
+      <div className="mb-6">
+        <p className="text-sm text-gray-500">Welcome back,</p>
+        <h1 className="page-title">{profile.display_name || profile.username}</h1>
+        <p className="page-subtitle">
+          {isPublished
+            ? 'Your portfolio is live.'
+            : 'Finish the steps below to publish your portfolio.'}
         </p>
       </div>
 
-      <div className="bg-gray-50 rounded-lg p-6 mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-medium">Profile completion</h2>
-          <span className="text-sm text-gray-500">
-            {completedCount}/{completionItems.length}
+      {isPublished ? (
+        <div className="alert alert-success mb-6 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span aria-hidden="true">●</span>
+          <span>
+            Published at{' '}
+            <Link to={`/u/${profile.username}`} className="font-semibold underline">
+              /u/{profile.username}
+            </Link>
           </span>
         </div>
-        <div className="space-y-2">
-          {completionItems.map((item) => (
-            <div key={item.label} className="flex items-center">
-              <span
-                className={`w-5 h-5 rounded-full flex items-center justify-center mr-3 ${item.completed ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>
-                {item.completed && '✓'}
-              </span>
-              <span className={item.completed ? 'text-gray-900' : 'text-gray-500'}>
-                {item.label}
-              </span>
-            </div>
-          ))}
+      ) : (
+        <div className="alert alert-info mb-6">
+          Your profile is a draft. Only you can see it until you publish.
         </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <section className="card card-pad lg:col-span-3" aria-labelledby="completion-heading">
+          <div className="flex items-baseline justify-between gap-4">
+            <h2 id="completion-heading" className="section-title">
+              Profile completion
+            </h2>
+            <span className="text-sm font-semibold text-gray-900">{percentage}%</span>
+          </div>
+          <div
+            className="mt-3 h-2.5 rounded-full bg-gray-200"
+            role="progressbar"
+            aria-valuenow={percentage}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Profile completion">
+            <div
+              className="h-2.5 rounded-full bg-gray-900 transition-all"
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
+          <ul className="mt-5 space-y-2.5">
+            {completionItems.map((item) => (
+              <li key={item.label} className="flex items-center gap-3">
+                <span
+                  aria-hidden="true"
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                    item.completed ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-500'
+                  }`}>
+                  {item.completed ? '✓' : '·'}
+                </span>
+                <span className={item.completed ? 'text-gray-900' : 'text-gray-500'}>
+                  {item.label}
+                </span>
+                <span className="ml-auto text-xs text-gray-400">
+                  {completedCount}/{completionItems.length}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {percentage < 100 && (
+            <Link to="/dashboard/profile" className="btn btn-primary btn-block mt-6">
+              Continue building your profile
+            </Link>
+          )}
+        </section>
+
+        <section className="card card-pad lg:col-span-2" aria-labelledby="status-heading">
+          <h2 id="status-heading" className="section-title">
+            Profile status
+          </h2>
+          <dl className="mt-4 space-y-3 text-sm">
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-gray-500">Username</dt>
+              <dd className="font-medium text-gray-900">@{profile.username}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-gray-500">Status</dt>
+              <dd>
+                <span className={`status-chip ${isPublished ? 'status-chip-live' : ''}`}>
+                  {profile.visibility}
+                </span>
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-gray-500">Last updated</dt>
+              <dd className="text-gray-900">{new Date(profile.updated_at).toLocaleDateString()}</dd>
+            </div>
+          </dl>
+          <div className="mt-6">
+            <PublishControls
+              profileId={profile.id}
+              isPublished={isPublished}
+              onPublishChange={(published) =>
+                setProfile({
+                  ...profile,
+                  visibility: published ? 'published' : 'draft',
+                })
+              }
+            />
+          </div>
+          <button onClick={handleSignOut} className="btn btn-secondary btn-block mt-4">
+            Sign out
+          </button>
+        </section>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-medium mb-4">Profile status</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Username</span>
-              <span className="font-medium">{profile.username}</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        {ACTION_GROUPS.map((group) => (
+          <section
+            key={group.title}
+            className="card card-pad"
+            aria-label={`${group.title} actions`}>
+            <h2 className="section-title mb-4">{group.title}</h2>
+            <div className="space-y-2">
+              {group.links.map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className={`flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors ${
+                    link.primary
+                      ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-800'
+                      : 'bg-white text-gray-900 border-gray-200 hover:bg-gray-50'
+                  }`}>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold">{link.label}</span>
+                    <span
+                      className={`block text-xs truncate ${link.primary ? 'text-gray-300' : 'text-gray-500'}`}>
+                      {link.hint}
+                    </span>
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={link.primary ? 'text-gray-300' : 'text-gray-400'}>
+                    →
+                  </span>
+                </Link>
+              ))}
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Status</span>
-              <span className="px-2 py-1 bg-gray-100 rounded text-sm capitalize">
-                {profile.visibility}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Last updated</span>
-              <span className="text-sm">{new Date(profile.updated_at).toLocaleDateString()}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-medium mb-4">Quick actions</h3>
-          <div className="space-y-3">
-            <Link
-              to="/dashboard/profile"
-              className="block w-full text-center bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800">
-              Edit profile
-            </Link>
-            <Link
-              to="/dashboard/resume"
-              className="block w-full text-center border border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50">
-              Import resume
-            </Link>
-            <button
-              onClick={handleSignOut}
-              className="block w-full text-center border border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50">
-              Sign out
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-8 text-center text-sm text-gray-500">
-        <p>Public portfolio publishing coming in a future update.</p>
+          </section>
+        ))}
       </div>
     </div>
   );

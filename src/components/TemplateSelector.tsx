@@ -6,12 +6,6 @@ interface TemplateSelectorProps {
   onSelect: (templateId: string) => void;
 }
 
-const TEMPLATE_THUMBNAILS: Record<string, string> = {
-  minimal: 'Clean, lightweight single-column layout',
-  editorial: 'Two-column sidebar layout for editorial feel',
-  technical: 'Monospace terminal-style layout',
-};
-
 export default function TemplateSelector({ selectedId, onSelect }: TemplateSelectorProps) {
   const [templates] = useState<Template[]>(() => getAllTemplates());
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -66,9 +60,7 @@ export default function TemplateSelector({ selectedId, onSelect }: TemplateSelec
               </div>
 
               <p className="text-sm font-medium text-gray-900">{tpl.metadata.name}</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {TEMPLATE_THUMBNAILS[tpl.metadata.id] ?? tpl.metadata.description}
-              </p>
+              <p className="text-xs text-gray-500 mt-0.5">{tpl.metadata.description}</p>
 
               {tpl.metadata.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">

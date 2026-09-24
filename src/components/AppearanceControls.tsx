@@ -20,6 +20,7 @@ const ACCENT_PRESETS: Record<string, { label: string; color: string }> = {
 };
 
 const SECTION_LABELS: Record<string, string> = {
+  about: 'About / Intro',
   basics: 'About / Intro',
   experience: 'Experience',
   education: 'Education',
