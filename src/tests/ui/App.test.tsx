@@ -25,16 +25,18 @@ describe('App shell', () => {
 
   it('renders the home page with heading', () => {
     render(<App />);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Your career, verified.');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'One profile. Built for recruiters.'
+    );
   });
 
   it('renders the header with brand link', () => {
     render(<App />);
-    expect(screen.getByRole('link', { name: /profile/i })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Career Profile home' })).toHaveAttribute('href', '/');
   });
 
   it('renders footer', () => {
     render(<App />);
-    expect(screen.getByText(/Career Profile Platform/)).toBeInTheDocument();
+    expect(screen.getByText(/one profile, built for recruiters/i)).toBeInTheDocument();
   });
 });
