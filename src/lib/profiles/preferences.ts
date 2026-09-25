@@ -11,7 +11,7 @@ export interface ProfilePreferences {
 
 const DEFAULT_TEMPLATE_KEY = 'minimal';
 const DEFAULT_ACCENT_KEY = 'blue';
-const DEFAULT_SECTION_ORDER = ['about', 'experience', 'education', 'projects', 'skills', 'links'];
+const DEFAULT_SECTION_ORDER = ['basics', 'experience', 'education', 'projects', 'skills', 'links'];
 const DEFAULT_HIDDEN_SECTIONS: string[] = [];
 
 export async function getPreferences(profileId: string): Promise<ProfilePreferences | null> {

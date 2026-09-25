@@ -214,8 +214,11 @@ export default function AppearanceControls({
               <button
                 type="button"
                 onClick={() => toggleSection(section)}
-                className={`text-xs px-2 py-1 rounded ${
-                  hidden.has(section) ? 'bg-gray-100 text-gray-400' : 'bg-green-50 text-green-700'
+                aria-label={`${hidden.has(section) ? 'Hidden' : 'Visible'}: ${SECTION_LABELS[section] ?? section}`}
+                className={`text-xs font-medium px-2.5 py-1 rounded min-h-[28px] ${
+                  hidden.has(section)
+                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    : 'bg-green-50 text-green-800 hover:bg-green-100'
                 }`}>
                 {hidden.has(section) ? 'Hidden' : 'Visible'}
               </button>

@@ -5,6 +5,8 @@ import { AppRoutes } from '../../App';
 import TemplateSelector from '../../components/TemplateSelector';
 import { ensureTemplatesRegistered } from '../../lib/templates/registry';
 
+ensureTemplatesRegistered();
+
 vi.mock('../../lib/auth/context', () => ({
   useAuth: () => ({ status: 'authenticated', user: { id: 'user-1' } }),
 }));
@@ -43,21 +45,49 @@ vi.mock('../../lib/profiles/public', () => ({
     Promise.resolve(
       username === 'published-user'
         ? {
-            id: '00000000-0000-4000-8000-000000000001',
-            user_id: '00000000-0000-4000-8000-000000000002',
-            display_name: 'Published User',
-            headline: 'Engineer',
-            about: 'Hello world',
-            location: null,
-            avatar_url: null,
-            username: 'published-user',
-            visibility: 'published',
-            published_at: '2026-01-01T00:00:00Z',
-            created_at: '2026-01-01T00:00:00Z',
-            updated_at: '2026-01-01T00:00:00Z',
+            profile: {
+              id: '00000000-0000-4000-8000-000000000001',
+              username: 'published-user',
+              display_name: 'Published User',
+              headline: 'Engineer',
+              about: 'Hello world',
+              location: null,
+              avatar_url: null,
+              visibility: 'published',
+              published_at: '2026-01-01T00:00:00Z',
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+              experiences: [],
+              education: [],
+              skills: [],
+              projects: [],
+              links: [],
+            },
+            preferences: {
+              template_key: 'minimal',
+              accent_key: 'blue',
+              section_order: ['about', 'experience', 'education', 'projects', 'skills', 'links'],
+              hidden_sections: [],
+            },
           }
         : null
     ),
+}));
+
+vi.mock('../../lib/profiles/preferences', () => ({
+  getPreferences: () =>
+    Promise.resolve({
+      id: 'prefs-1',
+      profile_id: 'profile-id',
+      template_key: 'minimal',
+      accent_key: 'blue',
+      section_order: ['basics', 'experience', 'projects', 'skills', 'education', 'links'],
+      hidden_sections: [],
+    }),
+  updateTemplate: () => Promise.resolve({}),
+  updateAccent: () => Promise.resolve({}),
+  updateSectionOrder: () => Promise.resolve({}),
+  updateHiddenSections: () => Promise.resolve({}),
 }));
 
 function renderAt(path: string) {
@@ -71,7 +101,10 @@ function renderAt(path: string) {
 describe('production routes (actual AppRoutes)', () => {
   it('/dashboard/resume/ats renders the ATS builder', async () => {
     renderAt('/dashboard/resume/ats');
-    expect(await screen.findByText('ATS Resume Builder')).toBeInTheDocument();
+    expect(await screen.findByText('ATS resume')).toBeInTheDocument();
+    // deterministic inclusion summary with truthful counts (mock profile is empty)
+    expect(await screen.findByText(/Included:/)).toBeInTheDocument();
+    expect(screen.getByText(/0 roles/)).toBeInTheDocument();
   });
 
   it('/dashboard/resume/tailor renders JobTailoring', async () => {
@@ -81,7 +114,8 @@ describe('production routes (actual AppRoutes)', () => {
 
   it('/dashboard/preview renders the owner preview', async () => {
     renderAt('/dashboard/preview');
-    expect(await screen.findByRole('heading', { name: 'Preview' })).toBeInTheDocument();
+    expect((await screen.findAllByText('Preview')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Published|Draft/)).length).toBeGreaterThan(0);
   });
 
   it('/u/published-user renders the public profile', async () => {
@@ -97,7 +131,7 @@ describe('production routes (actual AppRoutes)', () => {
 
   it('/dashboard/ats redirects to the canonical ATS route', async () => {
     renderAt('/dashboard/ats');
-    expect(await screen.findByText('ATS Resume Builder')).toBeInTheDocument();
+    expect(await screen.findByText('ATS resume')).toBeInTheDocument();
   });
 
   it('unknown routes render the 404 page', () => {
@@ -131,5 +165,10 @@ describe('dashboard discoverability (actual Dashboard)', () => {
     expect(preview).toHaveAttribute('href', '/dashboard/preview');
     expect(profile).toHaveAttribute('href', '/dashboard/profile');
     expect(resume).toHaveAttribute('href', '/dashboard/resume');
+    // meaningful completion details, no repeated "5/5" totals
+    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getAllByText('No entries yet').length).toBe(2);
+    expect(screen.queryByText('0/5')).not.toBeInTheDocument();
+    expect(screen.queryByText('5/5')).not.toBeInTheDocument();
   });
 });

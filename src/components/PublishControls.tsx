@@ -5,15 +5,18 @@ interface PublishControlsProps {
   profileId: string;
   isPublished: boolean;
   onPublishChange: (published: boolean) => void;
+  variant?: 'light' | 'dark';
 }
 
 export default function PublishControls({
   profileId,
   isPublished,
   onPublishChange,
+  variant = 'light',
 }: PublishControlsProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isDark = variant === 'dark';
 
   const handleToggle = async () => {
     setLoading(true);
@@ -43,14 +46,17 @@ export default function PublishControls({
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 p-5">
-      <div className="flex items-center justify-between">
+    <div className={isDark ? '' : 'rounded-xl border border-[var(--border)] p-4'}>
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h3 className="text-sm font-medium text-gray-900">Publish profile</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-[var(--ink)]'}`}>
+            {isPublished ? 'Your profile is public' : 'Keep it private for now'}
+          </p>
+          <p
+            className={`text-xs mt-0.5 ${isDark ? 'text-white/60' : 'text-[var(--faint-foreground)]'}`}>
             {isPublished
-              ? 'Your profile is live and publicly accessible.'
-              : 'Your profile is in draft mode and not visible to others.'}
+              ? 'Anyone with the link can view your portfolio.'
+              : 'Publish when you are ready to share your link.'}
           </p>
         </div>
 
@@ -58,15 +64,19 @@ export default function PublishControls({
           type="button"
           onClick={() => void handleToggle()}
           disabled={loading}
-          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+          className={`shrink-0 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
             isPublished
-              ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-              : 'bg-gray-900 text-white hover:bg-gray-800'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}>
+              ? isDark
+                ? 'bg-white/10 border border-white/25 text-white hover:bg-white/15'
+                : 'bg-white border border-[var(--border-strong)] text-[var(--foreground)] hover:bg-[var(--surface-muted)]'
+              : isDark
+                ? 'bg-emerald-400 text-[#0b1220] hover:bg-emerald-300 font-semibold'
+                : 'bg-[var(--ink)] text-white hover:bg-[#1d2939]'
+          }`}>
           {loading ? (
             <span className="flex items-center gap-2">
               <span className="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full" />
-              {isPublished ? 'Unpublishing...' : 'Publishing...'}
+              {isPublished ? 'Unpublishing…' : 'Publishing…'}
             </span>
           ) : isPublished ? (
             'Unpublish'
@@ -76,7 +86,12 @@ export default function PublishControls({
         </button>
       </div>
 
-      {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
+      <p
+        className={`text-xs mt-3 ${isDark ? 'text-white/70' : 'text-[var(--danger)]'}`}
+        role="alert"
+        aria-live="polite">
+        {error}
+      </p>
     </div>
   );
 }

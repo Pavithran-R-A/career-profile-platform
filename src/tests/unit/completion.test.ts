@@ -39,8 +39,40 @@ describe('profileCompletion', () => {
     const summary = profileCompletion(
       makeProfile({ display_name: 'Synthetic Candidate', headline: 'Engineer' })
     );
-    expect(summary.items[0]).toEqual({ label: 'Profile basics', completed: true });
+    expect(summary.items[0]).toMatchObject({
+      label: 'Profile basics',
+      completed: true,
+      detail: 'Complete',
+    });
     expect(summary.percentage).toBe(20);
+  });
+
+  it('shows truthful per-section detail values instead of repeated totals', () => {
+    const summary = profileCompletion(
+      makeProfile({
+        display_name: 'Synthetic Candidate',
+        experiences: [
+          { ...row, company: 'Acme', role: 'Dev' } as never,
+          { ...row, id: 'y', company: 'Beta', role: 'Dev' } as never,
+          { ...row, id: 'z', company: 'Cob', role: 'Dev' } as never,
+        ],
+        education: [{ ...row, institution: 'Uni' } as never],
+        skills: [{ ...row, name: 'TypeScript' } as never],
+        links: [
+          { ...row, label: 'GitHub', url: 'https://github.com/x' } as never,
+          { ...row, id: 'l2', label: 'Site', url: 'https://x.dev' } as never,
+        ],
+      })
+    );
+    expect(summary.items.map((i) => i.detail)).toEqual([
+      'Complete',
+      '3 entries',
+      '1 entry',
+      '1 skill',
+      '2 links',
+    ]);
+    expect(summary.completedCount).toBe(5);
+    expect(summary.percentage).toBe(100);
   });
 
   it('counts every section truthfully without inflation', () => {

@@ -233,14 +233,31 @@ export default function ATSResumeBuilder() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-semibold">ATS Resume Builder</h1>
-        <button
-          onClick={() => void navigate('/dashboard')}
-          className="text-gray-600 hover:text-gray-900">
+    <div className="page-shell">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h1 className="page-title">ATS resume</h1>
+          <p className="page-subtitle">
+            A plain, parseable PDF built from your profile — no graphics that break parsers.
+          </p>
+        </div>
+        <button onClick={() => void navigate('/dashboard')} className="link-quiet text-sm">
           ← Back to dashboard
         </button>
+      </div>
+
+      <div className="alert alert-info mb-6 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span>
+          <strong>Included:</strong> {atsData?.experiences.length ?? 0}{' '}
+          {(atsData?.experiences.length ?? 0) === 1 ? 'role' : 'roles'} ·{' '}
+          {atsData?.education.length ?? 0}{' '}
+          {(atsData?.education.length ?? 0) === 1 ? 'entry' : 'entries'} ·{' '}
+          {atsData?.skills.length ?? 0} skills · {atsData?.projects.length ?? 0}{' '}
+          {(atsData?.projects.length ?? 0) === 1 ? 'project' : 'projects'}
+        </span>
+        <span className="text-xs opacity-80">
+          Deselect anything you don&apos;t want included, then generate.
+        </span>
       </div>
 
       {error && (
