@@ -107,6 +107,51 @@ configured` (no provider key in preview env); UI shows a truthful
 - Console/network: no 500s, no raw backend text in UI; only expected
   401→fixed and 503-unconfigured responses during the debugging loop.
 
+## Product Design Closure (2026-09-24, third pass)
+
+Base MVP is now a credible career product, verified with a Playwright +
+system-Chrome harness (7 viewports, oklab/lab-aware WCAG checker, tap,
+overflow, console and network audits):
+
+- Messaging: headline is now "One profile. Built for recruiters." with a
+  CV → profile → ATS → portfolio story. No "verified" claims, no GitHub or
+  AI capability mentions while those integrations stay disabled.
+- Brand: ink-navy + blue identity, ascending-bars mark (favicon, header,
+  dashboard thumbnail), display/lead/eyebrow type scale, token radii and
+  shadows, reduced-motion support.
+- Landing: hero with real rendered product panel (flow chips + mini
+  portfolio card), 3-step story, recruiter-scan band, full example
+  portfolio in a browser frame (real Minimal template output on a
+  fictional persona), final CTA. Auth-aware CTAs, "See an example" anchor.
+- Dashboard: completion rows carry truthful details ("12 entries",
+  "3 skills" — no repeated "5/5"); published hero shows live URL with Open
+  - Copy link + mini thumbnail; draft hero has Finish/Preview next
+    actions; icon-led action groups.
+- Editor: mobile tab bar, skeleton loading, aria-live success, guided
+  basics fields, month selects + current-role disabling, inline editing
+  for experience/education/projects/links, subtle icon delete with
+  confirm, move controls, richer project cards, accessible skill chips,
+  explanatory empty states for every section.
+- Templates: shared `formatDateRange`/`LinkIcon` helpers; Minimal is a
+  typography-led personal page (dated grid, project cards, show-more
+  past 5 roles); Editorial is sidebar-composed with numbered rhythm and
+  serif display; Technical is dark metadata-led with repo cards and mono
+  details (no terminal clichés). Legacy "about" order key normalized so
+  older preference rows still render.
+- Public portfolio: anonymous `/u/:username` now renders the saved
+  template via an extended anon-safe view (relations + preferences as
+  aggregates; still published-only, still no user_id). Verified live for
+  all three templates.
+- Appearance: structural mini-thumbnails per template, live preview
+  already reflects every save; badges fixed to AA contrast.
+- Resume/ATS: idle "what happens next" steps, honest saved-state copy,
+  ATS builder with a real inclusion summary (counts, never a fake score).
+- ATS route is lazy-loaded; initial bundle excludes the ~2.7 MB PDF libs.
+- Contrast: oklab/lab-aware audit across 11 routes — zero violations
+  (fixed white/40-45 labels on dark surfaces, gray-400 microcopy, badge
+  colors). Verified zero overflow on 7 viewports, zero console errors,
+  zero failed requests, AA keyboard/focus/labels/tap targets.
+
 ## Base MVP Live UI/UX Closure (2026-09-24, second pass)
 
 Critical defects fixed and browser-verified with Playwright + system Chrome
