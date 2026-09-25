@@ -286,6 +286,9 @@ export default function TechnicalTemplate({
         backgroundColor: config.colors.background,
         color: config.colors.text,
         fontFamily: config.fonts.body,
+        backgroundImage:
+          'linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)',
+        backgroundSize: '52px 52px',
       }}>
       <div className="max-w-4xl mx-auto px-6 sm:px-10 py-14 sm:py-20">
         <header className="mb-14 pb-8 border-b border-white/12">

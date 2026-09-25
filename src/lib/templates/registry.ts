@@ -53,9 +53,9 @@ const EDITORIAL_CONFIG: TemplateConfig = {
     primary: '#1c1917',
     secondary: '#57534e',
     accent: '#7c3aed',
-    background: '#fafaf9',
+    background: '#faf6ee',
     text: '#1c1917',
-    muted: '#78716c',
+    muted: '#6b645c',
   },
   fonts: {
     heading: 'Georgia, serif',

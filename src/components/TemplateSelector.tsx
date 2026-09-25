@@ -18,7 +18,7 @@ function TemplateThumb({ id }: { id: string }) {
 
   if (id === 'editorial') {
     return (
-      <div className="w-full h-24 rounded-md overflow-hidden flex border border-gray-200 bg-[#fafaf9]">
+      <div className="w-full h-24 rounded-md overflow-hidden flex border border-gray-200 bg-[#faf6ee]">
         <div className="w-1/3 h-full bg-[#7c3aed]/10 border-r border-gray-200 p-2 space-y-1.5">
           <span className="block h-2 w-8 rounded bg-[#7c3aed]/60" />
           <span className="block h-1.5 w-10 rounded bg-gray-300" />
