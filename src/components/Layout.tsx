@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { Outlet, Link, NavLink } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../lib/auth/context';
-import { BrandLink } from './Brand';
+import { BrandLink, BrandMark } from './Brand';
 
 const AUTH_NAV = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -10,14 +10,105 @@ const AUTH_NAV = [
   { to: '/dashboard/preview', label: 'Portfolio' },
 ];
 
+const GUEST_NAV = [
+  { href: '/#features', label: 'Features' },
+  { href: '/#templates', label: 'Templates' },
+  { href: '/#how-it-works', label: 'How it works' },
+  { href: '/#for-recruiters', label: 'For recruiters' },
+  { href: '/pricing', label: 'Pricing' },
+];
+
 function navClass({ isActive }: { isActive: boolean }) {
   return isActive ? 'nav-link nav-link-active' : 'nav-link';
+}
+
+function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Account menu"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[var(--ink)] text-white text-sm font-bold hover:bg-[#16233d] transition-colors">
+        <BrandMark size={26} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label="Account"
+          className="absolute right-0 top-12 w-56 rounded-xl border border-[var(--border)] bg-white shadow-[var(--shadow-pop)] py-2 z-50">
+          <div className="px-4 py-2 border-b border-[var(--border)]">
+            <p className="text-sm font-semibold text-[var(--ink)]">Your account</p>
+            <p className="text-xs text-[var(--faint-foreground)] mt-0.5">
+              Manage your career profile
+            </p>
+          </div>
+          <Link
+            to="/dashboard/appearance"
+            role="menuitem"
+            className="block px-4 py-2.5 text-sm text-[var(--foreground)] hover:bg-[var(--surface-muted)]">
+            Appearance
+          </Link>
+          <Link
+            to="/pricing"
+            role="menuitem"
+            className="block px-4 py-2.5 text-sm text-[var(--foreground)] hover:bg-[var(--surface-muted)]">
+            Pricing
+          </Link>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+            className="block w-full text-left px-4 py-2.5 text-sm text-[var(--danger)] hover:bg-[var(--danger-surface)] border-t border-[var(--border)] mt-1">
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Layout() {
   const auth = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const isAuthed = auth.status === 'authenticated';
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const handleSignOut = () => {
     setMenuOpen(false);
@@ -26,11 +117,16 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-[var(--border)] bg-white/90 backdrop-blur-sm sticky top-0 z-50">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <header
+        className={`sticky top-0 z-50 transition-shadow duration-200 border-b ${
+          scrolled
+            ? 'border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur-sm shadow-[0_1px_0_rgb(11_22_40_/_0.04),0_8px_24px_-16px_rgb(11_22_40_/_0.25)]'
+            : 'border-transparent bg-[var(--surface)]'
+        }`}>
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <BrandLink />
 
-          <nav className="hidden md:flex items-center gap-6" aria-label="Primary">
+          <nav className="hidden lg:flex items-center gap-6" aria-label="Primary">
             {isAuthed ? (
               <>
                 {AUTH_NAV.map((item) => (
@@ -42,21 +138,22 @@ export default function Layout() {
                     {item.label}
                   </NavLink>
                 ))}
-                <button onClick={handleSignOut} className="nav-link px-1">
-                  Sign out
-                </button>
+                <AccountMenu onSignOut={handleSignOut} />
               </>
             ) : (
               <>
-                <Link to="/#how-it-works" className="nav-link">
-                  How it works
-                </Link>
+                {GUEST_NAV.map((item) => (
+                  <Link key={item.href} to={item.href} className="nav-link">
+                    {item.label}
+                  </Link>
+                ))}
+                <span className="w-px h-4 bg-[var(--border-strong)]" aria-hidden="true" />
                 <Link to="/login" className="nav-link">
                   Sign in
                 </Link>
                 <Link
                   to="/signup"
-                  className="text-sm bg-[var(--ink)] text-white px-4 py-2 rounded-full hover:bg-[#1d2939] font-medium">
+                  className="text-sm bg-[var(--accent)] text-white px-4 py-2 rounded-full hover:bg-[var(--accent-strong)] font-medium transition-colors">
                   Get started
                 </Link>
               </>
@@ -65,7 +162,7 @@ export default function Layout() {
 
           <button
             type="button"
-            className="md:hidden inline-flex items-center justify-center w-11 h-11 rounded-md text-gray-700 hover:bg-gray-100"
+            className="lg:hidden inline-flex items-center justify-center w-11 h-11 rounded-md text-[var(--foreground)] hover:bg-[var(--surface-muted)]"
             aria-expanded={menuOpen}
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             onClick={() => setMenuOpen((open) => !open)}>
@@ -87,7 +184,7 @@ export default function Layout() {
 
         {menuOpen && (
           <nav
-            className="md:hidden border-t border-[var(--border)] bg-white px-4 py-3 space-y-1"
+            className="lg:hidden border-t border-[var(--border)] bg-[var(--surface)] px-4 py-3 space-y-1"
             aria-label="Mobile">
             {isAuthed ? (
               <>
@@ -98,35 +195,44 @@ export default function Layout() {
                     end={item.to === '/dashboard'}
                     onClick={() => setMenuOpen(false)}
                     className={({ isActive }) =>
-                      `block px-3 py-3 rounded-md text-base min-h-[44px] ${isActive ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`
+                      `block px-3 py-3 rounded-md text-base min-h-[44px] ${isActive ? 'bg-[var(--surface-muted)] text-[var(--ink)] font-semibold' : 'text-[var(--foreground)] hover:bg-[var(--surface-muted)]'}`
                     }>
                     {item.label}
                   </NavLink>
                 ))}
+                <Link
+                  to="/dashboard/appearance"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-3 py-3 rounded-md text-base text-[var(--foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
+                  Appearance
+                </Link>
                 <button
                   onClick={handleSignOut}
-                  className="block w-full text-left px-3 py-3 rounded-md text-base text-gray-700 hover:bg-gray-50 min-h-[44px]">
+                  className="block w-full text-left px-3 py-3 rounded-md text-base text-[var(--danger)] hover:bg-[var(--danger-surface)] min-h-[44px]">
                   Sign out
                 </button>
               </>
             ) : (
               <>
-                <Link
-                  to="/#how-it-works"
-                  onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base text-gray-700 hover:bg-gray-50 min-h-[44px]">
-                  How it works
-                </Link>
+                {GUEST_NAV.map((item) => (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-3 py-3 rounded-md text-base text-[var(--foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
+                    {item.label}
+                  </Link>
+                ))}
                 <Link
                   to="/login"
                   onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base text-gray-700 hover:bg-gray-50 min-h-[44px]">
+                  className="block px-3 py-3 rounded-md text-base text-[var(--foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
                   Sign in
                 </Link>
                 <Link
                   to="/signup"
                   onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base font-semibold bg-[var(--ink)] text-white text-center min-h-[44px]">
+                  className="block px-3 py-3 rounded-md text-base font-semibold bg-[var(--accent)] text-white text-center min-h-[44px]">
                   Get started
                 </Link>
               </>
@@ -137,18 +243,19 @@ export default function Layout() {
       <main className="flex-1">
         <Outlet />
       </main>
-      <footer className="border-t border-[var(--border)] bg-white">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--faint-foreground)]">
-          <p>
+      <footer className="border-t border-[var(--border)] bg-[var(--surface)]">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--faint-foreground)]">
+          <p className="flex items-center gap-2">
+            <BrandMark size={16} />
             &copy; {new Date().getFullYear()} Career Profile — one profile, built for recruiters.
           </p>
           {!isAuthed && (
             <nav className="flex items-center gap-5" aria-label="Footer">
-              <Link to="/#how-it-works" className="link-quiet">
-                How it works
+              <Link to="/#features" className="link-quiet">
+                Features
               </Link>
-              <Link to="/#example" className="link-quiet">
-                Example
+              <Link to="/#templates" className="link-quiet">
+                Templates
               </Link>
               <Link to="/pricing" className="link-quiet">
                 Pricing
