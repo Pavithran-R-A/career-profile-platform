@@ -17,9 +17,7 @@ describe('Landing page', () => {
         <Home />
       </MemoryRouter>
     );
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'One profile. Built for recruiters.'
-    );
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/recruiters remember/i);
     expect(screen.queryByText(/verified|verification/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/GitHub evidence/i)).not.toBeInTheDocument();
   });
@@ -40,18 +38,18 @@ describe('Landing page', () => {
     expect(screen.getAllByText(/Flowdeck/).length).toBeGreaterThan(0);
   });
 
-  it('has CTAs for creating an account and seeing an example', () => {
+  it('has CTAs for importing a CV and seeing a live profile', () => {
     render(
       <MemoryRouter>
         <Home />
       </MemoryRouter>
     );
-    const primary = screen.getAllByRole('link', { name: /Create your profile/i });
+    const primary = screen.getAllByRole('link', { name: /Import your CV/i });
     expect(primary.length).toBeGreaterThan(0);
     expect(primary[0]).toHaveAttribute('href', '/signup');
-    expect(screen.getAllByRole('link', { name: /See an example/i })[0]).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: /See a live profile/i })[0]).toHaveAttribute(
       'href',
-      '/#example'
+      '/#templates'
     );
   });
 });

@@ -11,6 +11,25 @@ vi.mock('../../lib/auth/context', () => ({
   useAuth: () => ({ status: 'authenticated', user: { id: 'user-1' } }),
 }));
 
+vi.mock('../../lib/supabase/client', () => ({
+  getSupabaseClient: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          order: () => ({
+            limit: () => ({
+              maybeSingle: () => Promise.resolve({ data: null, error: null }),
+            }),
+          }),
+        }),
+      }),
+    }),
+    auth: {
+      getSession: () => Promise.resolve({ data: { session: null } }),
+    },
+  }),
+}));
+
 vi.mock('../../lib/profiles/service', () => {
   const profile = {
     id: 'profile-id',
@@ -109,7 +128,10 @@ describe('production routes (actual AppRoutes)', () => {
 
   it('/dashboard/resume/tailor renders JobTailoring', async () => {
     renderAt('/dashboard/resume/tailor');
-    expect(await screen.findByText('Job Description Tailoring')).toBeInTheDocument();
+    expect(await screen.findByText('Job tailoring')).toBeInTheDocument();
+    // three-stage workflow rail
+    expect(screen.getByText('Profile evidence')).toBeInTheDocument();
+    expect(screen.getByText('Tailored output')).toBeInTheDocument();
   });
 
   it('/dashboard/preview renders the owner preview', async () => {
