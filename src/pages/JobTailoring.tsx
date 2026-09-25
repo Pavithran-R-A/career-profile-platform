@@ -300,61 +300,123 @@ export default function JobTailoring() {
     return null;
   }
 
+  const currentStage =
+    state === 'input' || state === 'error'
+      ? 1
+      : state === 'analyzing' || state === 'analysis'
+        ? 2
+        : 3;
+  const stages = ['Job', 'Profile evidence', 'Tailored output'];
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-semibold">Job Description Tailoring</h1>
-        <button
-          onClick={() => void navigate('/dashboard')}
-          className="text-gray-600 hover:text-gray-900">
+    <div className="page-shell">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h1 className="page-title">Job tailoring</h1>
+          <p className="page-subtitle">
+            Select the most relevant truth from your existing profile — nothing is invented.
+          </p>
+        </div>
+        <button onClick={() => void navigate('/dashboard')} className="link-quiet text-sm">
           ← Back to dashboard
         </button>
       </div>
 
+      {/* Three-stage workflow rail */}
+      <ol className="grid grid-cols-3 gap-2 sm:gap-3 mb-6" aria-label="Tailoring workflow progress">
+        {stages.map((label, i) => {
+          const n = i + 1;
+          const active = n === currentStage;
+          const done = n < currentStage;
+          return (
+            <li
+              key={label}
+              aria-current={active ? 'step' : undefined}
+              className={`rounded-xl border px-3 sm:px-4 py-3 flex items-center gap-2.5 transition-colors ${
+                active
+                  ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                  : done
+                    ? 'border-[var(--success-border)] bg-[var(--success-surface)]'
+                    : 'border-[var(--border)] bg-[var(--surface)]'
+              }`}>
+              <span
+                aria-hidden="true"
+                className={`w-6 h-6 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ${
+                  done
+                    ? 'bg-[var(--success)] text-white'
+                    : active
+                      ? 'text-white'
+                      : 'bg-[var(--surface-muted)] text-[var(--faint-foreground)]'
+                }`}
+                style={active ? { background: 'var(--accent)' } : undefined}>
+                {done ? '✓' : n}
+              </span>
+              <span
+                className={`text-[11px] sm:text-[13px] font-semibold leading-tight ${active ? 'text-[var(--ink)]' : 'text-[var(--muted-foreground)]'}`}>
+                {label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
       {error && (
-        <div
-          className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6"
-          role="alert">
+        <div className="alert alert-error mb-5" role="alert">
           {error}
         </div>
       )}
 
       {state === 'input' && (
-        <div className="space-y-6">
-          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded">
-            Paste a job description below. We will analyze it against your profile and suggest
-            tailored changes.
+        <div className="card card-pad space-y-5">
+          <div>
+            <h2 className="section-title">Paste the job description</h2>
+            <p className="text-sm text-[var(--muted-foreground)] mt-1">
+              We analyze it against your profile and show which requirements you already meet.
+            </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Job Description</label>
+            <label htmlFor="job-description" className="field-label">
+              Job description
+            </label>
             <textarea
+              id="job-description"
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               rows={12}
               placeholder={`Paste the full job description here, including:\n- Job title and company\n- Required skills and qualifications\n- Nice-to-have requirements\n- Responsibilities`}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+              className="w-full px-3 py-2.5 border border-[var(--border-strong)] rounded-xl bg-white text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:border-transparent"
             />
           </div>
 
-          <button
-            onClick={handleAnalyze}
-            disabled={!jobDescription.trim() || !profile}
-            className="bg-gray-900 text-white py-2 px-6 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed">
-            Analyze &amp; Tailor
-          </button>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <button
+              onClick={handleAnalyze}
+              disabled={!jobDescription.trim() || !profile}
+              className="btn btn-primary">
+              Analyze &amp; Tailor
+            </button>
+            <p className="text-xs text-[var(--faint-foreground)]">
+              Runs against your own profile — your text stays in your account.
+            </p>
+          </div>
         </div>
       )}
 
       {state === 'analyzing' && (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Analyzing job requirements...</p>
+        <div className="card card-pad text-center py-14" role="status" aria-live="polite">
+          <div
+            className="spinner w-8 h-8 mx-auto mb-4"
+            style={{ borderBottomColor: 'var(--accent)' }}></div>
+          <p className="text-sm font-medium text-[var(--ink)]">Analyzing job requirements…</p>
+          <p className="text-xs text-[var(--faint-foreground)] mt-1">
+            Matching requirements against your experience, education and skills.
+          </p>
         </div>
       )}
 
       {state === 'analysis' && result && (
-        <div className="space-y-8">
+        <div className="space-y-6">
           <RequirementAnalysis
             jobTitle={result.jobTitle}
             companyName={result.companyName}
@@ -369,15 +431,11 @@ export default function JobTailoring() {
             onReject={handleRejectSuggestion}
           />
 
-          <div className="flex gap-4 pt-4 border-t border-gray-200">
-            <button
-              onClick={handleFinish}
-              className="bg-gray-900 text-white py-2 px-6 rounded-md hover:bg-gray-800">
+          <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-[var(--border)]">
+            <button onClick={handleFinish} className="btn btn-primary">
               Continue to Builder
             </button>
-            <button
-              onClick={() => setState('input')}
-              className="border border-gray-300 text-gray-700 py-2 px-6 rounded-md hover:bg-gray-50">
+            <button onClick={() => setState('input')} className="btn btn-secondary">
               Start Over
             </button>
           </div>
@@ -385,8 +443,8 @@ export default function JobTailoring() {
       )}
 
       {state === 'complete' && (
-        <div className="text-center py-12">
-          <div className="text-green-500 mb-4">
+        <div className="card card-pad text-center py-14" role="status" aria-live="polite">
+          <div className="text-[var(--success)] mb-4">
             <svg
               className="mx-auto h-12 w-12"
               fill="none"
@@ -400,19 +458,23 @@ export default function JobTailoring() {
               />
             </svg>
           </div>
-          <p className="text-gray-600 mb-4">Tailoring complete! Redirecting to ATS builder...</p>
+          <p className="text-sm font-medium text-[var(--ink)]">
+            Tailoring complete! Redirecting to the ATS builder…
+          </p>
         </div>
       )}
 
       {state === 'error' && (
-        <div className="text-center py-12">
-          <p className="text-gray-600 mb-4">Something went wrong. Please try again.</p>
+        <div className="card card-pad text-center py-12">
+          <p className="text-sm text-[var(--muted-foreground)] mb-4">
+            Something went wrong. Please try again.
+          </p>
           <button
             onClick={() => {
               setState('input');
               setError(null);
             }}
-            className="bg-gray-900 text-white py-2 px-6 rounded-md hover:bg-gray-800">
+            className="btn btn-primary">
             Try Again
           </button>
         </div>

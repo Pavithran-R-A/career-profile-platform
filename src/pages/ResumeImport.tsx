@@ -26,6 +26,7 @@ export default function ResumeImport() {
   const [draft, setDraft] = useState<ResumeExtraction | null>(null);
   const [selectedSections, setSelectedSections] = useState<Set<string>>(new Set());
   const [resumeService, setResumeService] = useState<ResumeService | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; size: number } | null>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -33,6 +34,7 @@ export default function ResumeImport() {
 
     setState('uploading');
     setError(null);
+    setUploadedFile({ name: file.name, size: file.size });
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -216,9 +218,9 @@ export default function ResumeImport() {
       )}
 
       {state === 'empty' && (
-        <div className="card p-8 sm:p-10 text-center">
-          <div className="mx-auto w-12 h-12 rounded-xl bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center mb-5">
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="card p-8 sm:p-12 text-center">
+          <div className="mx-auto w-14 h-14 rounded-2xl bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center mb-6">
+            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -227,27 +229,63 @@ export default function ResumeImport() {
               />
             </svg>
           </div>
-          <h2 className="section-title">Start with your resume</h2>
-          <p className="text-sm text-[var(--muted-foreground)] mt-2 max-w-md mx-auto leading-relaxed">
+          <h2
+            className="text-[var(--ink)]"
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'clamp(1.5rem, 1.2rem + 1.4vw, 2.25rem)',
+              fontWeight: 600,
+              letterSpacing: '-0.02em',
+              lineHeight: 1.15,
+            }}>
+            Turn your existing resume into structured data
+          </h2>
+          <p className="text-sm text-[var(--muted-foreground)] mt-3 max-w-md mx-auto leading-relaxed">
             Upload the PDF you already use for applications. We read it, then let you review
             everything before anything touches your profile.
           </p>
-          <ol className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-left">
+
+          {/* connected 3-step journey */}
+          <ol className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-1 max-w-2xl mx-auto text-left">
             {[
-              ['1', 'Upload', 'Your PDF is stored privately on your account.'],
-              ['2', 'Review', 'We extract experience, education and skills.'],
-              ['3', 'Apply', 'You choose exactly what gets added.'],
-            ].map(([n, title, body]) => (
-              <li
-                key={n}
-                className="rounded-xl border border-[var(--border)] p-3.5 bg-[var(--background)]">
-                <span className="text-[11px] font-bold text-[var(--accent)]">{n}</span>
-                <p className="text-sm font-semibold text-[var(--ink)] mt-1">{title}</p>
-                <p className="text-xs text-[var(--muted-foreground)] mt-0.5 leading-snug">{body}</p>
+              ['1', 'Upload', 'Stored privately on your account'],
+              ['2', 'Review', 'Experience, education and skills extracted'],
+              ['3', 'Apply', 'You choose what gets added'],
+            ].map(([n, title, body], i, arr) => (
+              <li key={n} className="flex sm:flex-1 items-center gap-1 sm:gap-2 min-w-0">
+                <div className="flex-1 rounded-xl border border-[var(--border)] p-3.5 bg-[var(--surface-warm)] min-w-0">
+                  <span
+                    className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center"
+                    style={{ background: 'var(--ink)' }}>
+                    {n}
+                  </span>
+                  <p className="text-sm font-semibold text-[var(--ink)] mt-2">{title}</p>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-0.5 leading-snug">
+                    {body}
+                  </p>
+                </div>
+                {i < arr.length - 1 && (
+                  <svg
+                    className="hidden sm:block shrink-0 text-[var(--faint-foreground)]"
+                    width="18"
+                    height="10"
+                    viewBox="0 0 18 10"
+                    fill="none"
+                    aria-hidden="true">
+                    <path
+                      d="M0 5h13m0 0-4-4m4 4-4 4"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
               </li>
             ))}
           </ol>
-          <p className="text-xs text-[var(--faint-foreground)] mt-5">
+
+          <p className="text-xs text-[var(--faint-foreground)] mt-6">
             PDF files up to 6 MiB, maximum 20 pages
           </p>
           <input
@@ -258,30 +296,42 @@ export default function ResumeImport() {
             className="hidden"
             aria-label="Resume PDF file"
           />
-          <button onClick={() => fileInputRef.current?.click()} className="btn btn-primary mt-5">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="btn btn-primary mt-5 !min-h-[48px] !px-8">
             Select PDF
           </button>
         </div>
       )}
 
-      {state === 'uploading' && (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Uploading resume...</p>
-        </div>
-      )}
-
-      {state === 'extracting' && (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Reading resume...</p>
-        </div>
-      )}
-
-      {state === 'structuring' && (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Structuring profile...</p>
+      {(state === 'uploading' || state === 'extracting' || state === 'structuring') && (
+        <div className="card p-8 sm:p-10" role="status" aria-live="polite">
+          <div className="flex flex-col sm:flex-row items-center gap-5 max-w-lg mx-auto text-center sm:text-left">
+            <div className="w-14 h-14 rounded-2xl bg-[var(--surface-warm)] border border-[var(--border)] flex items-center justify-center shrink-0">
+              <span className="text-[11px] font-bold text-[var(--accent)]">PDF</span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-[var(--ink)] truncate">
+                {uploadedFile?.name ?? 'Your resume.pdf'}
+              </p>
+              <p className="text-xs text-[var(--faint-foreground)] mt-0.5">
+                {uploadedFile ? `${(uploadedFile.size / 1024 / 1024).toFixed(1)} MiB` : ''}
+              </p>
+              <p className="text-sm mt-2.5 flex items-center gap-2 justify-center sm:justify-start">
+                <span
+                  className="inline-block w-4 h-4 rounded-full border-2 border-[var(--border-strong)] animate-spin border-t-transparent"
+                  aria-hidden="true"
+                />
+                <span style={{ color: 'var(--accent-text)' }}>
+                  {state === 'uploading'
+                    ? 'Uploading securely…'
+                    : state === 'extracting'
+                      ? 'Reading your resume…'
+                      : 'Structuring your profile…'}
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

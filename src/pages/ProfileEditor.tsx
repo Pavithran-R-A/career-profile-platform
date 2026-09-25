@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
 import { sanitizeUrl } from '../lib/validators/url';
 import { getSupabaseClient } from '../lib/supabase/client';
 import { formatDateRange } from '../lib/profiles/date-format';
+import { getPreferences, type ProfilePreferences } from '../lib/profiles/preferences';
 import { LinkIcon } from '../components/portfolio/links';
+import { TemplateCanvas } from '../components/portfolio/TemplateCanvas';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 
 type EditSection = 'basics' | 'experience' | 'education' | 'projects' | 'skills' | 'links';
@@ -210,8 +212,19 @@ export default function ProfileEditor() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingKey | null>(null);
+  const [preferences, setPreferences] = useState<ProfilePreferences | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const profileService = new ProfileService();
+
+  useEffect(() => {
+    if (!previewOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreviewOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [previewOpen]);
 
   const flashSuccess = (msg: string) => {
     setSuccess(msg);
@@ -223,6 +236,11 @@ export default function ProfileEditor() {
       void profileService.getProfile(auth.user.id).then((p) => {
         setProfile(p);
         setLoading(false);
+        if (p) {
+          void getPreferences(p.id)
+            .then(setPreferences)
+            .catch(() => setPreferences(null));
+        }
       });
     }
   }, [auth]);
@@ -620,13 +638,30 @@ export default function ProfileEditor() {
   const isEditing = (key: EditingKey) => editing === key;
   const toggleEdit = (key: EditingKey) => setEditing(editing === key ? null : key);
 
+  const previewProps = preferences
+    ? {
+        accentKey: preferences.accent_key,
+        sectionOrder: preferences.section_order,
+        hiddenSections: preferences.hidden_sections,
+      }
+    : undefined;
+
   return (
-    <div className="page-shell">
-      <div className="flex items-center justify-between mb-6">
+    <div className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-8">
+      <div className="flex items-center justify-between gap-4 mb-6">
         <h1 className="page-title">Edit profile</h1>
-        <button onClick={() => void navigate('/dashboard')} className="link-quiet text-sm">
-          ← Back to dashboard
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            aria-expanded={previewOpen}
+            className="xl:hidden btn btn-secondary !min-h-[40px] !py-2 text-sm">
+            Preview
+          </button>
+          <button onClick={() => void navigate('/dashboard')} className="link-quiet text-sm">
+            ← Back to dashboard
+          </button>
+        </div>
       </div>
 
       <div role="alert" aria-live="assertive">
@@ -1542,7 +1577,79 @@ export default function ProfileEditor() {
             </div>
           )}
         </div>
+
+        {/* Live portfolio preview — sticky on wide desktop */}
+        <aside
+          className="hidden xl:block w-[360px] flex-shrink-0"
+          aria-label="Live portfolio preview">
+          <div className="sticky top-24">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--faint-foreground)]">
+                Live preview
+              </p>
+              <Link
+                to="/dashboard/appearance"
+                className="text-xs font-semibold link-underline"
+                style={{ color: 'var(--accent-text)' }}>
+                Appearance
+              </Link>
+            </div>
+            <div className="rounded-xl overflow-hidden border border-[var(--border)] bg-white shadow-[var(--shadow-card)]">
+              <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[var(--border)] bg-[var(--surface-warm)]">
+                <span className="w-2 h-2 rounded-full bg-[#ff5f57]" aria-hidden="true" />
+                <span className="w-2 h-2 rounded-full bg-[#febc2e]" aria-hidden="true" />
+                <span className="w-2 h-2 rounded-full bg-[#28c840]" aria-hidden="true" />
+                <span className="ml-1.5 text-[10px] text-[var(--faint-foreground)] truncate">
+                  /u/{profile.username}
+                </span>
+              </div>
+              <TemplateCanvas
+                templateKey={preferences?.template_key || 'minimal'}
+                profile={profile}
+                preferences={previewProps}
+                scale={0.46}
+                height={430}
+                label="Live portfolio preview"
+              />
+            </div>
+            <p className="mt-3 text-xs text-[var(--faint-foreground)]">
+              Updates as you edit. Recruiters see this.
+            </p>
+          </div>
+        </aside>
       </div>
+
+      {/* Mobile / tablet preview sheet */}
+      {previewOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Live portfolio preview"
+          className="fixed inset-0 z-50 bg-[var(--background)] flex flex-col xl:hidden">
+          <div className="flex items-center justify-between px-4 sm:px-6 h-16 border-b border-[var(--border)] bg-white">
+            <p className="text-sm font-semibold text-[var(--ink)]">Live preview</p>
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(false)}
+              autoFocus
+              className="btn btn-secondary !min-h-[40px] !py-2 text-sm">
+              Close
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="rounded-xl overflow-hidden border border-[var(--border)] bg-white shadow-[var(--shadow-card)] max-w-2xl mx-auto">
+              <TemplateCanvas
+                templateKey={preferences?.template_key || 'minimal'}
+                profile={profile}
+                preferences={previewProps}
+                scale={0.6}
+                height={520}
+                label="Live portfolio preview"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
