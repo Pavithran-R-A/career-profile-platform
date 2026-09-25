@@ -149,16 +149,20 @@ describe('template render (one synthetic fixture)', () => {
     expect(container.innerHTML).toContain('rgb(225, 29, 72)');
   });
 
-  it('Technical renders terminal markers and honors hidden sections', () => {
+  it('Technical renders dark structured metadata and honors hidden sections', () => {
     const config = getTemplate('technical')!.config;
     const Component = getTemplateComponent('technical');
     const { container } = render(
       <Component profile={makeProfile()} config={config} preferences={PREFS} />
     );
-    expect(container.textContent).toContain('> experience');
+    expect(container.textContent).toContain('Experience');
     expect(container.textContent).toContain('GitHub');
     expect(container.textContent).not.toContain('TypeScript');
-    expect(container.innerHTML).toContain('rgb(225, 29, 72)');
+    // dark-tuned rose accent
+    expect(container.innerHTML).toContain('rgb(251, 113, 133)');
+    // structured metadata header, no terminal prompt styling
+    expect(container.textContent).toContain('Location');
+    expect(container.textContent).not.toContain('$ ');
   });
 
   it('empty sections are omitted from every template', () => {

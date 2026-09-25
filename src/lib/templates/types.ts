@@ -41,6 +41,21 @@ export const TemplateSchema = z.object({
 
 export type Template = z.infer<typeof TemplateSchema>;
 
+import type { ProfileWithRelations } from '../profiles/repository';
+
+/**
+ * Profiles rendered by portfolio templates. `user_id` is never needed for
+ * presentation and is omitted from the public-safe shape, so it is optional.
+ */
+export type PortfolioProfile = Omit<ProfileWithRelations, 'user_id'> & {
+  user_id?: string;
+};
+
+/** Legacy stored orders used "about"; templates render it as "basics". */
+export function normalizeSectionOrder(order: string[]): string[] {
+  return order.map((section) => (section === 'about' ? 'basics' : section));
+}
+
 const templateRegistry = new Map<string, Template>();
 
 export function registerTemplate(template: Template): void {

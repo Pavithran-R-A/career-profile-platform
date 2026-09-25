@@ -1,9 +1,15 @@
 import type { ComponentType } from 'react';
-import { registerTemplate, type Template, type TemplateConfig } from './types';
+import {
+  registerTemplate,
+  type PortfolioProfile,
+  type Template,
+  type TemplateConfig,
+} from './types';
 import MinimalTemplate from '../../components/templates/MinimalTemplate';
 import EditorialTemplate from '../../components/templates/EditorialTemplate';
 import TechnicalTemplate from '../../components/templates/TechnicalTemplate';
-import type { ProfileWithRelations } from '../profiles/repository';
+
+export type { PortfolioProfile } from './types';
 
 export interface TemplatePreferencesInput {
   accentKey: string;
@@ -12,7 +18,7 @@ export interface TemplatePreferencesInput {
 }
 
 export interface TemplateRendererProps {
-  profile: ProfileWithRelations;
+  profile: PortfolioProfile;
   config: TemplateConfig;
   preferences?: TemplatePreferencesInput;
 }
