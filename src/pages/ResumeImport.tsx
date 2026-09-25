@@ -175,11 +175,12 @@ export default function ResumeImport() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-semibold">Import Resume</h1>
-        <button
-          onClick={() => void navigate('/dashboard')}
-          className="text-gray-600 hover:text-gray-900">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="page-title">Import resume</h1>
+          <p className="page-subtitle">Turn an existing PDF into structured profile data.</p>
+        </div>
+        <button onClick={() => void navigate('/dashboard')} className="link-quiet text-sm">
           ← Back to dashboard
         </button>
       </div>
@@ -215,35 +216,49 @@ export default function ResumeImport() {
       )}
 
       {state === 'empty' && (
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-          <div className="text-gray-400 mb-4">
-            <svg
-              className="mx-auto h-12 w-12"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor">
+        <div className="card p-8 sm:p-10 text-center">
+          <div className="mx-auto w-12 h-12 rounded-xl bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center mb-5">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
+                strokeWidth={1.8}
                 d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
               />
             </svg>
           </div>
-          <p className="text-gray-600 mb-4">
-            Upload your PDF resume to extract profile information
+          <h2 className="section-title">Start with your resume</h2>
+          <p className="text-sm text-[var(--muted-foreground)] mt-2 max-w-md mx-auto leading-relaxed">
+            Upload the PDF you already use for applications. We read it, then let you review
+            everything before anything touches your profile.
           </p>
-          <p className="text-sm text-gray-500 mb-4">PDF files up to 6 MiB, maximum 20 pages</p>
+          <ol className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl mx-auto text-left">
+            {[
+              ['1', 'Upload', 'Your PDF is stored privately on your account.'],
+              ['2', 'Review', 'We extract experience, education and skills.'],
+              ['3', 'Apply', 'You choose exactly what gets added.'],
+            ].map(([n, title, body]) => (
+              <li
+                key={n}
+                className="rounded-xl border border-[var(--border)] p-3.5 bg-[var(--background)]">
+                <span className="text-[11px] font-bold text-[var(--accent)]">{n}</span>
+                <p className="text-sm font-semibold text-[var(--ink)] mt-1">{title}</p>
+                <p className="text-xs text-[var(--muted-foreground)] mt-0.5 leading-snug">{body}</p>
+              </li>
+            ))}
+          </ol>
+          <p className="text-xs text-[var(--faint-foreground)] mt-5">
+            PDF files up to 6 MiB, maximum 20 pages
+          </p>
           <input
             ref={fileInputRef}
             type="file"
             accept=".pdf"
             onChange={(e) => void handleFileSelect(e)}
             className="hidden"
+            aria-label="Resume PDF file"
           />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="bg-gray-900 text-white py-2 px-6 rounded-md hover:bg-gray-800">
+          <button onClick={() => fileInputRef.current?.click()} className="btn btn-primary mt-5">
             Select PDF
           </button>
         </div>

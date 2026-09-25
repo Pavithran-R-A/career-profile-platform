@@ -1,12 +1,204 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
 import { sanitizeUrl } from '../lib/validators/url';
 import { getSupabaseClient } from '../lib/supabase/client';
+import { formatDateRange } from '../lib/profiles/date-format';
+import { LinkIcon } from '../components/portfolio/links';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 
 type EditSection = 'basics' | 'experience' | 'education' | 'projects' | 'skills' | 'links';
+
+const INPUT =
+  'w-full px-3 py-2 border border-[var(--border-strong)] rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:border-transparent';
+
+const MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+function MonthSelect({
+  id,
+  name,
+  defaultValue,
+  disabled,
+}: {
+  id: string;
+  name: string;
+  defaultValue?: number | null;
+  disabled?: boolean;
+}) {
+  return (
+    <select
+      id={id}
+      name={name}
+      defaultValue={defaultValue ?? ''}
+      disabled={disabled}
+      className={`${INPUT} disabled:opacity-50`}
+      aria-label={name}>
+      <option value="">Month</option>
+      {MONTHS.map((m, i) => (
+        <option key={m} value={i + 1}>
+          {m.slice(0, 3)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function YearInput({
+  id,
+  name,
+  defaultValue,
+  required,
+  disabled,
+}: {
+  id: string;
+  name: string;
+  defaultValue?: number | null;
+  required?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      id={id}
+      name={name}
+      type="number"
+      min="1900"
+      max="2099"
+      required={required}
+      defaultValue={defaultValue ?? ''}
+      disabled={disabled}
+      placeholder="Year"
+      className={`${INPUT} disabled:opacity-50`}
+    />
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <label htmlFor={htmlFor} className="block text-sm font-medium mb-1 text-[var(--foreground)]">
+        {label}
+      </label>
+      {children}
+      {hint && <p className="field-hint">{hint}</p>}
+    </div>
+  );
+}
+
+function CardActions({
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  deleteLabel,
+  canMoveUp,
+  canMoveDown,
+}: {
+  onEdit: () => void;
+  onDelete: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  deleteLabel: string;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      {onMoveUp && (
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={!canMoveUp}
+          aria-label="Move up"
+          className="w-8 h-8 rounded-md text-[var(--faint-foreground)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)] disabled:opacity-30 disabled:pointer-events-none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="mx-auto">
+            <path
+              d="m6 15 6-6 6 6"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
+      {onMoveDown && (
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={!canMoveDown}
+          aria-label="Move down"
+          className="w-8 h-8 rounded-md text-[var(--faint-foreground)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)] disabled:opacity-30 disabled:pointer-events-none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="mx-auto">
+            <path
+              d="m6 9 6 6 6-6"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onEdit}
+        className="h-8 px-3 rounded-md text-xs font-semibold border border-[var(--border-strong)] text-[var(--foreground)] hover:bg-[var(--surface-muted)]">
+        Edit
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label={deleteLabel}
+        className="w-8 h-8 rounded-md text-[var(--faint-foreground)] hover:bg-[var(--danger-surface)] hover:text-[var(--danger)]">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="mx-auto">
+          <path
+            d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function EmptyState({ title, body, cta }: { title: string; body: string; cta: string }) {
+  return (
+    <div className="border border-dashed border-[var(--border-strong)] rounded-xl p-6 mb-6 bg-white">
+      <p className="text-sm font-semibold text-[var(--ink)]">{title}</p>
+      <p className="text-sm text-[var(--muted-foreground)] mt-1 leading-relaxed">{body}</p>
+      <p className="text-xs text-[var(--faint-foreground)] mt-3">↓ {cta}</p>
+    </div>
+  );
+}
+
+type EditingKey = `${EditSection}:${string}`;
 
 export default function ProfileEditor() {
   const auth = useAuth();
@@ -16,9 +208,15 @@ export default function ProfileEditor() {
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<EditSection>('basics');
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [editing, setEditing] = useState<EditingKey | null>(null);
 
   const profileService = new ProfileService();
+
+  const flashSuccess = (msg: string) => {
+    setSuccess(msg);
+    setTimeout(() => setSuccess(null), 2600);
+  };
 
   useEffect(() => {
     if (auth.status === 'authenticated') {
@@ -49,8 +247,18 @@ export default function ProfileEditor() {
 
   if (auth.status === 'loading' || loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      <div className="page-shell">
+        <div className="space-y-4" role="status" aria-label="Loading profile editor">
+          <div className="skeleton h-8 w-48" />
+          <div className="flex gap-6">
+            <div className="skeleton h-40 w-40 hidden md:block" />
+            <div className="flex-1 space-y-3">
+              <div className="skeleton h-6 w-40" />
+              <div className="skeleton h-28 w-full" />
+              <div className="skeleton h-28 w-full" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -58,6 +266,83 @@ export default function ProfileEditor() {
   if (auth.status === 'unauthenticated' || !profile) {
     return null;
   }
+
+  const supabase = getSupabaseClient();
+
+  // ── Generic row operations (owner RLS policies cover update/delete) ──
+
+  type RowTable = 'experience' | 'education' | 'projects' | 'links';
+  const TABLE_META: Record<RowTable, { table: string; label: string }> = {
+    experience: { table: 'profile_experiences', label: 'experience' },
+    education: { table: 'profile_education', label: 'education' },
+    projects: { table: 'profile_projects', label: 'project' },
+    links: { table: 'profile_links', label: 'link' },
+  };
+
+  const rowsOf = (t: RowTable) => {
+    if (t === 'experience') return profile.experiences;
+    if (t === 'education') return profile.education;
+    if (t === 'projects') return profile.projects;
+    return profile.links;
+  };
+
+  const handleMove = async (t: RowTable, index: number, dir: -1 | 1) => {
+    const rows = [...rowsOf(t)];
+    const target = index + dir;
+    if (target < 0 || target >= rows.length) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const a = rows[index];
+      const b = rows[target];
+      const aOrder = b.sort_order;
+      const bOrder = a.sort_order;
+      const tableName = TABLE_META[t].table;
+      const { error: e1 } = await supabase
+        .from(tableName as never)
+        .update({ sort_order: aOrder } as never)
+        .eq('id', a.id as never);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase
+        .from(tableName as never)
+        .update({ sort_order: bOrder } as never)
+        .eq('id', b.id as never);
+      if (e2) throw e2;
+      [rows[index], rows[target]] = [rows[target], rows[index]];
+      rows.forEach((r, i) => (r.sort_order = i));
+      if (t === 'experience') setProfile({ ...profile, experiences: rows as never });
+      if (t === 'education') setProfile({ ...profile, education: rows as never });
+      if (t === 'projects') setProfile({ ...profile, projects: rows as never });
+      if (t === 'links') setProfile({ ...profile, links: rows as never });
+    } catch {
+      setError("We couldn't reorder this entry. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRowUpdate = async (t: RowTable, id: string, payload: Record<string, unknown>) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const { error: err } = await supabase
+        .from(TABLE_META[t].table as never)
+        .update(payload as never)
+        .eq('id', id as never);
+      if (err) throw err;
+      const updated = rowsOf(t).map((r) => (r.id === id ? { ...r, ...payload } : r));
+      if (t === 'experience') setProfile({ ...profile, experiences: updated as never });
+      if (t === 'education') setProfile({ ...profile, education: updated as never });
+      if (t === 'projects') setProfile({ ...profile, projects: updated as never });
+      if (t === 'links') setProfile({ ...profile, links: updated as never });
+      setEditing(null);
+      flashSuccess('Changes saved.');
+    } catch {
+      setError("We couldn't save your changes. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleBasicsUpdate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -75,10 +360,9 @@ export default function ProfileEditor() {
     try {
       await profileService.updateProfile(profile.id, updates);
       setProfile({ ...profile, ...updates });
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update profile');
+      flashSuccess('Profile updated.');
+    } catch {
+      setError("We couldn't update your profile. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -89,63 +373,52 @@ export default function ProfileEditor() {
     setSaving(true);
     setError(null);
 
-    const formData = new FormData(e.currentTarget);
+    const fd = new FormData(e.currentTarget);
     const newExperience = {
       profile_id: profile.id,
-      company: formData.get('company') as string,
-      role: formData.get('role') as string,
-      location: (formData.get('location') as string) || null,
-      start_year: parseInt(formData.get('startYear') as string),
-      start_month: formData.get('startMonth')
-        ? parseInt(formData.get('startMonth') as string)
-        : null,
-      end_year: formData.get('endYear') ? parseInt(formData.get('endYear') as string) : null,
-      end_month: formData.get('endMonth') ? parseInt(formData.get('endMonth') as string) : null,
-      is_current: formData.get('isCurrent') === 'on',
-      description: (formData.get('description') as string) || null,
+      company: fd.get('company') as string,
+      role: fd.get('role') as string,
+      location: (fd.get('location') as string) || null,
+      start_year: parseInt(fd.get('startYear') as string),
+      start_month: fd.get('startMonth') ? parseInt(fd.get('startMonth') as string) : null,
+      end_year: fd.get('endYear') ? parseInt(fd.get('endYear') as string) : null,
+      end_month: fd.get('endMonth') ? parseInt(fd.get('endMonth') as string) : null,
+      is_current: fd.get('isCurrent') === 'on',
+      description: (fd.get('description') as string) || null,
       sort_order: profile.experiences.length,
     };
 
     try {
-      const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from('profile_experiences')
         .insert(newExperience)
         .select()
         .single();
-
       if (error) throw error;
-
-      setProfile({
-        ...profile,
-        experiences: [...profile.experiences, data],
-      });
+      setProfile({ ...profile, experiences: [...profile.experiences, data] });
       (e.target as HTMLFormElement).reset();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add experience');
+      flashSuccess('Experience added.');
+    } catch {
+      setError("We couldn't add this experience. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleExperienceDelete = async (experienceId: string) => {
-    if (!confirm('Are you sure you want to delete this experience?')) return;
-
+    if (!confirm('Delete this experience? This can’t be undone.')) return;
     setSaving(true);
     setError(null);
-
     try {
-      const supabase = getSupabaseClient();
       const { error } = await supabase.from('profile_experiences').delete().eq('id', experienceId);
-
       if (error) throw error;
-
       setProfile({
         ...profile,
-        experiences: profile.experiences.filter((e) => e.id !== experienceId),
+        experiences: profile.experiences.filter((x) => x.id !== experienceId),
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete experience');
+      flashSuccess('Experience removed.');
+    } catch {
+      setError("We couldn't delete this experience. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -155,63 +428,47 @@ export default function ProfileEditor() {
     e.preventDefault();
     setSaving(true);
     setError(null);
-
-    const formData = new FormData(e.currentTarget);
-    const newEducation = {
+    const fd = new FormData(e.currentTarget);
+    const row = {
       profile_id: profile.id,
-      institution: formData.get('institution') as string,
-      degree: (formData.get('degree') as string) || null,
-      field_of_study: (formData.get('fieldOfStudy') as string) || null,
-      start_year: formData.get('startYear') ? parseInt(formData.get('startYear') as string) : null,
-      start_month: formData.get('startMonth')
-        ? parseInt(formData.get('startMonth') as string)
-        : null,
-      end_year: formData.get('endYear') ? parseInt(formData.get('endYear') as string) : null,
-      end_month: formData.get('endMonth') ? parseInt(formData.get('endMonth') as string) : null,
-      description: (formData.get('description') as string) || null,
+      institution: fd.get('institution') as string,
+      degree: (fd.get('degree') as string) || null,
+      field_of_study: (fd.get('fieldOfStudy') as string) || null,
+      start_year: fd.get('startYear') ? parseInt(fd.get('startYear') as string) : null,
+      start_month: fd.get('startMonth') ? parseInt(fd.get('startMonth') as string) : null,
+      end_year: fd.get('endYear') ? parseInt(fd.get('endYear') as string) : null,
+      end_month: fd.get('endMonth') ? parseInt(fd.get('endMonth') as string) : null,
+      description: (fd.get('description') as string) || null,
       sort_order: profile.education.length,
     };
-
     try {
-      const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from('profile_education')
-        .insert(newEducation as never)
+        .insert(row as never)
         .select()
         .single();
-
       if (error) throw error;
-
-      setProfile({
-        ...profile,
-        education: [...profile.education, data],
-      });
+      setProfile({ ...profile, education: [...profile.education, data] });
       (e.target as HTMLFormElement).reset();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add education');
+      flashSuccess('Education added.');
+    } catch {
+      setError("We couldn't add this education entry. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleEducationDelete = async (educationId: string) => {
-    if (!confirm('Are you sure you want to delete this education?')) return;
-
+    if (!confirm('Delete this education entry? This can’t be undone.')) return;
     setSaving(true);
     setError(null);
-
     try {
-      const supabase = getSupabaseClient();
       const { error } = await supabase.from('profile_education').delete().eq('id', educationId);
-
       if (error) throw error;
-
-      setProfile({
-        ...profile,
-        education: profile.education.filter((e) => e.id !== educationId),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete education');
+      setProfile({ ...profile, education: profile.education.filter((x) => x.id !== educationId) });
+      flashSuccess('Education removed.');
+    } catch {
+      setError("We couldn't delete this entry. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -221,57 +478,43 @@ export default function ProfileEditor() {
     e.preventDefault();
     setSaving(true);
     setError(null);
-
-    const formData = new FormData(e.currentTarget);
-    const newProject = {
+    const fd = new FormData(e.currentTarget);
+    const row = {
       profile_id: profile.id,
-      name: formData.get('name') as string,
-      description: (formData.get('description') as string) || null,
-      project_url: (formData.get('projectUrl') as string) || null,
-      repository_url: (formData.get('repositoryUrl') as string) || null,
+      name: fd.get('name') as string,
+      description: (fd.get('description') as string) || null,
+      project_url: (fd.get('projectUrl') as string) || null,
+      repository_url: (fd.get('repositoryUrl') as string) || null,
       sort_order: profile.projects.length,
     };
-
     try {
-      const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from('profile_projects')
-        .insert(newProject as never)
+        .insert(row as never)
         .select()
         .single();
-
       if (error) throw error;
-
-      setProfile({
-        ...profile,
-        projects: [...profile.projects, data],
-      });
+      setProfile({ ...profile, projects: [...profile.projects, data] });
       (e.target as HTMLFormElement).reset();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add project');
+      flashSuccess('Project added.');
+    } catch {
+      setError("We couldn't add this project. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleProjectDelete = async (projectId: string) => {
-    if (!confirm('Are you sure you want to delete this project?')) return;
-
+    if (!confirm('Delete this project? This can’t be undone.')) return;
     setSaving(true);
     setError(null);
-
     try {
-      const supabase = getSupabaseClient();
       const { error } = await supabase.from('profile_projects').delete().eq('id', projectId);
-
       if (error) throw error;
-
-      setProfile({
-        ...profile,
-        projects: profile.projects.filter((p) => p.id !== projectId),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete project');
+      setProfile({ ...profile, projects: profile.projects.filter((x) => x.id !== projectId) });
+      flashSuccess('Project removed.');
+    } catch {
+      setError("We couldn't delete this project. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -281,55 +524,41 @@ export default function ProfileEditor() {
     e.preventDefault();
     setSaving(true);
     setError(null);
-
-    const formData = new FormData(e.currentTarget);
-    const newSkill = {
+    const fd = new FormData(e.currentTarget);
+    const row = {
       profile_id: profile.id,
-      name: formData.get('name') as string,
-      category: (formData.get('category') as string) || null,
+      name: fd.get('name') as string,
+      category: (fd.get('category') as string) || null,
       sort_order: profile.skills.length,
     };
-
     try {
-      const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from('profile_skills')
-        .insert(newSkill as never)
+        .insert(row as never)
         .select()
         .single();
-
       if (error) throw error;
-
-      setProfile({
-        ...profile,
-        skills: [...profile.skills, data],
-      });
+      setProfile({ ...profile, skills: [...profile.skills, data] });
       (e.target as HTMLFormElement).reset();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add skill');
+      flashSuccess('Skill added.');
+    } catch {
+      setError("We couldn't add this skill. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleSkillDelete = async (skillId: string) => {
-    if (!confirm('Are you sure you want to delete this skill?')) return;
-
+    if (!confirm('Remove this skill?')) return;
     setSaving(true);
     setError(null);
-
     try {
-      const supabase = getSupabaseClient();
       const { error } = await supabase.from('profile_skills').delete().eq('id', skillId);
-
       if (error) throw error;
-
-      setProfile({
-        ...profile,
-        skills: profile.skills.filter((s) => s.id !== skillId),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete skill');
+      setProfile({ ...profile, skills: profile.skills.filter((x) => x.id !== skillId) });
+      flashSuccess('Skill removed.');
+    } catch {
+      setError("We couldn't remove this skill. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -339,55 +568,41 @@ export default function ProfileEditor() {
     e.preventDefault();
     setSaving(true);
     setError(null);
-
-    const formData = new FormData(e.currentTarget);
-    const newLink = {
+    const fd = new FormData(e.currentTarget);
+    const row = {
       profile_id: profile.id,
-      label: formData.get('label') as string,
-      url: formData.get('url') as string,
+      label: fd.get('label') as string,
+      url: fd.get('url') as string,
       sort_order: profile.links.length,
     };
-
     try {
-      const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from('profile_links')
-        .insert(newLink as never)
+        .insert(row as never)
         .select()
         .single();
-
       if (error) throw error;
-
-      setProfile({
-        ...profile,
-        links: [...profile.links, data],
-      });
+      setProfile({ ...profile, links: [...profile.links, data] });
       (e.target as HTMLFormElement).reset();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add link');
+      flashSuccess('Link added.');
+    } catch {
+      setError("We couldn't add this link. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleLinkDelete = async (linkId: string) => {
-    if (!confirm('Are you sure you want to delete this link?')) return;
-
+    if (!confirm('Remove this link?')) return;
     setSaving(true);
     setError(null);
-
     try {
-      const supabase = getSupabaseClient();
       const { error } = await supabase.from('profile_links').delete().eq('id', linkId);
-
       if (error) throw error;
-
-      setProfile({
-        ...profile,
-        links: profile.links.filter((l) => l.id !== linkId),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete link');
+      setProfile({ ...profile, links: profile.links.filter((x) => x.id !== linkId) });
+      flashSuccess('Link removed.');
+    } catch {
+      setError("We couldn't remove this link. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -402,45 +617,37 @@ export default function ProfileEditor() {
     { id: 'links', label: 'Links' },
   ];
 
-  const handleBackToDashboard = () => {
-    void navigate('/dashboard');
-  };
+  const isEditing = (key: EditingKey) => editing === key;
+  const toggleEdit = (key: EditingKey) => setEditing(editing === key ? null : key);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-semibold">Edit profile</h1>
-        <button onClick={handleBackToDashboard} className="text-gray-600 hover:text-gray-900">
+    <div className="page-shell">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="page-title">Edit profile</h1>
+        <button onClick={() => void navigate('/dashboard')} className="link-quiet text-sm">
           ← Back to dashboard
         </button>
       </div>
 
-      {error && (
-        <div
-          className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6"
-          role="alert">
-          {error}
-        </div>
-      )}
+      <div role="alert" aria-live="assertive">
+        {error && <div className="alert alert-error mb-5">{error}</div>}
+      </div>
+      <div role="status" aria-live="polite">
+        {success && <div className="alert alert-success mb-5">{success}</div>}
+      </div>
 
-      {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-6">
-          Profile updated successfully
-        </div>
-      )}
-
-      <div className="flex flex-col md:flex-row gap-8">
-        <nav className="md:w-48 flex-shrink-0">
-          <ul className="space-y-1">
+      <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+        <nav className="md:w-44 flex-shrink-0" aria-label="Profile sections">
+          <ul className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible -mx-1 px-1 md:mx-0 md:px-0 pb-2 md:pb-0 md:sticky md:top-20">
             {sections.map((section) => (
-              <li key={section.id}>
+              <li key={section.id} className="shrink-0">
                 <button
-                  onClick={() => setActiveSection(section.id)}
-                  className={`w-full text-left px-3 py-2 rounded-md ${
-                    activeSection === section.id
-                      ? 'bg-gray-100 text-gray-900 font-medium'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}>
+                  onClick={() => {
+                    setActiveSection(section.id);
+                    setEditing(null);
+                  }}
+                  aria-current={activeSection === section.id ? 'page' : undefined}
+                  className={`side-nav-link min-h-[44px] md:min-h-0 ${activeSection === section.id ? 'side-nav-link-active' : ''}`}>
                   {section.label}
                 </button>
               </li>
@@ -448,230 +655,301 @@ export default function ProfileEditor() {
           </ul>
         </nav>
 
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           {activeSection === 'basics' && (
-            <form onSubmit={(e) => void handleBasicsUpdate(e)} className="space-y-4">
-              <h2 className="text-lg font-medium mb-4">Basic information</h2>
+            <form onSubmit={(e) => void handleBasicsUpdate(e)} className="space-y-4 card card-pad">
               <div>
-                <label htmlFor="displayName" className="block text-sm font-medium mb-1">
-                  Display Name
-                </label>
+                <h2 className="section-title">Basic information</h2>
+                <p className="text-sm text-[var(--muted-foreground)] mt-1">
+                  The headline of your career story — shown across your portfolio and resume.
+                </p>
+              </div>
+              <Field
+                label="Display name"
+                htmlFor="displayName"
+                hint="Shown as the title of your public profile.">
                 <input
                   id="displayName"
                   name="displayName"
                   type="text"
                   defaultValue={profile.display_name || ''}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  maxLength={255}
+                  className={INPUT}
                 />
-              </div>
-              <div>
-                <label htmlFor="headline" className="block text-sm font-medium mb-1">
-                  Headline
-                </label>
+              </Field>
+              <Field
+                label="Headline"
+                htmlFor="headline"
+                hint="One line about your focus — e.g. “Senior Software Engineer · Data Platforms”.">
                 <input
                   id="headline"
                   name="headline"
                   type="text"
                   defaultValue={profile.headline || ''}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  maxLength={255}
+                  placeholder="e.g., Senior Software Engineer"
+                  className={INPUT}
                 />
-              </div>
-              <div>
-                <label htmlFor="about" className="block text-sm font-medium mb-1">
-                  About
-                </label>
+              </Field>
+              <Field
+                label="About"
+                htmlFor="about"
+                hint="2–4 sentences on your focus, strengths and the work you're proud of.">
                 <textarea
                   id="about"
                   name="about"
                   defaultValue={profile.about || ''}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  rows={5}
+                  maxLength={2000}
+                  placeholder="What should a recruiter know about you in under a minute?"
+                  className={INPUT}
                 />
-              </div>
-              <div>
-                <label htmlFor="location" className="block text-sm font-medium mb-1">
-                  Location
-                </label>
+              </Field>
+              <Field label="Location" htmlFor="location" hint="City and country, or “Remote”.">
                 <input
                   id="location"
                   name="location"
                   type="text"
                   defaultValue={profile.location || ''}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  placeholder="e.g., Berlin, Germany"
+                  className={INPUT}
                 />
-              </div>
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed">
-                {saving ? 'Saving...' : 'Save changes'}
+              </Field>
+              <button type="submit" disabled={saving} className="btn btn-primary">
+                {saving ? 'Saving…' : 'Save changes'}
               </button>
             </form>
           )}
 
           {activeSection === 'experience' && (
             <div>
-              <h2 className="text-lg font-medium mb-4">Experience</h2>
-              {profile.experiences.length > 0 ? (
-                <div className="space-y-4 mb-6">
-                  {profile.experiences.map((exp) => (
-                    <div key={exp.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-medium">{exp.role}</h3>
-                          <p className="text-gray-600">{exp.company}</p>
-                          <p className="text-sm text-gray-500">
-                            {exp.start_year}
-                            {exp.start_month ? `/${exp.start_month}` : ''} -{' '}
-                            {exp.is_current
-                              ? 'Present'
-                              : exp.end_year
-                                ? `${exp.end_year}${exp.end_month ? `/${exp.end_month}` : ''}`
-                                : ''}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            void handleExperienceDelete(exp.id);
-                          }}
-                          className="text-red-600 hover:text-red-800 text-sm">
-                          Delete
-                        </button>
-                      </div>
-                      {exp.description && (
-                        <p className="mt-2 text-sm text-gray-600">{exp.description}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+              <h2 className="section-title mb-1">Experience</h2>
+              <p className="text-sm text-[var(--muted-foreground)] mb-5">
+                Roles recruiters care about most. Lead with impact, not task lists.
+              </p>
+
+              {profile.experiences.length === 0 ? (
+                <EmptyState
+                  title="No roles yet"
+                  body="Experience is the first thing recruiters scan. Add where you've worked and what you shipped."
+                  cta="Add your first role below"
+                />
               ) : (
-                <p className="text-gray-500 mb-6">No experience added yet.</p>
+                <div className="space-y-3 mb-6">
+                  {profile.experiences.map((exp, idx) =>
+                    isEditing(`experience:${exp.id}`) ? (
+                      <form
+                        key={exp.id}
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const fd = new FormData(e.currentTarget);
+                          void handleRowUpdate('experience', exp.id, {
+                            company: fd.get('company') as string,
+                            role: fd.get('role') as string,
+                            location: (fd.get('location') as string) || null,
+                            start_year: parseInt(fd.get('startYear') as string),
+                            start_month: fd.get('startMonth')
+                              ? parseInt(fd.get('startMonth') as string)
+                              : null,
+                            end_year: fd.get('endYear')
+                              ? parseInt(fd.get('endYear') as string)
+                              : null,
+                            end_month: fd.get('endMonth')
+                              ? parseInt(fd.get('endMonth') as string)
+                              : null,
+                            is_current: fd.get('isCurrent') === 'on',
+                            description: (fd.get('description') as string) || null,
+                          });
+                        }}
+                        className="card card-pad border-[var(--accent)] space-y-4">
+                        <p className="text-sm font-semibold text-[var(--accent)]">Editing role</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <Field label="Role" htmlFor={`exp-role-${exp.id}`}>
+                            <input
+                              id={`exp-role-${exp.id}`}
+                              name="role"
+                              defaultValue={exp.role}
+                              required
+                              className={INPUT}
+                            />
+                          </Field>
+                          <Field label="Company" htmlFor={`exp-company-${exp.id}`}>
+                            <input
+                              id={`exp-company-${exp.id}`}
+                              name="company"
+                              defaultValue={exp.company}
+                              required
+                              className={INPUT}
+                            />
+                          </Field>
+                        </div>
+                        <Field label="Location" htmlFor={`exp-location-${exp.id}`}>
+                          <input
+                            id={`exp-location-${exp.id}`}
+                            name="location"
+                            defaultValue={exp.location || ''}
+                            className={INPUT}
+                          />
+                        </Field>
+                        <fieldset className="border-0 p-0 m-0">
+                          <legend className="field-label">Dates</legend>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <MonthSelect
+                              id={`exp-sm-${exp.id}`}
+                              name="startMonth"
+                              defaultValue={exp.start_month}
+                            />
+                            <YearInput
+                              id={`exp-sy-${exp.id}`}
+                              name="startYear"
+                              defaultValue={exp.start_year}
+                              required
+                            />
+                            <MonthSelect
+                              id={`exp-em-${exp.id}`}
+                              name="endMonth"
+                              defaultValue={exp.end_month}
+                              disabled={exp.is_current}
+                            />
+                            <YearInput
+                              id={`exp-ey-${exp.id}`}
+                              name="endYear"
+                              defaultValue={exp.end_year}
+                              disabled={exp.is_current}
+                            />
+                          </div>
+                          <label className="flex items-center gap-2 mt-3 text-sm text-[var(--muted-foreground)]">
+                            <input
+                              type="checkbox"
+                              name="isCurrent"
+                              defaultChecked={exp.is_current}
+                              className="h-4 w-4"
+                            />
+                            I currently work here
+                          </label>
+                        </fieldset>
+                        <Field label="Description" htmlFor={`exp-desc-${exp.id}`}>
+                          <textarea
+                            id={`exp-desc-${exp.id}`}
+                            name="description"
+                            rows={3}
+                            defaultValue={exp.description || ''}
+                            className={INPUT}
+                          />
+                        </Field>
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={saving}
+                            className="btn btn-primary !min-h-[40px] !py-2 text-sm">
+                            {saving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditing(null)}
+                            className="btn btn-ghost !min-h-[40px] !py-2 text-sm">
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <article key={exp.id} className="card card-pad">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="text-[15px] font-semibold text-[var(--ink)]">
+                              {exp.role}
+                            </h3>
+                            <p className="text-sm text-[var(--accent)] font-medium">
+                              {exp.company}
+                            </p>
+                            <p className="text-xs text-[var(--faint-foreground)] mt-0.5">
+                              {formatDateRange({
+                                startYear: exp.start_year,
+                                startMonth: exp.start_month,
+                                endYear: exp.end_year,
+                                endMonth: exp.end_month,
+                                current: exp.is_current,
+                              })}
+                              {exp.location ? ` · ${exp.location}` : ''}
+                            </p>
+                          </div>
+                          <CardActions
+                            onEdit={() => toggleEdit(`experience:${exp.id}`)}
+                            onDelete={() => void handleExperienceDelete(exp.id)}
+                            onMoveUp={() => void handleMove('experience', idx, -1)}
+                            onMoveDown={() => void handleMove('experience', idx, 1)}
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < profile.experiences.length - 1}
+                            deleteLabel={`Delete ${exp.role} at ${exp.company}`}
+                          />
+                        </div>
+                        {exp.description && (
+                          <p className="text-sm text-[var(--muted-foreground)] mt-2 leading-relaxed">
+                            {exp.description}
+                          </p>
+                        )}
+                      </article>
+                    )
+                  )}
+                </div>
               )}
 
               <form
                 onSubmit={(e) => void handleExperienceAdd(e)}
-                className="border border-gray-200 rounded-lg p-4 space-y-4">
-                <h3 className="font-medium">Add experience</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="company" className="block text-sm font-medium mb-1">
-                      Company
-                    </label>
+                className="card card-pad space-y-4">
+                <h3 className="text-sm font-semibold text-[var(--ink)]">Add experience</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Role" htmlFor="exp-new-role">
+                    <input id="exp-new-role" name="role" type="text" required className={INPUT} />
+                  </Field>
+                  <Field label="Company" htmlFor="exp-new-company">
                     <input
-                      id="company"
+                      id="exp-new-company"
                       name="company"
                       type="text"
                       required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                      className={INPUT}
                     />
-                  </div>
-                  <div>
-                    <label htmlFor="role" className="block text-sm font-medium mb-1">
-                      Role
-                    </label>
-                    <input
-                      id="role"
-                      name="role"
-                      type="text"
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
-                  </div>
+                  </Field>
                 </div>
-                <div>
-                  <label htmlFor="location" className="block text-sm font-medium mb-1">
-                    Location
-                  </label>
-                  <input
-                    id="location"
-                    name="location"
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                  />
-                </div>
-                <div className="grid grid-cols-4 gap-4">
-                  <div>
-                    <label htmlFor="startYear" className="block text-sm font-medium mb-1">
-                      Start Year
-                    </label>
-                    <input
-                      id="startYear"
-                      name="startYear"
-                      type="number"
-                      min="1900"
-                      max="2099"
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
+                <Field label="Location" htmlFor="exp-new-location">
+                  <input id="exp-new-location" name="location" type="text" className={INPUT} />
+                </Field>
+                <fieldset className="border-0 p-0 m-0">
+                  <legend className="field-label">Dates</legend>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <MonthSelect id="exp-new-sm" name="startMonth" />
+                    <YearInput id="exp-new-sy" name="startYear" required />
+                    <MonthSelect id="exp-new-em" name="endMonth" />
+                    <YearInput id="exp-new-ey" name="endYear" />
                   </div>
-                  <div>
-                    <label htmlFor="startMonth" className="block text-sm font-medium mb-1">
-                      Month
-                    </label>
+                  <label className="flex items-center gap-2 mt-3 text-sm text-[var(--muted-foreground)]">
                     <input
-                      id="startMonth"
-                      name="startMonth"
-                      type="number"
-                      min="1"
-                      max="12"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                      type="checkbox"
+                      name="isCurrent"
+                      onChange={(e) => {
+                        const form = e.currentTarget.form;
+                        if (!form) return;
+                        (form.elements.namedItem('endYear') as HTMLInputElement).disabled =
+                          e.currentTarget.checked;
+                        (
+                          form.elements.namedItem('endMonth') as unknown as HTMLSelectElement
+                        ).disabled = e.currentTarget.checked;
+                      }}
+                      className="h-4 w-4"
                     />
-                  </div>
-                  <div>
-                    <label htmlFor="endYear" className="block text-sm font-medium mb-1">
-                      End Year
-                    </label>
-                    <input
-                      id="endYear"
-                      name="endYear"
-                      type="number"
-                      min="1900"
-                      max="2099"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="endMonth" className="block text-sm font-medium mb-1">
-                      Month
-                    </label>
-                    <input
-                      id="endMonth"
-                      name="endMonth"
-                      type="number"
-                      min="1"
-                      max="12"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  <input
-                    id="isCurrent"
-                    name="isCurrent"
-                    type="checkbox"
-                    className="h-4 w-4 text-gray-900 focus:ring-gray-900 border-gray-300 rounded"
-                  />
-                  <label htmlFor="isCurrent" className="ml-2 text-sm text-gray-600">
                     Current position
                   </label>
-                </div>
-                <div>
-                  <label htmlFor="description" className="block text-sm font-medium mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    id="description"
-                    name="description"
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {saving ? 'Adding...' : 'Add experience'}
+                </fieldset>
+                <Field
+                  label="Description"
+                  htmlFor="exp-new-desc"
+                  hint="Impact, scope, technologies — a few lines.">
+                  <textarea id="exp-new-desc" name="description" rows={3} className={INPUT} />
+                </Field>
+                <button type="submit" disabled={saving} className="btn btn-primary">
+                  {saving ? 'Adding…' : 'Add experience'}
                 </button>
               </form>
             </div>
@@ -679,158 +957,196 @@ export default function ProfileEditor() {
 
           {activeSection === 'education' && (
             <div>
-              <h2 className="text-lg font-medium mb-4">Education</h2>
-              {profile.education.length > 0 ? (
-                <div className="space-y-4 mb-6">
-                  {profile.education.map((edu) => (
-                    <div key={edu.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-medium">{edu.institution}</h3>
-                          {edu.degree && (
-                            <p className="text-gray-600">
-                              {edu.degree}
-                              {edu.field_of_study ? ` in ${edu.field_of_study}` : ''}
-                            </p>
-                          )}
-                          <p className="text-sm text-gray-500">
-                            {edu.start_year
-                              ? `${edu.start_year}${edu.start_month ? `/${edu.start_month}` : ''}`
-                              : ''}{' '}
-                            -{' '}
-                            {edu.end_year
-                              ? `${edu.end_year}${edu.end_month ? `/${edu.end_month}` : ''}`
-                              : 'Present'}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            void handleEducationDelete(edu.id);
-                          }}
-                          className="text-red-600 hover:text-red-800 text-sm">
-                          Delete
-                        </button>
-                      </div>
-                      {edu.description && (
-                        <p className="mt-2 text-sm text-gray-600">{edu.description}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+              <h2 className="section-title mb-1">Education</h2>
+              <p className="text-sm text-[var(--muted-foreground)] mb-5">
+                Degrees, bootcamps and certifications that support your story.
+              </p>
+
+              {profile.education.length === 0 ? (
+                <EmptyState
+                  title="No education added"
+                  body="Even short programs add credibility — include schools, bootcamps or certificates."
+                  cta="Add an entry below"
+                />
               ) : (
-                <p className="text-gray-500 mb-6">No education added yet.</p>
+                <div className="space-y-3 mb-6">
+                  {profile.education.map((edu, idx) =>
+                    isEditing(`education:${edu.id}`) ? (
+                      <form
+                        key={edu.id}
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const fd = new FormData(e.currentTarget);
+                          void handleRowUpdate('education', edu.id, {
+                            institution: fd.get('institution') as string,
+                            degree: (fd.get('degree') as string) || null,
+                            field_of_study: (fd.get('fieldOfStudy') as string) || null,
+                            start_year: fd.get('startYear')
+                              ? parseInt(fd.get('startYear') as string)
+                              : null,
+                            start_month: fd.get('startMonth')
+                              ? parseInt(fd.get('startMonth') as string)
+                              : null,
+                            end_year: fd.get('endYear')
+                              ? parseInt(fd.get('endYear') as string)
+                              : null,
+                            end_month: fd.get('endMonth')
+                              ? parseInt(fd.get('endMonth') as string)
+                              : null,
+                            description: (fd.get('description') as string) || null,
+                          });
+                        }}
+                        className="card card-pad border-[var(--accent)] space-y-4">
+                        <p className="text-sm font-semibold text-[var(--accent)]">Editing entry</p>
+                        <Field label="Institution" htmlFor={`edu-inst-${edu.id}`}>
+                          <input
+                            id={`edu-inst-${edu.id}`}
+                            name="institution"
+                            defaultValue={edu.institution}
+                            required
+                            className={INPUT}
+                          />
+                        </Field>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <Field label="Degree" htmlFor={`edu-degree-${edu.id}`}>
+                            <input
+                              id={`edu-degree-${edu.id}`}
+                              name="degree"
+                              defaultValue={edu.degree || ''}
+                              className={INPUT}
+                            />
+                          </Field>
+                          <Field label="Field of study" htmlFor={`edu-field-${edu.id}`}>
+                            <input
+                              id={`edu-field-${edu.id}`}
+                              name="fieldOfStudy"
+                              defaultValue={edu.field_of_study || ''}
+                              className={INPUT}
+                            />
+                          </Field>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <MonthSelect
+                            id={`edu-sm-${edu.id}`}
+                            name="startMonth"
+                            defaultValue={edu.start_month}
+                          />
+                          <YearInput
+                            id={`edu-sy-${edu.id}`}
+                            name="startYear"
+                            defaultValue={edu.start_year}
+                          />
+                          <MonthSelect
+                            id={`edu-em-${edu.id}`}
+                            name="endMonth"
+                            defaultValue={edu.end_month}
+                          />
+                          <YearInput
+                            id={`edu-ey-${edu.id}`}
+                            name="endYear"
+                            defaultValue={edu.end_year}
+                          />
+                        </div>
+                        <Field label="Description" htmlFor={`edu-desc-${edu.id}`}>
+                          <textarea
+                            id={`edu-desc-${edu.id}`}
+                            name="description"
+                            rows={2}
+                            defaultValue={edu.description || ''}
+                            className={INPUT}
+                          />
+                        </Field>
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={saving}
+                            className="btn btn-primary !min-h-[40px] !py-2 text-sm">
+                            {saving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditing(null)}
+                            className="btn btn-ghost !min-h-[40px] !py-2 text-sm">
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <article key={edu.id} className="card card-pad">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="text-[15px] font-semibold text-[var(--ink)]">
+                              {edu.institution}
+                            </h3>
+                            <p className="text-sm text-[var(--muted-foreground)]">
+                              {[edu.degree, edu.field_of_study].filter(Boolean).join(' — ')}
+                            </p>
+                            <p className="text-xs text-[var(--faint-foreground)] mt-0.5">
+                              {formatDateRange({
+                                startYear: edu.start_year,
+                                startMonth: edu.start_month,
+                                endYear: edu.end_year,
+                                endMonth: edu.end_month,
+                                current: !edu.end_year,
+                              })}
+                            </p>
+                          </div>
+                          <CardActions
+                            onEdit={() => toggleEdit(`education:${edu.id}`)}
+                            onDelete={() => void handleEducationDelete(edu.id)}
+                            onMoveUp={() => void handleMove('education', idx, -1)}
+                            onMoveDown={() => void handleMove('education', idx, 1)}
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < profile.education.length - 1}
+                            deleteLabel={`Delete ${edu.institution}`}
+                          />
+                        </div>
+                        {edu.description && (
+                          <p className="text-sm text-[var(--muted-foreground)] mt-2">
+                            {edu.description}
+                          </p>
+                        )}
+                      </article>
+                    )
+                  )}
+                </div>
               )}
 
               <form
                 onSubmit={(e) => void handleEducationAdd(e)}
-                className="border border-gray-200 rounded-lg p-4 space-y-4">
-                <h3 className="font-medium">Add education</h3>
-                <div>
-                  <label htmlFor="institution" className="block text-sm font-medium mb-1">
-                    Institution
-                  </label>
+                className="card card-pad space-y-4">
+                <h3 className="text-sm font-semibold text-[var(--ink)]">Add education</h3>
+                <Field label="Institution" htmlFor="edu-new-inst">
                   <input
-                    id="institution"
+                    id="edu-new-inst"
                     name="institution"
                     type="text"
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    className={INPUT}
                   />
+                </Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Degree" htmlFor="edu-new-degree">
+                    <input id="edu-new-degree" name="degree" type="text" className={INPUT} />
+                  </Field>
+                  <Field label="Field of study" htmlFor="edu-new-field">
+                    <input id="edu-new-field" name="fieldOfStudy" type="text" className={INPUT} />
+                  </Field>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="degree" className="block text-sm font-medium mb-1">
-                      Degree
-                    </label>
-                    <input
-                      id="degree"
-                      name="degree"
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
+                <fieldset className="border-0 p-0 m-0">
+                  <legend className="field-label">Dates</legend>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <MonthSelect id="edu-new-sm" name="startMonth" />
+                    <YearInput id="edu-new-sy" name="startYear" />
+                    <MonthSelect id="edu-new-em" name="endMonth" />
+                    <YearInput id="edu-new-ey" name="endYear" />
                   </div>
-                  <div>
-                    <label htmlFor="fieldOfStudy" className="block text-sm font-medium mb-1">
-                      Field of Study
-                    </label>
-                    <input
-                      id="fieldOfStudy"
-                      name="fieldOfStudy"
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-4 gap-4">
-                  <div>
-                    <label htmlFor="startYear" className="block text-sm font-medium mb-1">
-                      Start Year
-                    </label>
-                    <input
-                      id="startYear"
-                      name="startYear"
-                      type="number"
-                      min="1900"
-                      max="2099"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="startMonth" className="block text-sm font-medium mb-1">
-                      Month
-                    </label>
-                    <input
-                      id="startMonth"
-                      name="startMonth"
-                      type="number"
-                      min="1"
-                      max="12"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="endYear" className="block text-sm font-medium mb-1">
-                      End Year
-                    </label>
-                    <input
-                      id="endYear"
-                      name="endYear"
-                      type="number"
-                      min="1900"
-                      max="2099"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="endMonth" className="block text-sm font-medium mb-1">
-                      Month
-                    </label>
-                    <input
-                      id="endMonth"
-                      name="endMonth"
-                      type="number"
-                      min="1"
-                      max="12"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="description" className="block text-sm font-medium mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    id="description"
-                    name="description"
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {saving ? 'Adding...' : 'Add education'}
+                </fieldset>
+                <Field label="Description" htmlFor="edu-new-desc">
+                  <textarea id="edu-new-desc" name="description" rows={2} className={INPUT} />
+                </Field>
+                <button type="submit" disabled={saving} className="btn btn-primary">
+                  {saving ? 'Adding…' : 'Add education'}
                 </button>
               </form>
             </div>
@@ -838,109 +1154,186 @@ export default function ProfileEditor() {
 
           {activeSection === 'projects' && (
             <div>
-              <h2 className="text-lg font-medium mb-4">Projects</h2>
-              {profile.projects.length > 0 ? (
-                <div className="space-y-4 mb-6">
-                  {profile.projects.map((project) => (
-                    <div key={project.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-medium">{project.name}</h3>
-                          {project.description && (
-                            <p className="text-gray-600 text-sm mt-1">{project.description}</p>
-                          )}
-                          <div className="flex gap-4 mt-2 text-sm text-gray-500">
-                            {project.project_url && (
-                              <a
-                                href={sanitizeUrl(project.project_url)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="hover:text-gray-900">
-                                Project URL
-                              </a>
-                            )}
-                            {project.repository_url && (
-                              <a
-                                href={sanitizeUrl(project.repository_url)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="hover:text-gray-900">
-                                Repository
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => {
-                            void handleProjectDelete(project.id);
-                          }}
-                          className="text-red-600 hover:text-red-800 text-sm">
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <h2 className="section-title mb-1">Projects</h2>
+              <p className="text-sm text-[var(--muted-foreground)] mb-5">
+                Proof you can ship — link the live version and the code.
+              </p>
+
+              {profile.projects.length === 0 ? (
+                <EmptyState
+                  title="No projects yet"
+                  body="Projects show what you actually build. Even one strong project with a live link makes a difference."
+                  cta="Add a project below"
+                />
               ) : (
-                <p className="text-gray-500 mb-6">No projects added yet.</p>
+                <div className="space-y-3 mb-6">
+                  {profile.projects.map((project, idx) =>
+                    isEditing(`projects:${project.id}`) ? (
+                      <form
+                        key={project.id}
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const fd = new FormData(e.currentTarget);
+                          void handleRowUpdate('projects', project.id, {
+                            name: fd.get('name') as string,
+                            description: (fd.get('description') as string) || null,
+                            project_url: (fd.get('projectUrl') as string) || null,
+                            repository_url: (fd.get('repositoryUrl') as string) || null,
+                          });
+                        }}
+                        className="card card-pad border-[var(--accent)] space-y-4">
+                        <p className="text-sm font-semibold text-[var(--accent)]">
+                          Editing project
+                        </p>
+                        <Field label="Name" htmlFor={`proj-name-${project.id}`}>
+                          <input
+                            id={`proj-name-${project.id}`}
+                            name="name"
+                            defaultValue={project.name}
+                            required
+                            className={INPUT}
+                          />
+                        </Field>
+                        <Field label="Description" htmlFor={`proj-desc-${project.id}`}>
+                          <textarea
+                            id={`proj-desc-${project.id}`}
+                            name="description"
+                            rows={3}
+                            defaultValue={project.description || ''}
+                            className={INPUT}
+                          />
+                        </Field>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <Field label="Project URL" htmlFor={`proj-url-${project.id}`}>
+                            <input
+                              id={`proj-url-${project.id}`}
+                              name="projectUrl"
+                              type="url"
+                              defaultValue={project.project_url || ''}
+                              className={INPUT}
+                            />
+                          </Field>
+                          <Field label="Repository URL" htmlFor={`proj-repo-${project.id}`}>
+                            <input
+                              id={`proj-repo-${project.id}`}
+                              name="repositoryUrl"
+                              type="url"
+                              defaultValue={project.repository_url || ''}
+                              className={INPUT}
+                            />
+                          </Field>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={saving}
+                            className="btn btn-primary !min-h-[40px] !py-2 text-sm">
+                            {saving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditing(null)}
+                            className="btn btn-ghost !min-h-[40px] !py-2 text-sm">
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <article key={project.id} className="card card-pad">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span
+                                aria-hidden="true"
+                                className="w-8 h-8 rounded-lg bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center shrink-0">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                                  <path
+                                    d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z"
+                                    stroke="currentColor"
+                                    strokeWidth="1.7"
+                                  />
+                                </svg>
+                              </span>
+                              <h3 className="text-[15px] font-semibold text-[var(--ink)] truncate">
+                                {project.name}
+                              </h3>
+                            </div>
+                            {project.description && (
+                              <p className="text-sm text-[var(--muted-foreground)] mt-2 leading-relaxed">
+                                {project.description}
+                              </p>
+                            )}
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2.5 text-xs font-medium">
+                              {project.project_url && (
+                                <a
+                                  href={sanitizeUrl(project.project_url)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline">
+                                  Live ↗
+                                </a>
+                              )}
+                              {project.repository_url && (
+                                <a
+                                  href={sanitizeUrl(project.repository_url)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[var(--muted-foreground)] hover:text-[var(--ink)] hover:underline">
+                                  <LinkIcon label="GitHub" url={project.repository_url} size={13} />
+                                  Source
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                          <CardActions
+                            onEdit={() => toggleEdit(`projects:${project.id}`)}
+                            onDelete={() => void handleProjectDelete(project.id)}
+                            onMoveUp={() => void handleMove('projects', idx, -1)}
+                            onMoveDown={() => void handleMove('projects', idx, 1)}
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < profile.projects.length - 1}
+                            deleteLabel={`Delete project ${project.name}`}
+                          />
+                        </div>
+                      </article>
+                    )
+                  )}
+                </div>
               )}
 
-              <form
-                onSubmit={(e) => void handleProjectAdd(e)}
-                className="border border-gray-200 rounded-lg p-4 space-y-4">
-                <h3 className="font-medium">Add project</h3>
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium mb-1">
-                    Name
-                  </label>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="description" className="block text-sm font-medium mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    id="description"
-                    name="description"
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="projectUrl" className="block text-sm font-medium mb-1">
-                      Project URL
-                    </label>
+              <form onSubmit={(e) => void handleProjectAdd(e)} className="card card-pad space-y-4">
+                <h3 className="text-sm font-semibold text-[var(--ink)]">Add project</h3>
+                <Field label="Name" htmlFor="proj-new-name">
+                  <input id="proj-new-name" name="name" type="text" required className={INPUT} />
+                </Field>
+                <Field
+                  label="Description"
+                  htmlFor="proj-new-desc"
+                  hint="What it does and why it matters — one or two lines.">
+                  <textarea id="proj-new-desc" name="description" rows={3} className={INPUT} />
+                </Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Project URL" htmlFor="proj-new-url">
                     <input
-                      id="projectUrl"
+                      id="proj-new-url"
                       name="projectUrl"
                       type="url"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                      placeholder="https://"
+                      className={INPUT}
                     />
-                  </div>
-                  <div>
-                    <label htmlFor="repositoryUrl" className="block text-sm font-medium mb-1">
-                      Repository URL
-                    </label>
+                  </Field>
+                  <Field label="Repository URL" htmlFor="proj-new-repo">
                     <input
-                      id="repositoryUrl"
+                      id="proj-new-repo"
                       name="repositoryUrl"
                       type="url"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                      placeholder="https://github.com/…"
+                      className={INPUT}
                     />
-                  </div>
+                  </Field>
                 </div>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {saving ? 'Adding...' : 'Add project'}
+                <button type="submit" disabled={saving} className="btn btn-primary">
+                  {saving ? 'Adding…' : 'Add project'}
                 </button>
               </form>
             </div>
@@ -948,63 +1341,68 @@ export default function ProfileEditor() {
 
           {activeSection === 'skills' && (
             <div>
-              <h2 className="text-lg font-medium mb-4">Skills</h2>
-              {profile.skills.length > 0 ? (
+              <h2 className="section-title mb-1">Skills</h2>
+              <p className="text-sm text-[var(--muted-foreground)] mb-5">
+                The tools and technologies you actually use — they surface in job matching and on
+                your portfolio.
+              </p>
+
+              {profile.skills.length === 0 ? (
+                <EmptyState
+                  title="No skills yet"
+                  body="Skills help recruiters and job tailoring find the match between you and a role."
+                  cta="Add your first skill below"
+                />
+              ) : (
                 <div className="flex flex-wrap gap-2 mb-6">
                   {profile.skills.map((skill) => (
-                    <div
-                      key={skill.id}
-                      className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full">
-                      <span>{skill.name}</span>
+                    <span key={skill.id} className="chip !py-1.5 !pr-1.5 gap-1.5">
+                      {skill.name}
+                      {skill.category && (
+                        <span className="text-[10px] uppercase tracking-wide text-[var(--faint-foreground)]">
+                          {skill.category}
+                        </span>
+                      )}
                       <button
-                        onClick={() => {
-                          void handleSkillDelete(skill.id);
-                        }}
-                        className="text-gray-500 hover:text-red-600">
-                        ×
+                        type="button"
+                        onClick={() => void handleSkillDelete(skill.id)}
+                        aria-label={`Remove skill ${skill.name}`}
+                        className="w-6 h-6 -mr-1 rounded-full text-[var(--faint-foreground)] hover:bg-[var(--danger-surface)] hover:text-[var(--danger)] inline-flex items-center justify-center">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M6 6l12 12M18 6 6 18"
+                            stroke="currentColor"
+                            strokeWidth="2.4"
+                            strokeLinecap="round"
+                          />
+                        </svg>
                       </button>
-                    </div>
+                    </span>
                   ))}
                 </div>
-              ) : (
-                <p className="text-gray-500 mb-6">No skills added yet.</p>
               )}
 
-              <form
-                onSubmit={(e) => void handleSkillAdd(e)}
-                className="border border-gray-200 rounded-lg p-4 space-y-4">
-                <h3 className="font-medium">Add skill</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="name" className="block text-sm font-medium mb-1">
-                      Skill Name
-                    </label>
+              <form onSubmit={(e) => void handleSkillAdd(e)} className="card card-pad space-y-4">
+                <h3 className="text-sm font-semibold text-[var(--ink)]">Add skill</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Skill name" htmlFor="skill-new-name">
+                    <input id="skill-new-name" name="name" type="text" required className={INPUT} />
+                  </Field>
+                  <Field
+                    label="Category"
+                    htmlFor="skill-new-cat"
+                    hint="Optional grouping — e.g., Languages, Cloud.">
                     <input
-                      id="name"
-                      name="name"
-                      type="text"
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="category" className="block text-sm font-medium mb-1">
-                      Category
-                    </label>
-                    <input
-                      id="category"
+                      id="skill-new-cat"
                       name="category"
                       type="text"
-                      placeholder="e.g., Programming, Design"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                      placeholder="e.g., Languages"
+                      className={INPUT}
                     />
-                  </div>
+                  </Field>
                 </div>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {saving ? 'Adding...' : 'Add skill'}
+                <button type="submit" disabled={saving} className="btn btn-primary">
+                  {saving ? 'Adding…' : 'Add skill'}
                 </button>
               </form>
             </div>
@@ -1012,73 +1410,133 @@ export default function ProfileEditor() {
 
           {activeSection === 'links' && (
             <div>
-              <h2 className="text-lg font-medium mb-4">Links</h2>
-              {profile.links.length > 0 ? (
-                <div className="space-y-4 mb-6">
-                  {profile.links.map((link) => (
-                    <div key={link.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="font-medium">{link.label}</h3>
-                          <a
-                            href={sanitizeUrl(link.url)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-gray-600 hover:text-gray-900">
-                            {link.url}
-                          </a>
-                        </div>
-                        <button
-                          onClick={() => {
-                            void handleLinkDelete(link.id);
-                          }}
-                          className="text-red-600 hover:text-red-800 text-sm">
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <h2 className="section-title mb-1">Links</h2>
+              <p className="text-sm text-[var(--muted-foreground)] mb-5">
+                Where recruiters can verify and explore further — GitHub, LinkedIn, your own site.
+              </p>
+
+              {profile.links.length === 0 ? (
+                <EmptyState
+                  title="No links yet"
+                  body="A GitHub or portfolio link turns claims into evidence visitors can check."
+                  cta="Add a link below"
+                />
               ) : (
-                <p className="text-gray-500 mb-6">No links added yet.</p>
+                <div className="space-y-3 mb-6">
+                  {profile.links.map((link, idx) =>
+                    isEditing(`links:${link.id}`) ? (
+                      <form
+                        key={link.id}
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const fd = new FormData(e.currentTarget);
+                          void handleRowUpdate('links', link.id, {
+                            label: fd.get('label') as string,
+                            url: fd.get('url') as string,
+                          });
+                        }}
+                        className="card card-pad border-[var(--accent)] space-y-4">
+                        <p className="text-sm font-semibold text-[var(--accent)]">Editing link</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <Field label="Label" htmlFor={`link-label-${link.id}`}>
+                            <input
+                              id={`link-label-${link.id}`}
+                              name="label"
+                              defaultValue={link.label}
+                              required
+                              className={INPUT}
+                            />
+                          </Field>
+                          <Field label="URL" htmlFor={`link-url-${link.id}`}>
+                            <input
+                              id={`link-url-${link.id}`}
+                              name="url"
+                              type="url"
+                              defaultValue={link.url}
+                              required
+                              className={INPUT}
+                            />
+                          </Field>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={saving}
+                            className="btn btn-primary !min-h-[40px] !py-2 text-sm">
+                            {saving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditing(null)}
+                            className="btn btn-ghost !min-h-[40px] !py-2 text-sm">
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <article key={link.id} className="card card-pad">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span
+                              aria-hidden="true"
+                              className="w-9 h-9 rounded-lg bg-[var(--surface-muted)] text-[var(--ink)] flex items-center justify-center shrink-0">
+                              <LinkIcon label={link.label} url={link.url} size={16} />
+                            </span>
+                            <div className="min-w-0">
+                              <h3 className="text-[15px] font-semibold text-[var(--ink)]">
+                                {link.label}
+                              </h3>
+                              <a
+                                href={sanitizeUrl(link.url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-[var(--muted-foreground)] hover:text-[var(--accent)] truncate block max-w-[40ch]">
+                                {link.url}
+                              </a>
+                            </div>
+                          </div>
+                          <CardActions
+                            onEdit={() => toggleEdit(`links:${link.id}`)}
+                            onDelete={() => void handleLinkDelete(link.id)}
+                            onMoveUp={() => void handleMove('links', idx, -1)}
+                            onMoveDown={() => void handleMove('links', idx, 1)}
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < profile.links.length - 1}
+                            deleteLabel={`Remove link ${link.label}`}
+                          />
+                        </div>
+                      </article>
+                    )
+                  )}
+                </div>
               )}
 
-              <form
-                onSubmit={(e) => void handleLinkAdd(e)}
-                className="border border-gray-200 rounded-lg p-4 space-y-4">
-                <h3 className="font-medium">Add link</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="label" className="block text-sm font-medium mb-1">
-                      Label
-                    </label>
+              <form onSubmit={(e) => void handleLinkAdd(e)} className="card card-pad space-y-4">
+                <h3 className="text-sm font-semibold text-[var(--ink)]">Add link</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Label" htmlFor="link-new-label">
                     <input
-                      id="label"
+                      id="link-new-label"
                       name="label"
                       type="text"
                       required
                       placeholder="e.g., LinkedIn, GitHub"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                      className={INPUT}
                     />
-                  </div>
-                  <div>
-                    <label htmlFor="url" className="block text-sm font-medium mb-1">
-                      URL
-                    </label>
+                  </Field>
+                  <Field label="URL" htmlFor="link-new-url">
                     <input
-                      id="url"
+                      id="link-new-url"
                       name="url"
                       type="url"
                       required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                      placeholder="https://"
+                      className={INPUT}
                     />
-                  </div>
+                  </Field>
                 </div>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {saving ? 'Adding...' : 'Add link'}
+                <button type="submit" disabled={saving} className="btn btn-primary">
+                  {saving ? 'Adding…' : 'Add link'}
                 </button>
               </form>
             </div>

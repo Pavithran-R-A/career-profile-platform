@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { AuthProvider } from './lib/auth/context';
 import Layout from './components/Layout';
@@ -17,11 +18,24 @@ import NotFound from './pages/NotFound';
 import Pricing from './pages/Pricing';
 import Billing from './pages/Billing';
 import Domains from './pages/Domains';
-import ATSResumeBuilder from './pages/ATSResumeBuilder';
 import JobTailoring from './pages/JobTailoring';
 import DashboardPreview from './pages/DashboardPreview';
 import PublicProfile from './pages/PublicProfile';
 import GitHubDashboard from './pages/GitHubDashboard';
+
+// Heavy PDF/renderer deps stay out of the initial bundle.
+const ATSResumeBuilder = lazy(() => import('./pages/ATSResumeBuilder'));
+
+function RouteFallback() {
+  return (
+    <div className="page-shell" role="status" aria-label="Loading">
+      <div className="space-y-4">
+        <div className="skeleton h-8 w-56" />
+        <div className="skeleton h-64 w-full" />
+      </div>
+    </div>
+  );
+}
 
 export function AppRoutes() {
   return (
@@ -38,7 +52,14 @@ export function AppRoutes() {
         <Route path="/dashboard/profile" element={<ProfileEditor />} />
         <Route path="/dashboard/appearance" element={<AppearanceEditor />} />
         <Route path="/dashboard/resume" element={<ResumeImport />} />
-        <Route path="/dashboard/resume/ats" element={<ATSResumeBuilder />} />
+        <Route
+          path="/dashboard/resume/ats"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <ATSResumeBuilder />
+            </Suspense>
+          }
+        />
         <Route path="/dashboard/resume/tailor" element={<JobTailoring />} />
         <Route path="/dashboard/preview" element={<DashboardPreview />} />
         <Route path="/dashboard/github" element={<GitHubDashboard />} />
