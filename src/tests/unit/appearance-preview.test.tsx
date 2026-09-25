@@ -82,7 +82,8 @@ describe('AppearanceEditor live preview', () => {
       </MemoryRouter>
     );
     expect(await screen.findByText('Live preview')).toBeInTheDocument();
-    expect(await screen.findByText('> skills')).toBeInTheDocument();
+    // Technical template's structured metadata header (location present in fixture)
+    expect(await screen.findByText('Test City')).toBeInTheDocument();
     expect(screen.getByText('Synthetic Candidate')).toBeInTheDocument();
   });
 

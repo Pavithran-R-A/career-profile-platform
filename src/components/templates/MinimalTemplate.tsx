@@ -1,6 +1,12 @@
-import type { ProfileWithRelations } from '../../lib/profiles/repository';
-import type { TemplateConfig } from '../../lib/templates/types';
+import { useState } from 'react';
+import {
+  normalizeSectionOrder,
+  type TemplateConfig,
+  type PortfolioProfile,
+} from '../../lib/templates/types';
 import { sanitizeUrl } from '../../lib/validators/url';
+import { formatDateRange } from '../../lib/profiles/date-format';
+import { LinkIcon } from '../portfolio/links';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -9,7 +15,7 @@ interface TemplatePreferences {
 }
 
 interface MinimalTemplateProps {
-  profile: ProfileWithRelations;
+  profile: PortfolioProfile;
   config: TemplateConfig;
   preferences?: TemplatePreferences;
 }
@@ -25,127 +31,224 @@ const ACCENT_COLORS: Record<string, string> = {
   slate: '#475569',
 };
 
-const DEFAULT_ORDER = ['basics', 'experience', 'education', 'skills', 'projects', 'links'];
+const DEFAULT_ORDER = ['basics', 'experience', 'projects', 'skills', 'education', 'links'];
+const EXP_COLLAPSE_AT = 5;
 
 function resolveAccent(accentKey: string | undefined, config: TemplateConfig): string {
   return ACCENT_COLORS[accentKey ?? ''] ?? config.colors.accent;
 }
 
-function renderBasics(profile: ProfileWithRelations) {
-  if (!profile.about) return null;
+function SectionLabel({ children, muted }: { children: React.ReactNode; muted: string }) {
   return (
-    <section className="mb-10">
-      <p className="text-sm leading-relaxed max-w-xl">{profile.about}</p>
-    </section>
-  );
-}
-
-function renderExperience(profile: ProfileWithRelations, config: TemplateConfig, accent: string) {
-  if (profile.experiences.length === 0) return null;
-  return (
-    <section className="mb-10">
-      {profile.experiences.map((exp) => (
-        <div key={exp.id} className="mb-6">
-          <div className="flex justify-between items-baseline">
-            <h2 className="text-sm font-medium uppercase tracking-wider" style={{ color: accent }}>
-              {exp.role}
-            </h2>
-            <span className="text-xs" style={{ color: config.colors.muted }}>
-              {exp.start_year} – {exp.end_year ?? 'Present'}
-            </span>
-          </div>
-          <p className="text-sm mt-1">{exp.company}</p>
-          {exp.description && (
-            <p className="text-sm mt-1" style={{ color: config.colors.muted }}>
-              {exp.description}
-            </p>
-          )}
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function renderEducation(profile: ProfileWithRelations, config: TemplateConfig) {
-  if (profile.education.length === 0) return null;
-  return (
-    <section className="mb-10">
-      {profile.education.map((edu) => (
-        <div key={edu.id} className="mb-4">
-          <h2 className="text-sm font-medium">{edu.institution}</h2>
-          {[edu.degree, edu.field_of_study].filter(Boolean).join(' — ') && (
-            <p className="text-xs mt-0.5" style={{ color: config.colors.muted }}>
-              {[edu.degree, edu.field_of_study].filter(Boolean).join(' — ')}
-            </p>
-          )}
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function renderSkills(profile: ProfileWithRelations, accent: string) {
-  if (profile.skills.length === 0) return null;
-  return (
-    <section className="mb-10">
-      <p className="text-sm" style={{ color: accent }}>
-        {profile.skills.map((s) => s.name).join(' / ')}
-      </p>
-    </section>
-  );
-}
-
-function renderProjects(profile: ProfileWithRelations, config: TemplateConfig) {
-  if (profile.projects.length === 0) return null;
-  return (
-    <section className="mb-10">
-      {profile.projects.map((proj) => (
-        <div key={proj.id} className="mb-4">
-          <h2 className="text-sm font-medium">{proj.name}</h2>
-          {proj.description && (
-            <p className="text-xs mt-0.5" style={{ color: config.colors.muted }}>
-              {proj.description}
-            </p>
-          )}
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function renderLinks(profile: ProfileWithRelations, config: TemplateConfig) {
-  if (profile.links.length === 0) return null;
-  return (
-    <footer className="pt-6 border-t" style={{ borderColor: config.colors.muted }}>
-      <div className="flex flex-wrap gap-4">
-        {profile.links.map((link) => (
-          <a
-            key={link.id}
-            href={sanitizeUrl(link.url)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs underline"
-            style={{ color: config.colors.muted }}>
-            {link.label}
-          </a>
-        ))}
-      </div>
-    </footer>
+    <p
+      className="text-[11px] font-semibold uppercase tracking-[0.14em] mb-5 pb-2 border-b"
+      style={{ color: muted, borderColor: muted + '40' }}>
+      {children}
+    </p>
   );
 }
 
 export default function MinimalTemplate({ profile, config, preferences }: MinimalTemplateProps) {
   const accent = resolveAccent(preferences?.accentKey, config);
-  const order = preferences?.sectionOrder?.length ? preferences.sectionOrder : DEFAULT_ORDER;
+  const order = preferences?.sectionOrder?.length
+    ? normalizeSectionOrder(preferences.sectionOrder)
+    : DEFAULT_ORDER;
   const hidden = new Set(preferences?.hiddenSections ?? []);
+  const [showAllExp, setShowAllExp] = useState(false);
+
+  const muted = config.colors.muted;
+  const visibleExps =
+    showAllExp || profile.experiences.length <= EXP_COLLAPSE_AT
+      ? profile.experiences
+      : profile.experiences.slice(0, EXP_COLLAPSE_AT);
+  const hiddenExpCount = profile.experiences.length - visibleExps.length;
 
   const sectionMap: Record<string, React.ReactNode> = {
-    basics: renderBasics(profile),
-    experience: renderExperience(profile, config, accent),
-    education: renderEducation(profile, config),
-    skills: renderSkills(profile, accent),
-    projects: renderProjects(profile, config),
-    links: renderLinks(profile, config),
+    basics: profile.about ? (
+      <section key="basics" className="mb-14">
+        <SectionLabel muted={muted}>About</SectionLabel>
+        <p
+          className="text-[17px] leading-[1.75] max-w-[62ch]"
+          style={{ color: config.colors.text }}>
+          {profile.about}
+        </p>
+      </section>
+    ) : null,
+
+    experience:
+      profile.experiences.length > 0 ? (
+        <section key="experience" className="mb-14">
+          <SectionLabel muted={muted}>Experience</SectionLabel>
+          <ol className="space-y-8">
+            {visibleExps.map((exp) => (
+              <li key={exp.id} className="grid grid-cols-1 sm:grid-cols-[168px_1fr] gap-1 sm:gap-6">
+                <span className="text-xs font-medium tabular-nums pt-1" style={{ color: muted }}>
+                  {formatDateRange({
+                    startYear: exp.start_year,
+                    startMonth: exp.start_month,
+                    endYear: exp.end_year,
+                    endMonth: exp.end_month,
+                    current: exp.is_current,
+                  })}
+                </span>
+                <div>
+                  <h3
+                    className="text-[17px] font-semibold leading-snug"
+                    style={{ color: config.colors.text }}>
+                    {exp.role}
+                  </h3>
+                  <p className="text-sm mt-0.5" style={{ color: accent }}>
+                    {exp.company}
+                    {exp.location ? ` · ${exp.location}` : ''}
+                  </p>
+                  {exp.description && (
+                    <p
+                      className="text-sm leading-relaxed mt-2 max-w-[64ch]"
+                      style={{ color: muted }}>
+                      {exp.description}
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+          {hiddenExpCount > 0 && !showAllExp && (
+            <button
+              type="button"
+              onClick={() => setShowAllExp(true)}
+              aria-expanded={false}
+              className="mt-6 text-sm font-medium underline underline-offset-4 hover:opacity-70"
+              style={{ color: accent }}>
+              Show all {profile.experiences.length} roles ({hiddenExpCount} more)
+            </button>
+          )}
+        </section>
+      ) : null,
+
+    projects:
+      profile.projects.length > 0 ? (
+        <section key="projects" className="mb-14">
+          <SectionLabel muted={muted}>Selected work</SectionLabel>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {profile.projects.map((proj) => (
+              <article
+                key={proj.id}
+                className="rounded-xl border p-5 transition-shadow hover:shadow-[var(--shadow-card)]"
+                style={{ borderColor: muted + '35', background: config.colors.background }}>
+                <div className="flex items-start justify-between gap-3">
+                  <h3
+                    className="text-[15px] font-semibold leading-snug"
+                    style={{ color: config.colors.text }}>
+                    {proj.name}
+                  </h3>
+                  <span
+                    aria-hidden="true"
+                    className="text-lg leading-none"
+                    style={{ color: accent }}>
+                    ↗
+                  </span>
+                </div>
+                {proj.description && (
+                  <p className="text-sm leading-relaxed mt-2" style={{ color: muted }}>
+                    {proj.description}
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium">
+                  {proj.project_url && (
+                    <a
+                      href={sanitizeUrl(proj.project_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 underline underline-offset-2 hover:opacity-70"
+                      style={{ color: accent }}>
+                      View live
+                    </a>
+                  )}
+                  {proj.repository_url && (
+                    <a
+                      href={sanitizeUrl(proj.repository_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 underline underline-offset-2 hover:opacity-70"
+                      style={{ color: muted }}>
+                      Source
+                    </a>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null,
+
+    skills:
+      profile.skills.length > 0 ? (
+        <section key="skills" className="mb-14">
+          <SectionLabel muted={muted}>Skills</SectionLabel>
+          <div className="flex flex-wrap gap-2">
+            {profile.skills.map((s) => (
+              <span
+                key={s.id}
+                className="text-[13px] px-3 py-1 rounded-full border"
+                style={{ borderColor: muted + '40', color: config.colors.text }}>
+                {s.name}
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null,
+
+    education:
+      profile.education.length > 0 ? (
+        <section key="education" className="mb-14">
+          <SectionLabel muted={muted}>Education</SectionLabel>
+          <div className="space-y-5">
+            {profile.education.map((edu) => (
+              <div
+                key={edu.id}
+                className="grid grid-cols-1 sm:grid-cols-[168px_1fr] gap-1 sm:gap-6">
+                <span className="text-xs font-medium tabular-nums pt-1" style={{ color: muted }}>
+                  {formatDateRange({
+                    startYear: edu.start_year,
+                    startMonth: edu.start_month,
+                    endYear: edu.end_year,
+                    endMonth: edu.end_month,
+                    current: !edu.end_year,
+                  })}
+                </span>
+                <div>
+                  <h3 className="text-[15px] font-semibold" style={{ color: config.colors.text }}>
+                    {edu.institution}
+                  </h3>
+                  <p className="text-sm" style={{ color: muted }}>
+                    {[edu.degree, edu.field_of_study].filter(Boolean).join(' — ')}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null,
+
+    links:
+      profile.links.length > 0 ? (
+        <footer key="links" className="pt-8 border-t" style={{ borderColor: muted + '40' }}>
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            {profile.links.map((link) => (
+              <a
+                key={link.id}
+                href={sanitizeUrl(link.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm font-medium hover:opacity-70"
+                style={{ color: muted }}>
+                <LinkIcon label={link.label} url={link.url} size={15} />
+                {link.label}
+              </a>
+            ))}
+          </div>
+        </footer>
+      ) : null,
   };
 
   return (
@@ -156,30 +259,46 @@ export default function MinimalTemplate({ profile, config, preferences }: Minima
         color: config.colors.text,
         fontFamily: config.fonts.body,
       }}>
-      <div className="max-w-3xl mx-auto px-6 py-16">
-        <header className="mb-12">
+      <div className="max-w-3xl mx-auto px-7 sm:px-10 py-16 sm:py-24">
+        <header className="mb-16">
           {profile.avatar_url && (
             <img
               src={sanitizeUrl(profile.avatar_url)}
               alt={profile.display_name ?? profile.username}
-              className="w-16 h-16 rounded-full mb-4 object-cover"
+              className="w-20 h-20 rounded-full mb-6 object-cover"
             />
           )}
           <h1
-            className="text-3xl font-light tracking-tight"
-            style={{ fontFamily: config.fonts.heading, color: accent }}>
+            className="font-semibold tracking-[-0.03em] leading-[1.05]"
+            style={{
+              fontFamily: config.fonts.heading,
+              fontSize: 'clamp(2.1rem, 1.4rem + 2.6vw, 3.1rem)',
+              color: config.colors.text,
+            }}>
             {profile.display_name || profile.username}
           </h1>
           {profile.headline && (
-            <p className="mt-2 text-sm" style={{ color: config.colors.muted }}>
+            <p className="mt-3 text-lg" style={{ color: accent }}>
               {profile.headline}
             </p>
           )}
-          {profile.location && (
-            <p className="mt-1 text-xs" style={{ color: config.colors.muted }}>
-              {profile.location}
-            </p>
-          )}
+          <div
+            className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm"
+            style={{ color: muted }}>
+            {profile.location && <span>{profile.location}</span>}
+            {profile.links.slice(0, 3).map((link) => (
+              <a
+                key={link.id}
+                href={sanitizeUrl(link.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 hover:opacity-70"
+                style={{ color: muted }}>
+                <LinkIcon label={link.label} url={link.url} size={14} />
+                {link.label}
+              </a>
+            ))}
+          </div>
         </header>
 
         {order.map((section) =>
