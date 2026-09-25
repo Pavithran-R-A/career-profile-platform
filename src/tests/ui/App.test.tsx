@@ -25,9 +25,7 @@ describe('App shell', () => {
 
   it('renders the home page with heading', () => {
     render(<App />);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'One profile. Built for recruiters.'
-    );
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/recruiters remember/i);
   });
 
   it('renders the header with brand link', () => {
