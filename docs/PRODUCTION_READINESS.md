@@ -107,6 +107,56 @@ configured` (no provider key in preview env); UI shows a truthful
 - Console/network: no 500s, no raw backend text in UI; only expected
   401→fixed and 503-unconfigured responses during the debugging loop.
 
+## Premium Frontend Redesign (2026-09-25)
+
+Product-experience overhaul (backend, auth, RLS, resume/ATS/tailoring logic
+untouched):
+
+- Design system: warm ivory `#F8F7F3` surfaces, deep navy `#0B1628` ink,
+  cobalt `#246BFD` actions with AA-safe `#1D5CE0` accent text, teal
+  `#13B88A` secondary (darker variant for copy), translucent navy borders,
+  serif display stack (Iowan/Palatino/Georgia) for marketing headlines
+  (hero clamps 42→80px), sans retained for application UI, rise/reveal
+  motion with reduced-motion guards, link-underline + elevate utilities.
+- Landing rebuilt as a 7-part story (all previews render real templates):
+  hero with layered product composition (portfolio + rotated ATS sheet +
+  job-match card + annotations), "One workflow. Multiple outputs."
+  journey with miniature UIs, interactive 3-template showcase with
+  overlapping canvases, editor→portfolio split, recruiter scan section
+  with callouts, ATS/tailoring 3-panel showcase (no fake scores), dark
+  navy final CTA.
+- Navigation: marketing nav (Features/Templates/How it works/For
+  recruiters/Pricing) for guests; authenticated nav moved Sign out into
+  an accessible account menu; sticky header with scroll shadow.
+- Dashboard: command center — welcome + preview link, dominant live card
+  (badge/URL/Open/Copy/last-updated/publish + real selected-template
+  thumbnail), completion ring (role=progressbar), context-driven next
+  best action, quick actions, real CV-import status from resume_sources.
+- Profile editor: 3-column workspace (nav / editor / sticky live
+  template preview), preview sheet below 1280px.
+- Resume import: "turn resume into structured data" workspace with
+  connected 1-2-3 steps and in-flight file card (name/size/status).
+- ATS: controls column + dominant scaled preview panel with placeholder.
+- Job tailoring: 3-stage workflow rail (Job → Profile evidence →
+  Tailored output).
+- Appearance: studio layout — controls column + large sticky live
+  preview (856×640 canvas).
+- Templates: Editorial moved to warm paper `#FAF6EE`; Technical got a
+  subtle grid overlay; brand mark refined (navy square, cobalt top bar).
+- Tooling: pnpm 11 `allowBuilds` for esbuild/workerd (repo's
+  pnpm-workspace.yaml), wrangler invoked via `pnpm dlx`.
+
+Verification: 7-viewport Playwright sweep (1440/1280/1024/768/430/390/ 360) over landing (7 sections), auth pages, dashboard, editor (+preview
+sheet), resume, tailoring, appearance, ATS (+generated preview), all
+three public portfolios at 1440+390: zero horizontal overflow, zero
+console errors, zero ≥500 responses, no real clipping (sr-only false
+positives only), showcase tabs toggle, focus ring `solid 2px` cobalt,
+sticky header shadow on scroll, mobile menu all items ≥48px and in
+view, editor preview sticky at top≈135px, hero h1 = 80px serif.
+112 screenshots archived in the local (untracked) QA directory — this
+model has no image input, so inspection was metric/DOM-based; archived
+JPEGs are available for human eyeball review.
+
 ## Product Design Closure (2026-09-24, third pass)
 
 Base MVP is now a credible career product, verified with a Playwright +
