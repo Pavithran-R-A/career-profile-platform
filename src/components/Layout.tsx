@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet, Link, NavLink } from 'react-router';
 import { useAuth } from '../lib/auth/context';
+import { BrandLink } from './Brand';
 
 const AUTH_NAV = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -10,12 +11,13 @@ const AUTH_NAV = [
 ];
 
 function navClass({ isActive }: { isActive: boolean }) {
-  return `text-sm px-1 py-2 ${isActive ? 'text-gray-900 font-semibold' : 'text-gray-600 hover:text-gray-900'}`;
+  return isActive ? 'nav-link nav-link-active' : 'nav-link';
 }
 
 export default function Layout() {
   const auth = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const isAuthed = auth.status === 'authenticated';
 
   const handleSignOut = () => {
     setMenuOpen(false);
@@ -24,24 +26,12 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-gray-200 bg-white sticky top-0 z-50">
+      <header className="border-b border-[var(--border)] bg-white/90 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <Link
-            to="/"
-            className="flex items-center gap-2 shrink-0"
-            aria-label="Career Profile home">
-            <span
-              aria-hidden="true"
-              className="w-8 h-8 rounded-lg bg-gray-900 text-white flex items-center justify-center text-sm font-bold">
-              C
-            </span>
-            <span className="text-base font-semibold tracking-tight text-gray-900">
-              Career Profile
-            </span>
-          </Link>
+          <BrandLink />
 
-          <nav className="hidden md:flex items-center gap-5" aria-label="Primary">
-            {auth.status === 'authenticated' ? (
+          <nav className="hidden md:flex items-center gap-6" aria-label="Primary">
+            {isAuthed ? (
               <>
                 {AUTH_NAV.map((item) => (
                   <NavLink
@@ -52,23 +42,21 @@ export default function Layout() {
                     {item.label}
                   </NavLink>
                 ))}
-                <button
-                  onClick={handleSignOut}
-                  className="text-sm text-gray-600 hover:text-gray-900 px-1 py-2">
+                <button onClick={handleSignOut} className="nav-link px-1">
                   Sign out
                 </button>
               </>
             ) : (
               <>
-                <Link to="/pricing" className="text-sm text-gray-600 hover:text-gray-900 px-1 py-2">
-                  Pricing
+                <Link to="/#how-it-works" className="nav-link">
+                  How it works
                 </Link>
-                <Link to="/login" className="text-sm text-gray-600 hover:text-gray-900 px-1 py-2">
+                <Link to="/login" className="nav-link">
                   Sign in
                 </Link>
                 <Link
                   to="/signup"
-                  className="text-sm bg-gray-900 text-white px-4 py-2 rounded-md hover:bg-gray-800 font-medium">
+                  className="text-sm bg-[var(--ink)] text-white px-4 py-2 rounded-full hover:bg-[#1d2939] font-medium">
                   Get started
                 </Link>
               </>
@@ -99,9 +87,9 @@ export default function Layout() {
 
         {menuOpen && (
           <nav
-            className="md:hidden border-t border-gray-200 bg-white px-4 py-3 space-y-1"
+            className="md:hidden border-t border-[var(--border)] bg-white px-4 py-3 space-y-1"
             aria-label="Mobile">
-            {auth.status === 'authenticated' ? (
+            {isAuthed ? (
               <>
                 {AUTH_NAV.map((item) => (
                   <NavLink
@@ -110,35 +98,35 @@ export default function Layout() {
                     end={item.to === '/dashboard'}
                     onClick={() => setMenuOpen(false)}
                     className={({ isActive }) =>
-                      `block px-3 py-3 rounded-md text-base ${isActive ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`
+                      `block px-3 py-3 rounded-md text-base min-h-[44px] ${isActive ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`
                     }>
                     {item.label}
                   </NavLink>
                 ))}
                 <button
                   onClick={handleSignOut}
-                  className="block w-full text-left px-3 py-3 rounded-md text-base text-gray-700 hover:bg-gray-50">
+                  className="block w-full text-left px-3 py-3 rounded-md text-base text-gray-700 hover:bg-gray-50 min-h-[44px]">
                   Sign out
                 </button>
               </>
             ) : (
               <>
                 <Link
-                  to="/pricing"
+                  to="/#how-it-works"
                   onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base text-gray-700 hover:bg-gray-50">
-                  Pricing
+                  className="block px-3 py-3 rounded-md text-base text-gray-700 hover:bg-gray-50 min-h-[44px]">
+                  How it works
                 </Link>
                 <Link
                   to="/login"
                   onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base text-gray-700 hover:bg-gray-50">
+                  className="block px-3 py-3 rounded-md text-base text-gray-700 hover:bg-gray-50 min-h-[44px]">
                   Sign in
                 </Link>
                 <Link
                   to="/signup"
                   onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base font-semibold bg-gray-900 text-white text-center">
+                  className="block px-3 py-3 rounded-md text-base font-semibold bg-[var(--ink)] text-white text-center min-h-[44px]">
                   Get started
                 </Link>
               </>
@@ -149,17 +137,24 @@ export default function Layout() {
       <main className="flex-1">
         <Outlet />
       </main>
-      <footer className="border-t border-gray-200 bg-white">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500">
-          <p>&copy; {new Date().getFullYear()} Career Profile Platform</p>
-          <nav className="flex items-center gap-4" aria-label="Footer">
-            <Link to="/pricing" className="hover:text-gray-900">
-              Pricing
-            </Link>
-            <Link to="/dashboard/billing" className="hover:text-gray-900">
-              Billing
-            </Link>
-          </nav>
+      <footer className="border-t border-[var(--border)] bg-white">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--faint-foreground)]">
+          <p>
+            &copy; {new Date().getFullYear()} Career Profile — one profile, built for recruiters.
+          </p>
+          {!isAuthed && (
+            <nav className="flex items-center gap-5" aria-label="Footer">
+              <Link to="/#how-it-works" className="link-quiet">
+                How it works
+              </Link>
+              <Link to="/#example" className="link-quiet">
+                Example
+              </Link>
+              <Link to="/pricing" className="link-quiet">
+                Pricing
+              </Link>
+            </nav>
+          )}
         </div>
       </footer>
     </div>
