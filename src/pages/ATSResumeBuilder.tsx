@@ -6,6 +6,7 @@ import { sanitizeUrl } from '../lib/validators/url';
 import { toATSExportModel } from '../lib/resume/ats-export';
 import { generatePDFBlob } from '../lib/resume/pdf-renderer';
 import ATSPreview from '../components/ATSPreview';
+import { ScaledCanvas } from '../components/marketing/BrowserFrame';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 
 type BuilderState = 'idle' | 'loading' | 'ready' | 'generating' | 'preview' | 'error';
@@ -276,251 +277,293 @@ export default function ATSResumeBuilder() {
       )}
 
       {(state === 'ready' || state === 'preview') && atsData && (
-        <div className="flex flex-col md:flex-row gap-8">
-          <nav className="md:w-48 flex-shrink-0">
-            <ul className="space-y-1">
-              {sections.map((section) => (
-                <li key={section.id}>
-                  <button
-                    onClick={() => setActiveSection(section.id)}
-                    className={`w-full text-left px-3 py-2 rounded-md ${
-                      activeSection === section.id
-                        ? 'bg-gray-100 text-gray-900 font-medium'
-                        : 'text-gray-600 hover:bg-gray-50'
-                    }`}>
-                    {section.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </nav>
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="lg:w-[380px] flex-shrink-0 space-y-5">
+            <nav aria-label="Resume sections">
+              <ul className="space-y-1">
+                {sections.map((section) => (
+                  <li key={section.id}>
+                    <button
+                      onClick={() => setActiveSection(section.id)}
+                      aria-current={activeSection === section.id ? 'page' : undefined}
+                      className={`side-nav-link ${activeSection === section.id ? 'side-nav-link-active' : ''}`}>
+                      {section.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
 
-          <div className="flex-1 space-y-6">
-            {activeSection === 'identity' && (
-              <div className="space-y-4">
-                <h2 className="text-lg font-medium">Basic Information</h2>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Display Name</label>
-                  <input
-                    type="text"
-                    value={atsData.displayName}
-                    readOnly
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                  />
+            <div className="space-y-6">
+              {activeSection === 'identity' && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-medium">Basic Information</h2>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Display Name</label>
+                    <input
+                      type="text"
+                      value={atsData.displayName}
+                      readOnly
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Headline</label>
+                    <input
+                      type="text"
+                      value={headlineOverride}
+                      onChange={(e) => setHeadlineOverride(e.target.value)}
+                      placeholder="e.g., Senior Software Engineer"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">About / Summary</label>
+                    <textarea
+                      value={aboutOverride}
+                      onChange={(e) => setAboutOverride(e.target.value)}
+                      rows={4}
+                      placeholder="Brief professional summary for ATS..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="resume-email" className="block text-sm font-medium mb-1">
+                      Contact email (optional; never taken from your sign-in account)
+                    </label>
+                    <input
+                      id="resume-email"
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="resume-phone" className="block text-sm font-medium mb-1">
+                      Contact phone (optional)
+                    </label>
+                    <input
+                      id="resume-phone"
+                      type="tel"
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Headline</label>
-                  <input
-                    type="text"
-                    value={headlineOverride}
-                    onChange={(e) => setHeadlineOverride(e.target.value)}
-                    placeholder="e.g., Senior Software Engineer"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">About / Summary</label>
-                  <textarea
-                    value={aboutOverride}
-                    onChange={(e) => setAboutOverride(e.target.value)}
-                    rows={4}
-                    placeholder="Brief professional summary for ATS..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="resume-email" className="block text-sm font-medium mb-1">
-                    Contact email (optional; never taken from your sign-in account)
-                  </label>
-                  <input
-                    id="resume-email"
-                    type="email"
-                    value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="resume-phone" className="block text-sm font-medium mb-1">
-                    Contact phone (optional)
-                  </label>
-                  <input
-                    id="resume-phone"
-                    type="tel"
-                    value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                </div>
-              </div>
-            )}
+              )}
 
-            {activeSection === 'experience' && (
-              <div className="space-y-4">
-                <h2 className="text-lg font-medium">Experience</h2>
-                {atsData.experiences.length === 0 ? (
-                  <p className="text-gray-500">No experience entries found.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {atsData.experiences.map((exp, index) => (
-                      <label
-                        key={index}
-                        className="flex items-start gap-3 border border-gray-200 rounded-lg p-4">
-                        <input
-                          type="checkbox"
-                          checked={selectedExps.has(index)}
-                          onChange={() => toggleExp(index)}
-                          className="mt-1"
-                        />
-                        <div>
-                          <p className="font-medium">{exp.role}</p>
-                          <p className="text-sm text-gray-600">
-                            {exp.company}
-                            {exp.location && ` · ${exp.location}`}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {exp.startYear} – {exp.isCurrent ? 'Present' : (exp.endYear ?? 'N/A')}
-                          </p>
-                          {exp.description && (
-                            <p className="text-sm text-gray-600 mt-1">{exp.description}</p>
-                          )}
+              {activeSection === 'experience' && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-medium">Experience</h2>
+                  {atsData.experiences.length === 0 ? (
+                    <p className="text-gray-500">No experience entries found.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {atsData.experiences.map((exp, index) => (
+                        <label
+                          key={index}
+                          className="flex items-start gap-3 border border-gray-200 rounded-lg p-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedExps.has(index)}
+                            onChange={() => toggleExp(index)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="font-medium">{exp.role}</p>
+                            <p className="text-sm text-gray-600">
+                              {exp.company}
+                              {exp.location && ` · ${exp.location}`}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {exp.startYear} – {exp.isCurrent ? 'Present' : (exp.endYear ?? 'N/A')}
+                            </p>
+                            {exp.description && (
+                              <p className="text-sm text-gray-600 mt-1">{exp.description}</p>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'education' && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-medium">Education</h2>
+                  {atsData.education.length === 0 ? (
+                    <p className="text-gray-500">No education entries found.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {atsData.education.map((edu, index) => (
+                        <label
+                          key={index}
+                          className="flex items-start gap-3 border border-gray-200 rounded-lg p-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedEdus.has(index)}
+                            onChange={() => toggleEdu(index)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="font-medium">{edu.institution}</p>
+                            <p className="text-sm text-gray-600">
+                              {[edu.degree, edu.fieldOfStudy].filter(Boolean).join(' — ')}
+                            </p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'skills' && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-medium">Skills</h2>
+                  {atsData.skills.length === 0 ? (
+                    <p className="text-gray-500">No skills found.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {atsData.skills.map((skill) => (
+                        <button
+                          key={skill}
+                          onClick={() => toggleSkill(skill)}
+                          className={`px-3 py-1 rounded-full text-sm border ${
+                            selectedSkills.has(skill)
+                              ? 'bg-gray-900 text-white border-gray-900'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                          }`}>
+                          {skill}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'projects' && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-medium">Projects</h2>
+                  {atsData.projects.length === 0 ? (
+                    <p className="text-gray-500">No projects found.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {atsData.projects.map((proj, index) => (
+                        <label
+                          key={index}
+                          className="flex items-start gap-3 border border-gray-200 rounded-lg p-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedProjects.has(index)}
+                            onChange={() => toggleProject(index)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p className="font-medium">{proj.name}</p>
+                            {proj.description && (
+                              <p className="text-sm text-gray-600">{proj.description}</p>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeSection === 'links' && (
+                <div className="space-y-4">
+                  <h2 className="text-lg font-medium">Links</h2>
+                  {atsData.links.length === 0 ? (
+                    <p className="text-gray-500">No links found.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {atsData.links.map((link, index) => (
+                        <div key={index} className="flex items-center gap-2 text-sm">
+                          <span className="font-medium">{link.label}:</span>
+                          <a
+                            href={sanitizeUrl(link.url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline">
+                            {link.url}
+                          </a>
                         </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {activeSection === 'education' && (
-              <div className="space-y-4">
-                <h2 className="text-lg font-medium">Education</h2>
-                {atsData.education.length === 0 ? (
-                  <p className="text-gray-500">No education entries found.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {atsData.education.map((edu, index) => (
-                      <label
-                        key={index}
-                        className="flex items-start gap-3 border border-gray-200 rounded-lg p-4">
-                        <input
-                          type="checkbox"
-                          checked={selectedEdus.has(index)}
-                          onChange={() => toggleEdu(index)}
-                          className="mt-1"
-                        />
-                        <div>
-                          <p className="font-medium">{edu.institution}</p>
-                          <p className="text-sm text-gray-600">
-                            {[edu.degree, edu.fieldOfStudy].filter(Boolean).join(' — ')}
-                          </p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeSection === 'skills' && (
-              <div className="space-y-4">
-                <h2 className="text-lg font-medium">Skills</h2>
-                {atsData.skills.length === 0 ? (
-                  <p className="text-gray-500">No skills found.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {atsData.skills.map((skill) => (
-                      <button
-                        key={skill}
-                        onClick={() => toggleSkill(skill)}
-                        className={`px-3 py-1 rounded-full text-sm border ${
-                          selectedSkills.has(skill)
-                            ? 'bg-gray-900 text-white border-gray-900'
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                        }`}>
-                        {skill}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeSection === 'projects' && (
-              <div className="space-y-4">
-                <h2 className="text-lg font-medium">Projects</h2>
-                {atsData.projects.length === 0 ? (
-                  <p className="text-gray-500">No projects found.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {atsData.projects.map((proj, index) => (
-                      <label
-                        key={index}
-                        className="flex items-start gap-3 border border-gray-200 rounded-lg p-4">
-                        <input
-                          type="checkbox"
-                          checked={selectedProjects.has(index)}
-                          onChange={() => toggleProject(index)}
-                          className="mt-1"
-                        />
-                        <div>
-                          <p className="font-medium">{proj.name}</p>
-                          {proj.description && (
-                            <p className="text-sm text-gray-600">{proj.description}</p>
-                          )}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeSection === 'links' && (
-              <div className="space-y-4">
-                <h2 className="text-lg font-medium">Links</h2>
-                {atsData.links.length === 0 ? (
-                  <p className="text-gray-500">No links found.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {atsData.links.map((link, index) => (
-                      <div key={index} className="flex items-center gap-2 text-sm">
-                        <span className="font-medium">{link.label}:</span>
-                        <a
-                          href={sanitizeUrl(link.url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline">
-                          {link.url}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-4 pt-4 border-t border-gray-200">
-              <button
-                onClick={handleGenerate}
-                className="bg-gray-900 text-white py-2 px-6 rounded-md hover:bg-gray-800">
-                Generate ATS Preview
-              </button>
-              {state === 'preview' && (
-                <button
-                  onClick={() => void handleExportPDF()}
-                  className="border border-gray-300 text-gray-700 py-2 px-6 rounded-md hover:bg-gray-50">
-                  Export PDF
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-[var(--border)]">
+                <button onClick={handleGenerate} className="btn btn-primary flex-1">
+                  Generate ATS Preview
                 </button>
+                {state === 'preview' && (
+                  <button
+                    onClick={() => void handleExportPDF()}
+                    className="btn btn-secondary flex-1">
+                    Export PDF
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Dominant preview */}
+          <div className="flex-1 min-w-0">
+            <div className="lg:sticky lg:top-24">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--faint-foreground)]">
+                  Resume preview
+                </p>
+                {state === 'preview' && (
+                  <span className="status-chip status-chip-live">Ready to export</span>
+                )}
+              </div>
+              {state === 'preview' ? (
+                <div className="rounded-xl border border-[var(--border)] overflow-hidden bg-white shadow-[var(--shadow-card)]">
+                  <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[var(--border)] bg-[var(--surface-warm)]">
+                    <span className="w-2 h-2 rounded-full bg-[#ff5f57]" aria-hidden="true" />
+                    <span className="w-2 h-2 rounded-full bg-[#febc2e]" aria-hidden="true" />
+                    <span className="w-2 h-2 rounded-full bg-[#28c840]" aria-hidden="true" />
+                    <span className="ml-1.5 text-[10px] text-[var(--faint-foreground)] truncate">
+                      {profile?.username ?? 'you'}-resume.pdf
+                    </span>
+                  </div>
+                  <ScaledCanvas scale={0.72} height={600} label="ATS resume preview">
+                    <ATSPreview data={atsData} />
+                  </ScaledCanvas>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-warm)] p-10 text-center">
+                  <svg
+                    className="mx-auto w-10 h-10 text-[var(--faint-foreground)]"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="1.5"
+                      d="M7 4h7l5 5v11a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm7 0v5h5M9 13h6M9 17h6"
+                    />
+                  </svg>
+                  <p className="text-sm font-semibold text-[var(--ink)] mt-4">
+                    Your resume preview appears here
+                  </p>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-1.5 max-w-[36ch] mx-auto leading-relaxed">
+                    Choose the sections you want, add contact details, then generate a preview.
+                  </p>
+                </div>
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {state === 'preview' && atsData && (
-        <div className="mt-8 border border-gray-200 rounded-lg p-6 bg-white">
-          <ATSPreview data={atsData} />
         </div>
       )}
 
