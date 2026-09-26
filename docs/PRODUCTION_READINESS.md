@@ -107,6 +107,42 @@ configured` (no provider key in preview env); UI shows a truthful
 - Console/network: no 500s, no raw backend text in UI; only expected
   401→fixed and 503-unconfigured responses during the debugging loop.
 
+## Full Product Closure (2026-09-26)
+
+Final completion pass over the entire core product, driven by human
+screenshot feedback that DOM metrics alone had missed:
+
+- Landing rebuilt for structural robustness: template showcase is now a
+  single bounded viewport (fixed height, no absolute back-layer canvases,
+  tabs switch without layout shift); workflow is four equal flex cards
+  (measured 267px each, equal heights) with 2×2 tablet and 1-column
+  mobile layouts; hero composition is pure normal flow (no escaping
+  absolute layers); nav CTAs updated to "Import your CV" / "See a live
+  profile".
+- Header account control is now an initial-avatar with chevron (was an
+  ambiguous brand-mark duplicate); sign-out lives in the menu.
+- Dead code removed: `getPublishedProfileUsernames`,
+  `renderPDFDocument` + PDF config interfaces, `searchTemplates`.
+- Editor: collapsible experience history (5 + show-all), date-range
+  validation, case-insensitive skill dedup, http/https link validation,
+  labeled month/year controls, current-role checkbox state resets
+  correctly, inline edit for all row types.
+- Authenticated end-to-end journey (30 checks, all passing): login,
+  dashboard, full CRUD with revert for experience/education/projects/
+  skills/links, reorder boundaries, validation rejections, appearance
+  persistence across reload for all three templates, owner preview,
+  publish/unpublish/republish with anonymous verification, fake-PDF
+  rejection without leakage, valid upload, ATS generation + download +
+  unpdf parseback (2 pages), deterministic tailoring analysis.
+- Auth/a11y: session reload, logout, guards, no open-redirect vectors,
+  skip link first in tab order with visible ring, Escape-closes preview
+  sheet, single perceivable h1 per page.
+- Security: client bundle scanned — no secret values; RLS and anon
+  denial re-verified live; error sanitizer intact.
+- QA: 8-viewport Playwright matrix (metrics) + ~120 archived JPEGs;
+  model has no image input, so inspection was metric/DOM based and the
+  compositions were rebuilt conservatively in normal flow.
+
 ## Premium Frontend Redesign (2026-09-25)
 
 Product-experience overhaul (backend, auth, RLS, resume/ATS/tailoring logic
