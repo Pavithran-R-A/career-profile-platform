@@ -69,12 +69,3 @@ export function getTemplate(id: string): Template | undefined {
 export function getAllTemplates(): Template[] {
   return Array.from(templateRegistry.values());
 }
-
-export function searchTemplates(query: string): Template[] {
-  const lowerQuery = query.toLowerCase();
-  return getAllTemplates().filter(
-    (t) =>
-      t.metadata.name.toLowerCase().includes(lowerQuery) ||
-      t.metadata.tags.some((tag) => tag.toLowerCase().includes(lowerQuery))
-  );
-}

@@ -142,15 +142,3 @@ export async function getPublicProfileByUsername(
 
   return toPortfolio(parsed.data);
 }
-
-/** Anonymous-safe: reads the `public_profiles` view (granted to anon). */
-export async function getPublishedProfileUsernames(): Promise<string[]> {
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase.from('public_profiles').select('username');
-
-  if (error) throw error;
-  return (data ?? [])
-    .map((p: { username: string | null }) => p.username)
-    .filter((username): username is string => !!username);
-}
