@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { BrandLink, BrandMark } from './Brand';
@@ -22,7 +22,7 @@ function navClass({ isActive }: { isActive: boolean }) {
   return isActive ? 'nav-link nav-link-active' : 'nav-link';
 }
 
-function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
+function AccountMenu({ onSignOut, initial }: { onSignOut: () => void; initial: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -55,8 +55,28 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
         aria-expanded={open}
         aria-label="Account menu"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[var(--ink)] text-white text-sm font-bold hover:bg-[#16233d] transition-colors">
-        <BrandMark size={26} />
+        className="inline-flex items-center gap-1.5 h-10 pl-1.5 pr-2.5 rounded-full border border-[var(--border)] bg-white hover:bg-[var(--surface-muted)] transition-colors">
+        <span
+          aria-hidden="true"
+          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
+          style={{ background: 'var(--ink)' }}>
+          {initial}
+        </span>
+        <svg
+          aria-hidden="true"
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`}>
+          <path
+            d="M2.5 4.5 6 8l3.5-3.5"
+            stroke="var(--muted-foreground)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
       {open && (
         <div
@@ -117,6 +137,11 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[60] focus:top-2 focus:left-2 focus:bg-[var(--ink)] focus:text-white focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm">
+        Skip to content
+      </a>
       <header
         className={`sticky top-0 z-50 transition-shadow duration-200 border-b ${
           scrolled
@@ -138,7 +163,11 @@ export default function Layout() {
                     {item.label}
                   </NavLink>
                 ))}
-                <AccountMenu onSignOut={handleSignOut} />
+                <AccountMenu
+                  onSignOut={handleSignOut}
+                  initial={((auth.status === 'authenticated' && auth.user.email) ||
+                    'a')[0].toUpperCase()}
+                />
               </>
             ) : (
               <>
@@ -240,7 +269,7 @@ export default function Layout() {
           </nav>
         )}
       </header>
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         <Outlet />
       </main>
       <footer className="border-t border-[var(--border)] bg-[var(--surface)]">
