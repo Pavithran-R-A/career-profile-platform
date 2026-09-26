@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { sanitizeUrl, isSafeRedirect } from '../../lib/validators/url';
+﻿import { describe, it, expect } from 'vitest';
+import { sanitizeUrl, isSafeRedirect, isHttpUrl } from '../../lib/validators/url';
 
 describe('sanitizeUrl', () => {
   it('allows http URLs', () => {
@@ -64,5 +64,24 @@ describe('isSafeRedirect', () => {
 
   it('rejects absolute URLs', () => {
     expect(isSafeRedirect('https://evil.com')).toBe(false);
+  });
+});
+
+describe('isHttpUrl', () => {
+  it('accepts http and https URLs', () => {
+    expect(isHttpUrl('https://example.com/x')).toBe(true);
+    expect(isHttpUrl('http://localhost:3000/')).toBe(true);
+  });
+
+  it('rejects dangerous and non-web schemes', () => {
+    expect(isHttpUrl('javascript:alert(1)')).toBe(false);
+    expect(isHttpUrl('data:text/plain,hi')).toBe(false);
+    expect(isHttpUrl('ftp://files.example.com')).toBe(false);
+  });
+
+  it('rejects malformed input', () => {
+    expect(isHttpUrl('notaurl')).toBe(false);
+    expect(isHttpUrl('')).toBe(false);
+    expect(isHttpUrl('example.com/page')).toBe(false);
   });
 });

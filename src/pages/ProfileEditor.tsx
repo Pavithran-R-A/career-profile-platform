@@ -2,9 +2,9 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
-import { sanitizeUrl } from '../lib/validators/url';
+import { isHttpUrl, sanitizeUrl } from '../lib/validators/url';
 import { getSupabaseClient } from '../lib/supabase/client';
-import { formatDateRange } from '../lib/profiles/date-format';
+import { formatDateRange, isDateRangeInvalid } from '../lib/profiles/date-format';
 import { getPreferences, type ProfilePreferences } from '../lib/profiles/preferences';
 import { LinkIcon } from '../components/portfolio/links';
 import { TemplateCanvas } from '../components/portfolio/TemplateCanvas';
@@ -30,6 +30,13 @@ const MONTHS = [
   'December',
 ];
 
+const DATE_FIELD_LABELS: Record<string, string> = {
+  startMonth: 'Start month',
+  startYear: 'Start year',
+  endMonth: 'End month',
+  endYear: 'End year',
+};
+
 function MonthSelect({
   id,
   name,
@@ -42,20 +49,25 @@ function MonthSelect({
   disabled?: boolean;
 }) {
   return (
-    <select
-      id={id}
-      name={name}
-      defaultValue={defaultValue ?? ''}
-      disabled={disabled}
-      className={`${INPUT} disabled:opacity-50`}
-      aria-label={name}>
-      <option value="">Month</option>
-      {MONTHS.map((m, i) => (
-        <option key={m} value={i + 1}>
-          {m.slice(0, 3)}
-        </option>
-      ))}
-    </select>
+    <div>
+      <label htmlFor={id} className="block text-xs font-medium mb-1 text-[var(--muted-foreground)]">
+        {DATE_FIELD_LABELS[name] ?? name}
+      </label>
+      <select
+        id={id}
+        name={name}
+        defaultValue={defaultValue ?? ''}
+        disabled={disabled}
+        className={`${INPUT} disabled:opacity-50`}
+        aria-label={name}>
+        <option value="">Month</option>
+        {MONTHS.map((m, i) => (
+          <option key={m} value={i + 1}>
+            {m.slice(0, 3)}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -73,18 +85,23 @@ function YearInput({
   disabled?: boolean;
 }) {
   return (
-    <input
-      id={id}
-      name={name}
-      type="number"
-      min="1900"
-      max="2099"
-      required={required}
-      defaultValue={defaultValue ?? ''}
-      disabled={disabled}
-      placeholder="Year"
-      className={`${INPUT} disabled:opacity-50`}
-    />
+    <div>
+      <label htmlFor={id} className="block text-xs font-medium mb-1 text-[var(--muted-foreground)]">
+        {DATE_FIELD_LABELS[name] ?? name}
+      </label>
+      <input
+        id={id}
+        name={name}
+        type="number"
+        min="1900"
+        max="2099"
+        required={required}
+        defaultValue={defaultValue ?? ''}
+        disabled={disabled}
+        placeholder="Year"
+        className={`${INPUT} disabled:opacity-50`}
+      />
+    </div>
   );
 }
 
@@ -214,6 +231,9 @@ export default function ProfileEditor() {
   const [editing, setEditing] = useState<EditingKey | null>(null);
   const [preferences, setPreferences] = useState<ProfilePreferences | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [showAllExperiences, setShowAllExperiences] = useState(false);
+  const [addExpCurrent, setAddExpCurrent] = useState(false);
+  const EXP_COLLAPSE = 5;
 
   const profileService = new ProfileService();
 
@@ -392,16 +412,26 @@ export default function ProfileEditor() {
     setError(null);
 
     const fd = new FormData(e.currentTarget);
+    const isCurrent = fd.get('isCurrent') === 'on';
+    const startYear = parseInt(fd.get('startYear') as string);
+    const startMonth = fd.get('startMonth') ? parseInt(fd.get('startMonth') as string) : null;
+    const endYear = fd.get('endYear') ? parseInt(fd.get('endYear') as string) : null;
+    const endMonth = fd.get('endMonth') ? parseInt(fd.get('endMonth') as string) : null;
+    if (isDateRangeInvalid({ startYear, startMonth, endYear, endMonth, current: isCurrent })) {
+      setError('Start date must be on or before the end date.');
+      setSaving(false);
+      return;
+    }
     const newExperience = {
       profile_id: profile.id,
       company: fd.get('company') as string,
       role: fd.get('role') as string,
       location: (fd.get('location') as string) || null,
-      start_year: parseInt(fd.get('startYear') as string),
-      start_month: fd.get('startMonth') ? parseInt(fd.get('startMonth') as string) : null,
-      end_year: fd.get('endYear') ? parseInt(fd.get('endYear') as string) : null,
-      end_month: fd.get('endMonth') ? parseInt(fd.get('endMonth') as string) : null,
-      is_current: fd.get('isCurrent') === 'on',
+      start_year: startYear,
+      start_month: startMonth,
+      end_year: endYear,
+      end_month: endMonth,
+      is_current: isCurrent,
       description: (fd.get('description') as string) || null,
       sort_order: profile.experiences.length,
     };
@@ -415,6 +445,8 @@ export default function ProfileEditor() {
       if (error) throw error;
       setProfile({ ...profile, experiences: [...profile.experiences, data] });
       (e.target as HTMLFormElement).reset();
+      setAddExpCurrent(false);
+      setShowAllExperiences(true);
       flashSuccess('Experience added.');
     } catch {
       setError("We couldn't add this experience. Please try again.");
@@ -543,9 +575,16 @@ export default function ProfileEditor() {
     setSaving(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
+    const rawSkill = fd.get('name');
+    const skillName = (typeof rawSkill === 'string' ? rawSkill : '').trim();
+    if (profile.skills.some((s) => s.name.toLowerCase() === skillName.toLowerCase())) {
+      setError(`You already have “${skillName}” in your skills.`);
+      setSaving(false);
+      return;
+    }
     const row = {
       profile_id: profile.id,
-      name: fd.get('name') as string,
+      name: skillName,
       category: (fd.get('category') as string) || null,
       sort_order: profile.skills.length,
     };
@@ -587,10 +626,17 @@ export default function ProfileEditor() {
     setSaving(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
+    const rawLink = fd.get('url');
+    const linkUrl = (typeof rawLink === 'string' ? rawLink : '').trim();
+    if (!isHttpUrl(linkUrl)) {
+      setError('Links must be a full http:// or https:// address.');
+      setSaving(false);
+      return;
+    }
     const row = {
       profile_id: profile.id,
       label: fd.get('label') as string,
-      url: fd.get('url') as string,
+      url: linkUrl,
       sort_order: profile.links.length,
     };
     try {
@@ -636,6 +682,11 @@ export default function ProfileEditor() {
   ];
 
   const isEditing = (key: EditingKey) => editing === key;
+  const experienceRows = profile
+    ? profile.experiences
+        .map((exp, idx) => ({ exp, idx }))
+        .filter((_, i) => showAllExperiences || i < EXP_COLLAPSE)
+    : [];
   const toggleEdit = (key: EditingKey) => setEditing(editing === key ? null : key);
 
   const previewProps = preferences
@@ -771,163 +822,193 @@ export default function ProfileEditor() {
                   cta="Add your first role below"
                 />
               ) : (
-                <div className="space-y-3 mb-6">
-                  {profile.experiences.map((exp, idx) =>
-                    isEditing(`experience:${exp.id}`) ? (
-                      <form
-                        key={exp.id}
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const fd = new FormData(e.currentTarget);
-                          void handleRowUpdate('experience', exp.id, {
-                            company: fd.get('company') as string,
-                            role: fd.get('role') as string,
-                            location: (fd.get('location') as string) || null,
-                            start_year: parseInt(fd.get('startYear') as string),
-                            start_month: fd.get('startMonth')
+                <>
+                  <div className="space-y-3 mb-6">
+                    {experienceRows.map(({ exp, idx }) =>
+                      isEditing(`experience:${exp.id}`) ? (
+                        <form
+                          key={exp.id}
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const fd = new FormData(e.currentTarget);
+                            const isCurrent = fd.get('isCurrent') === 'on';
+                            const sy = parseInt(fd.get('startYear') as string);
+                            const sm = fd.get('startMonth')
                               ? parseInt(fd.get('startMonth') as string)
-                              : null,
-                            end_year: fd.get('endYear')
+                              : null;
+                            const ey = fd.get('endYear')
                               ? parseInt(fd.get('endYear') as string)
-                              : null,
-                            end_month: fd.get('endMonth')
+                              : null;
+                            const em = fd.get('endMonth')
                               ? parseInt(fd.get('endMonth') as string)
-                              : null,
-                            is_current: fd.get('isCurrent') === 'on',
-                            description: (fd.get('description') as string) || null,
-                          });
-                        }}
-                        className="card card-pad border-[var(--accent)] space-y-4">
-                        <p className="text-sm font-semibold text-[var(--accent)]">Editing role</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <Field label="Role" htmlFor={`exp-role-${exp.id}`}>
+                              : null;
+                            if (
+                              isDateRangeInvalid({
+                                startYear: sy,
+                                startMonth: sm,
+                                endYear: ey,
+                                endMonth: em,
+                                current: isCurrent,
+                              })
+                            ) {
+                              setError('Start date must be on or before the end date.');
+                              return;
+                            }
+                            void handleRowUpdate('experience', exp.id, {
+                              company: fd.get('company') as string,
+                              role: fd.get('role') as string,
+                              location: (fd.get('location') as string) || null,
+                              start_year: sy,
+                              start_month: sm,
+                              end_year: ey,
+                              end_month: em,
+                              is_current: isCurrent,
+                              description: (fd.get('description') as string) || null,
+                            });
+                          }}
+                          className="card card-pad border-[var(--accent)] space-y-4">
+                          <p className="text-sm font-semibold text-[var(--accent)]">Editing role</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <Field label="Role" htmlFor={`exp-role-${exp.id}`}>
+                              <input
+                                id={`exp-role-${exp.id}`}
+                                name="role"
+                                defaultValue={exp.role}
+                                required
+                                className={INPUT}
+                              />
+                            </Field>
+                            <Field label="Company" htmlFor={`exp-company-${exp.id}`}>
+                              <input
+                                id={`exp-company-${exp.id}`}
+                                name="company"
+                                defaultValue={exp.company}
+                                required
+                                className={INPUT}
+                              />
+                            </Field>
+                          </div>
+                          <Field label="Location" htmlFor={`exp-location-${exp.id}`}>
                             <input
-                              id={`exp-role-${exp.id}`}
-                              name="role"
-                              defaultValue={exp.role}
-                              required
+                              id={`exp-location-${exp.id}`}
+                              name="location"
+                              defaultValue={exp.location || ''}
                               className={INPUT}
                             />
                           </Field>
-                          <Field label="Company" htmlFor={`exp-company-${exp.id}`}>
-                            <input
-                              id={`exp-company-${exp.id}`}
-                              name="company"
-                              defaultValue={exp.company}
-                              required
+                          <fieldset className="border-0 p-0 m-0">
+                            <legend className="field-label">Dates</legend>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                              <MonthSelect
+                                id={`exp-sm-${exp.id}`}
+                                name="startMonth"
+                                defaultValue={exp.start_month}
+                              />
+                              <YearInput
+                                id={`exp-sy-${exp.id}`}
+                                name="startYear"
+                                defaultValue={exp.start_year}
+                                required
+                              />
+                              <MonthSelect
+                                id={`exp-em-${exp.id}`}
+                                name="endMonth"
+                                defaultValue={exp.end_month}
+                                disabled={exp.is_current}
+                              />
+                              <YearInput
+                                id={`exp-ey-${exp.id}`}
+                                name="endYear"
+                                defaultValue={exp.end_year}
+                                disabled={exp.is_current}
+                              />
+                            </div>
+                            <label className="flex items-center gap-2 mt-3 text-sm text-[var(--muted-foreground)]">
+                              <input
+                                type="checkbox"
+                                name="isCurrent"
+                                defaultChecked={exp.is_current}
+                                className="h-4 w-4"
+                              />
+                              I currently work here
+                            </label>
+                          </fieldset>
+                          <Field label="Description" htmlFor={`exp-desc-${exp.id}`}>
+                            <textarea
+                              id={`exp-desc-${exp.id}`}
+                              name="description"
+                              rows={3}
+                              defaultValue={exp.description || ''}
                               className={INPUT}
                             />
                           </Field>
-                        </div>
-                        <Field label="Location" htmlFor={`exp-location-${exp.id}`}>
-                          <input
-                            id={`exp-location-${exp.id}`}
-                            name="location"
-                            defaultValue={exp.location || ''}
-                            className={INPUT}
-                          />
-                        </Field>
-                        <fieldset className="border-0 p-0 m-0">
-                          <legend className="field-label">Dates</legend>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <MonthSelect
-                              id={`exp-sm-${exp.id}`}
-                              name="startMonth"
-                              defaultValue={exp.start_month}
-                            />
-                            <YearInput
-                              id={`exp-sy-${exp.id}`}
-                              name="startYear"
-                              defaultValue={exp.start_year}
-                              required
-                            />
-                            <MonthSelect
-                              id={`exp-em-${exp.id}`}
-                              name="endMonth"
-                              defaultValue={exp.end_month}
-                              disabled={exp.is_current}
-                            />
-                            <YearInput
-                              id={`exp-ey-${exp.id}`}
-                              name="endYear"
-                              defaultValue={exp.end_year}
-                              disabled={exp.is_current}
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              disabled={saving}
+                              className="btn btn-primary !min-h-[40px] !py-2 text-sm">
+                              {saving ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditing(null)}
+                              className="btn btn-ghost !min-h-[40px] !py-2 text-sm">
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <article key={exp.id} className="card card-pad">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h3 className="text-[15px] font-semibold text-[var(--ink)]">
+                                {exp.role}
+                              </h3>
+                              <p className="text-sm text-[var(--accent)] font-medium">
+                                {exp.company}
+                              </p>
+                              <p className="text-xs text-[var(--faint-foreground)] mt-0.5">
+                                {formatDateRange({
+                                  startYear: exp.start_year,
+                                  startMonth: exp.start_month,
+                                  endYear: exp.end_year,
+                                  endMonth: exp.end_month,
+                                  current: exp.is_current,
+                                })}
+                                {exp.location ? ` · ${exp.location}` : ''}
+                              </p>
+                            </div>
+                            <CardActions
+                              onEdit={() => toggleEdit(`experience:${exp.id}`)}
+                              onDelete={() => void handleExperienceDelete(exp.id)}
+                              onMoveUp={() => void handleMove('experience', idx, -1)}
+                              onMoveDown={() => void handleMove('experience', idx, 1)}
+                              canMoveUp={idx > 0}
+                              canMoveDown={idx < profile.experiences.length - 1}
+                              deleteLabel={`Delete ${exp.role} at ${exp.company}`}
                             />
                           </div>
-                          <label className="flex items-center gap-2 mt-3 text-sm text-[var(--muted-foreground)]">
-                            <input
-                              type="checkbox"
-                              name="isCurrent"
-                              defaultChecked={exp.is_current}
-                              className="h-4 w-4"
-                            />
-                            I currently work here
-                          </label>
-                        </fieldset>
-                        <Field label="Description" htmlFor={`exp-desc-${exp.id}`}>
-                          <textarea
-                            id={`exp-desc-${exp.id}`}
-                            name="description"
-                            rows={3}
-                            defaultValue={exp.description || ''}
-                            className={INPUT}
-                          />
-                        </Field>
-                        <div className="flex gap-2">
-                          <button
-                            type="submit"
-                            disabled={saving}
-                            className="btn btn-primary !min-h-[40px] !py-2 text-sm">
-                            {saving ? 'Saving…' : 'Save'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditing(null)}
-                            className="btn btn-ghost !min-h-[40px] !py-2 text-sm">
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      <article key={exp.id} className="card card-pad">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="text-[15px] font-semibold text-[var(--ink)]">
-                              {exp.role}
-                            </h3>
-                            <p className="text-sm text-[var(--accent)] font-medium">
-                              {exp.company}
+                          {exp.description && (
+                            <p className="text-sm text-[var(--muted-foreground)] mt-2 leading-relaxed">
+                              {exp.description}
                             </p>
-                            <p className="text-xs text-[var(--faint-foreground)] mt-0.5">
-                              {formatDateRange({
-                                startYear: exp.start_year,
-                                startMonth: exp.start_month,
-                                endYear: exp.end_year,
-                                endMonth: exp.end_month,
-                                current: exp.is_current,
-                              })}
-                              {exp.location ? ` · ${exp.location}` : ''}
-                            </p>
-                          </div>
-                          <CardActions
-                            onEdit={() => toggleEdit(`experience:${exp.id}`)}
-                            onDelete={() => void handleExperienceDelete(exp.id)}
-                            onMoveUp={() => void handleMove('experience', idx, -1)}
-                            onMoveDown={() => void handleMove('experience', idx, 1)}
-                            canMoveUp={idx > 0}
-                            canMoveDown={idx < profile.experiences.length - 1}
-                            deleteLabel={`Delete ${exp.role} at ${exp.company}`}
-                          />
-                        </div>
-                        {exp.description && (
-                          <p className="text-sm text-[var(--muted-foreground)] mt-2 leading-relaxed">
-                            {exp.description}
-                          </p>
-                        )}
-                      </article>
-                    )
+                          )}
+                        </article>
+                      )
+                    )}
+                  </div>
+                  {profile.experiences.length > EXP_COLLAPSE && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllExperiences((v) => !v)}
+                      aria-expanded={showAllExperiences}
+                      className="btn btn-secondary !min-h-[40px] !py-2 text-sm w-full sm:w-auto">
+                      {showAllExperiences
+                        ? 'Show fewer roles'
+                        : `Show all ${profile.experiences.length} roles`}
+                    </button>
                   )}
-                </div>
+                </>
               )}
 
               <form
@@ -956,22 +1037,15 @@ export default function ProfileEditor() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <MonthSelect id="exp-new-sm" name="startMonth" />
                     <YearInput id="exp-new-sy" name="startYear" required />
-                    <MonthSelect id="exp-new-em" name="endMonth" />
-                    <YearInput id="exp-new-ey" name="endYear" />
+                    <MonthSelect id="exp-new-em" name="endMonth" disabled={addExpCurrent} />
+                    <YearInput id="exp-new-ey" name="endYear" disabled={addExpCurrent} />
                   </div>
                   <label className="flex items-center gap-2 mt-3 text-sm text-[var(--muted-foreground)]">
                     <input
                       type="checkbox"
                       name="isCurrent"
-                      onChange={(e) => {
-                        const form = e.currentTarget.form;
-                        if (!form) return;
-                        (form.elements.namedItem('endYear') as HTMLInputElement).disabled =
-                          e.currentTarget.checked;
-                        (
-                          form.elements.namedItem('endMonth') as unknown as HTMLSelectElement
-                        ).disabled = e.currentTarget.checked;
-                      }}
+                      checked={addExpCurrent}
+                      onChange={(e) => setAddExpCurrent(e.target.checked)}
                       className="h-4 w-4"
                     />
                     Current position
@@ -1465,9 +1539,15 @@ export default function ProfileEditor() {
                         onSubmit={(e) => {
                           e.preventDefault();
                           const fd = new FormData(e.currentTarget);
+                          const rawUrl = fd.get('url');
+                          const url = (typeof rawUrl === 'string' ? rawUrl : '').trim();
+                          if (!isHttpUrl(url)) {
+                            setError('Links must be a full http:// or https:// address.');
+                            return;
+                          }
                           void handleRowUpdate('links', link.id, {
                             label: fd.get('label') as string,
-                            url: fd.get('url') as string,
+                            url,
                           });
                         }}
                         className="card card-pad border-[var(--accent)] space-y-4">
