@@ -9,6 +9,16 @@ export function isSafeRedirect(path: string): boolean {
 
 const DANGEROUS_SCHEMES = ['javascript:', 'data:', 'vbscript:', 'blob:'];
 
+/** True only for absolute http/https URLs (input validation). */
+export function isHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function isSafeUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return !DANGEROUS_SCHEMES.some((scheme) => lower.startsWith(scheme));

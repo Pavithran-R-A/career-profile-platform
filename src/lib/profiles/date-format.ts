@@ -1,5 +1,28 @@
 export type MonthNumber = number | null;
 
+/**
+ * True when a start date is after an end date (invalid range).
+ * Months only compared when both are known; current roles are always valid.
+ */
+export function isDateRangeInvalid(opts: {
+  startYear: number | null;
+  startMonth?: MonthNumber;
+  endYear?: number | null;
+  endMonth?: MonthNumber;
+  current?: boolean;
+}): boolean {
+  if (opts.current) return false;
+  const { startYear, endYear } = opts;
+  if (startYear == null || endYear == null) return false;
+  if (startYear > endYear) return true;
+  if (startYear < endYear) return false;
+  // same year — compare months only when both known
+  const sm = opts.startMonth;
+  const em = opts.endMonth;
+  if (sm && em && sm > em) return true;
+  return false;
+}
+
 const MONTHS_SHORT = [
   'Jan',
   'Feb',
