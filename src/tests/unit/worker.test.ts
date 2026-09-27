@@ -152,7 +152,9 @@ describe('Worker API handler', () => {
         {} as ExecutionContext
       );
       expect(res.status).toBe(401);
-      expect(await res.json()).toEqual({ error: 'Unauthorized' });
+      const body = (await res.json()) as { error: string; code: string };
+      expect(body.error).toBe('Unauthorized');
+      expect(body.code).toBe('UNAUTHORIZED');
     });
 
     it('rejects malformed bodies only after auth, never with 500', async () => {
