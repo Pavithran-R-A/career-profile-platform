@@ -1,0 +1,29 @@
+import { test, expect } from '@playwright/test';
+
+test.describe('smoke: pages load with correct head metadata', () => {
+  test('landing page renders hero and site meta', async ({ page }) => {
+    const response = await page.goto('/');
+    expect(response?.status()).toBe(200);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    expect(await page.title()).toMatch(/Career Profile/);
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', /recruiters/);
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', /og-cover\.png/);
+  });
+
+  test('pricing page has a clean canonical', async ({ page }) => {
+    await page.goto('/pricing');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    const origin = new URL(page.url()).origin;
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${origin}/pricing`);
+  });
+
+  test('unknown route renders the 404 page', async ({ page }) => {
+    await page.goto('/definitely-not-a-route');
+    await expect(page.getByText('404')).toBeVisible();
+  });
+
+  test('published profile URL with no profile renders not-found, not a crash', async ({ page }) => {
+    await page.goto('/u/definitely-not-a-user-9x7q');
+    await expect(page.getByRole('heading', { name: /not found|unavailable/i })).toBeVisible();
+  });
+});
