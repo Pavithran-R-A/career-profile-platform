@@ -6,7 +6,9 @@ import {
 } from '../../lib/templates/types';
 import { sanitizeUrl } from '../../lib/validators/url';
 import { formatDateRange } from '../../lib/profiles/date-format';
+import { evidenceForProject, evidenceForSkill } from '../../lib/evidence/public';
 import { LinkIcon } from '../portfolio/links';
+import { ProjectEvidence, SkillEvidence } from '../portfolio/EvidenceAffordance';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -130,7 +132,9 @@ export default function MinimalTemplate({ profile, config, preferences }: Minima
         <section key="projects" className="mb-14">
           <SectionLabel muted={muted}>Selected work</SectionLabel>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {profile.projects.map((proj) => (
+            {profile.projects.map((proj) => {
+              const projectEvidence = evidenceForProject(profile.evidence ?? [], proj);
+              return (
               <article
                 key={proj.id}
                 className="rounded-xl border p-5 transition-shadow hover:shadow-[var(--shadow-card)]"
@@ -175,8 +179,10 @@ export default function MinimalTemplate({ profile, config, preferences }: Minima
                     </a>
                   )}
                 </div>
+                <ProjectEvidence refs={projectEvidence} mutedColor={muted} />
               </article>
-            ))}
+              );
+            })}
           </div>
         </section>
       ) : null,
@@ -189,9 +195,10 @@ export default function MinimalTemplate({ profile, config, preferences }: Minima
             {profile.skills.map((s) => (
               <span
                 key={s.id}
-                className="text-[13px] px-3 py-1 rounded-full border"
+                className="text-[13px] px-3 py-1 rounded-full border inline-flex items-center gap-1.5"
                 style={{ borderColor: muted + '40', color: config.colors.text }}>
                 {s.name}
+                <SkillEvidence ref={evidenceForSkill(profile.evidence ?? [], s.name)} accent={accent} />
               </span>
             ))}
           </div>

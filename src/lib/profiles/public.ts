@@ -70,6 +70,20 @@ const LinkSchema = z.object({
   updated_at: ts,
 });
 
+const EvidenceSchema = z.object({
+  id: uuid,
+  evidence_type: z.string(),
+  subject: z.string(),
+  summary: z.string(),
+  source_url: z.string().nullable(),
+  source_commit_sha: z.string().nullable(),
+  observed_at: ts,
+  repository_full_name: z.string().nullable(),
+  repository_url: z.string().nullable(),
+  repository_language: z.string().nullable(),
+  repository_topics: z.array(z.string()).nullable(),
+});
+
 export const PublicPreferencesSchema = z.object({
   template_key: z.string(),
   accent_key: z.string(),
@@ -101,6 +115,7 @@ const PublicPortfolioSchema = z.object({
   skills: z.array(SkillSchema),
   projects: z.array(ProjectSchema),
   links: z.array(LinkSchema),
+  evidence: z.array(EvidenceSchema).default([]),
   preferences: PublicPreferencesSchema,
 });
 
