@@ -5,6 +5,7 @@ import { getSupabaseClient } from '../lib/supabase/client';
 import type { PlanEntitlements } from '../lib/billing/plans';
 import type { SubscriptionState } from '../lib/billing/entitlements';
 import type { UsageCheck } from '../lib/billing/usage';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
 interface BillingStatus {
   subscription: SubscriptionState;
@@ -22,6 +23,7 @@ declare global {
 }
 
 export default function Billing() {
+  useNoindexMeta('Billing — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
   const [status, setStatus] = useState<BillingStatus | null>(null);

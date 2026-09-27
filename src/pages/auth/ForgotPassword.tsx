@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
+import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 
 export default function ForgotPassword() {
+  useNoindexMeta('Forgot password — Career Profile');
+
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);

@@ -7,6 +7,7 @@ import { getTemplate } from '../lib/templates/types';
 import { TemplateCanvas } from '../components/portfolio/TemplateCanvas';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 import AppearanceControls from '../components/AppearanceControls';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
 const DEFAULT_PREFERENCES: ProfilePreferences = {
   id: '',
@@ -18,6 +19,7 @@ const DEFAULT_PREFERENCES: ProfilePreferences = {
 };
 
 export default function AppearanceEditor() {
+  useNoindexMeta('Appearance — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);

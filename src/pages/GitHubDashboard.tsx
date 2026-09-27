@@ -12,6 +12,7 @@ import GitHubConnectionCard from '../components/GitHubConnectionCard';
 import RepositoryList from '../components/RepositoryList';
 import EvidenceList from '../components/EvidenceList';
 import { getSupabaseClient } from '../lib/supabase/client';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
 interface SyncState {
   loading: boolean;
@@ -22,6 +23,7 @@ interface SyncState {
 }
 
 export default function GitHubDashboard() {
+  useNoindexMeta('GitHub evidence — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
   const profileService = new ProfileService();

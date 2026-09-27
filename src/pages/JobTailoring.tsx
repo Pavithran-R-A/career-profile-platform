@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
 import RequirementAnalysis from '../components/RequirementAnalysis';
 import TailoringReview from '../components/TailoringReview';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
@@ -211,6 +212,7 @@ function matchScore(requirements: JobRequirement[]): number {
 }
 
 export default function JobTailoring() {
+  useNoindexMeta('Job tailoring — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
   const [state, setState] = useState<TailoringState>('input');

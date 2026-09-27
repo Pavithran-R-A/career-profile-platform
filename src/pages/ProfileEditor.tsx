@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
@@ -8,6 +8,8 @@ import { formatDateRange, isDateRangeInvalid } from '../lib/profiles/date-format
 import { getPreferences, type ProfilePreferences } from '../lib/profiles/preferences';
 import { LinkIcon } from '../components/portfolio/links';
 import { TemplateCanvas } from '../components/portfolio/TemplateCanvas';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
+import { track } from '../lib/analytics/events';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 
 type EditSection = 'basics' | 'experience' | 'education' | 'projects' | 'skills' | 'links';
@@ -222,6 +224,7 @@ type EditingKey = `${EditSection}:${string}`;
 export default function ProfileEditor() {
   const auth = useAuth();
   const navigate = useNavigate();
+  useNoindexMeta('Edit profile — Career Profile');
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -282,6 +285,19 @@ export default function ProfileEditor() {
       void navigate('/onboarding');
     }
   }, [loading, auth, profile, navigate]);
+
+  // Funnel: any section save that changes the row counts as a profile update.
+  const lastUpdatedAt = useRef<string | null>(null);
+  useEffect(() => {
+    if (!profile) {
+      lastUpdatedAt.current = null;
+      return;
+    }
+    if (lastUpdatedAt.current && profile.updated_at !== lastUpdatedAt.current) {
+      track('profile_updated', { source: 'profile_editor' });
+    }
+    lastUpdatedAt.current = profile.updated_at;
+  }, [profile]);
 
   if (auth.status === 'loading' || loading) {
     return (

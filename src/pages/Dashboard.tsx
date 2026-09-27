@@ -5,6 +5,8 @@ import { ProfileService } from '../lib/profiles/service';
 import { profileCompletion } from '../lib/profiles/completion';
 import { getPreferences, type ProfilePreferences } from '../lib/profiles/preferences';
 import { getSupabaseClient } from '../lib/supabase/client';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
+import { oncePerSession, track } from '../lib/analytics/events';
 import PublishControls from '../components/PublishControls';
 import { TemplateCanvas } from '../components/portfolio/TemplateCanvas';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
@@ -60,6 +62,19 @@ interface ResumeStatusRow {
   created_at: string;
 }
 
+interface BetaFunnelCounts {
+  resume_uploaded: number;
+  portfolio_published: number;
+  ats_downloaded: number;
+  profile_completed: number;
+}
+
+const EMPTY_PROFILE_KEYS = ['experiences', 'education', 'projects', 'skills', 'links'] as const;
+
+function profileIsEmpty(profile: ProfileWithRelations): boolean {
+  return EMPTY_PROFILE_KEYS.every((key) => profile[key].length === 0);
+}
+
 const RESUME_STATUS_LABELS: Record<string, string> = {
   uploaded: 'Saved',
   extracting: 'Reading',
@@ -100,9 +115,11 @@ function nextBestAction(summary: ReturnType<typeof profileCompletion>, isPublish
 export default function Dashboard() {
   const auth = useAuth();
   const navigate = useNavigate();
+  useNoindexMeta('Dashboard — Career Profile');
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [preferences, setPreferences] = useState<ProfilePreferences | null>(null);
   const [resume, setResume] = useState<ResumeStatusRow | null | 'loading'>('loading');
+  const [betaFunnel, setBetaFunnel] = useState<BetaFunnelCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
@@ -142,6 +159,37 @@ export default function Dashboard() {
     }
   }, [auth]);
 
+  // Private-beta funnel visibility: the owner's own milestone counts.
+  useEffect(() => {
+    if (auth.status !== 'authenticated' || !auth.user) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const { data } = await getSupabaseClient()
+          .from('funnel_events')
+          .select('event_name');
+        const rows = (data ?? []) as Array<{ event_name: string }>;
+        const counts: BetaFunnelCounts = {
+          resume_uploaded: 0,
+          portfolio_published: 0,
+          ats_downloaded: 0,
+          profile_completed: 0,
+        };
+        for (const row of rows) {
+          if (row.event_name in counts) counts[row.event_name as keyof BetaFunnelCounts] += 1;
+        }
+        if (!cancelled) setBetaFunnel(counts);
+      } catch {
+        if (!cancelled) setBetaFunnel(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth]);
+
   useEffect(() => {
     if (auth.status === 'unauthenticated' && !loading) {
       void navigate('/login');
@@ -153,6 +201,15 @@ export default function Dashboard() {
       void navigate('/onboarding');
     }
   }, [loading, auth, profile, navigate]);
+
+  // Funnel: a fully complete profile counts as profile_completed (once/session).
+  useEffect(() => {
+    if (!profile) return;
+    const percentage = profileCompletion(profile).percentage;
+    if (percentage === 100 && oncePerSession(`profile-complete:${profile.id}`)) {
+      track('profile_completed', { source: 'dashboard' });
+    }
+  }, [profile]);
 
   if (auth.status === 'loading' || loading) {
     return (
@@ -176,6 +233,7 @@ export default function Dashboard() {
 
   const summary = profileCompletion(profile);
   const isPublished = profile.visibility === 'published';
+  const isEmpty = profileIsEmpty(profile);
   const publicUrl = `${window.location.origin}/u/${profile.username}`;
   const action = nextBestAction(summary, isPublished);
   const templateKey = preferences?.template_key || 'minimal';
@@ -219,6 +277,30 @@ export default function Dashboard() {
           Preview portfolio →
         </Link>
       </div>
+
+      {/* Empty new account: one obvious next action */}
+      {isEmpty && !isPublished && (
+        <section className="card p-6 sm:p-8 mb-6" aria-labelledby="build-heading">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--faint-foreground)]">
+            First step
+          </p>
+          <h2 id="build-heading" className="section-title mt-2">
+            Build your profile
+          </h2>
+          <p className="text-sm text-[var(--muted-foreground)] mt-1.5 max-w-xl leading-relaxed">
+            The fastest way is to import the CV you already use. We structure it, you review
+            every line, and only what you approve lands in your profile.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link to="/dashboard/resume" className="btn btn-primary !min-h-[44px] !py-2.5">
+              Import CV
+            </Link>
+            <Link to="/dashboard/profile" className="btn btn-secondary !min-h-[44px] !py-2.5">
+              Start manually
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* Dominant live-state card */}
       <section
@@ -457,6 +539,21 @@ export default function Dashboard() {
           </Link>
         </div>
       </section>
+
+      {/* Private-beta funnel visibility (own events only, no vanity metrics) */}
+      {betaFunnel && (
+        <section className="mt-6" aria-label="Private beta funnel">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-[var(--faint-foreground)]">
+            <span className="font-semibold uppercase tracking-wider text-[10px] text-[var(--muted-foreground)]">
+              Private beta funnel
+            </span>
+            <span>CV imports: {betaFunnel.resume_uploaded}</span>
+            <span>Published: {betaFunnel.portfolio_published}</span>
+            <span>ATS downloads: {betaFunnel.ats_downloaded}</span>
+            <span>Completed: {betaFunnel.profile_completed}</span>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
