@@ -1,6 +1,23 @@
 import type { AIProvider, AIExtractProfileInput, ResumeExtraction } from './provider';
 import { resumeExtractionSchema } from './provider';
 
+export type AIExtractionErrorCode =
+  | 'AI_NOT_CONFIGURED'
+  | 'AI_PROVIDER_ERROR'
+  | 'AI_EMPTY_RESPONSE'
+  | 'AI_INVALID_JSON'
+  | 'AI_INVALID_RESPONSE';
+
+export class AIExtractionError extends Error {
+  readonly code: AIExtractionErrorCode;
+
+  constructor(code: AIExtractionErrorCode, message: string) {
+    super(message);
+    this.name = 'AIExtractionError';
+    this.code = code;
+  }
+}
+
 const EXTRACTION_PROMPT = `You are a resume extraction assistant. Extract structured information from the following resume text.
 
 IMPORTANT RULES:
@@ -71,6 +88,23 @@ Return a JSON object with this exact structure:
 RESUME TEXT:
 `;
 
+export interface BharatCodeConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
+function readProcessEnv(name: string): string {
+  try {
+    if (typeof process !== 'undefined' && process.env && typeof process.env[name] === 'string') {
+      return process.env[name];
+    }
+  } catch {
+    // No process object in this runtime.
+  }
+  return '';
+}
+
 export class BharatCodeProvider implements AIProvider {
   readonly name = 'bharatcode';
 
@@ -78,68 +112,146 @@ export class BharatCodeProvider implements AIProvider {
   private baseUrl: string;
   private model: string;
 
-  constructor() {
-    this.apiKey = process.env.BHARATCODE_API_KEY || '';
-    this.baseUrl = process.env.BHARATCODE_BASE_URL || 'https://bharatcode.ai/api/model/v1';
-    this.model = process.env.BHARATCODE_MODEL || 'deepseek-v4.1-flash';
+  constructor(config?: Partial<BharatCodeConfig>) {
+    this.apiKey = config?.apiKey ?? readProcessEnv('BHARATCODE_API_KEY');
+    this.baseUrl =
+      config?.baseUrl ??
+      (readProcessEnv('BHARATCODE_BASE_URL') || 'https://bharatcode.ai/api/model/v1');
+    this.model = config?.model ?? (readProcessEnv('BHARATCODE_MODEL') || 'deepseek-v4.1-flash');
   }
 
   isConfigured(): boolean {
     return this.apiKey.length > 0;
   }
 
-  async extractProfile(input: AIExtractProfileInput): Promise<ResumeExtraction> {
+  async complete(
+    messages: Array<{ role: 'system' | 'user'; content: string }>,
+    maxTokens = 400
+  ): Promise<string> {
     if (!this.isConfigured()) {
-      throw new Error('AI provider not configured. Set BHARATCODE_API_KEY environment variable.');
+      throw new AIExtractionError(
+        'AI_NOT_CONFIGURED',
+        'AI provider is not configured. Set BHARATCODE_API_KEY environment variable.'
+      );
     }
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a precise resume extraction assistant. Return only valid JSON.',
-          },
-          {
-            role: 'user',
-            content: EXTRACTION_PROMPT + input.resumeText,
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 4000,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages,
+          temperature: 0.1,
+          max_tokens: maxTokens,
+        }),
+      });
+    } catch {
+      throw new AIExtractionError(
+        'AI_PROVIDER_ERROR',
+        'AI provider request failed'
+      );
+    }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`AI provider error (${response.status}): ${errorText}`);
+      await response.body?.cancel().catch(() => undefined);
+      throw new AIExtractionError('AI_PROVIDER_ERROR', `AI provider error (${response.status})`);
     }
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
+    let data: { choices?: Array<{ message?: { content?: string } }> };
+    try {
+      data = (await response.json()) as typeof data;
+    } catch {
+      throw new AIExtractionError('AI_PROVIDER_ERROR', 'AI provider response was not valid JSON');
+    }
+
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) {
+      throw new AIExtractionError('AI_EMPTY_RESPONSE', 'AI provider returned empty response');
+    }
+    return content;
+  }
+
+  async extractProfile(input: AIExtractProfileInput): Promise<ResumeExtraction> {
+    if (!this.isConfigured()) {
+      throw new AIExtractionError(
+        'AI_NOT_CONFIGURED',
+        'AI extraction is not configured. Set BHARATCODE_API_KEY environment variable.'
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a precise resume extraction assistant. Return only valid JSON.',
+            },
+            {
+              role: 'user',
+              content: EXTRACTION_PROMPT + input.resumeText,
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 4000,
+        }),
+      });
+    } catch (err) {
+      throw new AIExtractionError(
+        'AI_PROVIDER_ERROR',
+        err instanceof Error ? 'AI provider request failed' : 'AI provider request failed'
+      );
+    }
+
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new AIExtractionError('AI_PROVIDER_ERROR', `AI provider error (${response.status})`);
+    }
+
+    let data: { choices?: Array<{ message?: { content?: string } }> };
+    try {
+      data = (await response.json()) as typeof data;
+    } catch {
+      throw new AIExtractionError('AI_PROVIDER_ERROR', 'AI provider response was not valid JSON');
+    }
+
     const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error('AI provider returned empty response');
+      throw new AIExtractionError('AI_EMPTY_RESPONSE', 'AI provider returned empty response');
     }
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('AI provider response does not contain valid JSON');
+      throw new AIExtractionError('AI_INVALID_JSON', 'AI response does not contain valid JSON');
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    } catch {
+      throw new AIExtractionError('AI_INVALID_JSON', 'AI response does not contain valid JSON');
+    }
+
     const validated = resumeExtractionSchema.safeParse(parsed);
 
     if (!validated.success) {
-      throw new Error(`AI response validation failed: ${validated.error.message}`);
+      throw new AIExtractionError(
+        'AI_INVALID_RESPONSE',
+        'AI response validation failed'
+      );
     }
 
     return validated.data;

@@ -45,10 +45,10 @@ export const extractedLinkSchema = z.object({
 
 export const resumeExtractionSchema = z.object({
   identity: z.object({
-    displayName: z.string().optional(),
-    headline: z.string().optional(),
-    location: z.string().optional(),
-    about: z.string().optional(),
+    displayName: z.string().nullable().optional(),
+    headline: z.string().nullable().optional(),
+    location: z.string().nullable().optional(),
+    about: z.string().nullable().optional(),
   }),
   experience: z.array(extractedExperienceSchema),
   education: z.array(extractedEducationSchema),
