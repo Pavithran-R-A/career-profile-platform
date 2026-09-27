@@ -1,4 +1,8 @@
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
+
 export default function NotFound() {
+  useNoindexMeta('Page not found — Career Profile');
+
   return (
     <div className="mx-auto max-w-3xl px-6 py-24 text-center">
       <h1 className="text-6xl font-bold text-gray-900">404</h1>

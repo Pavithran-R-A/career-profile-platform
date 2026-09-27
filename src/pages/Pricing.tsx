@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { PublicPlanCard } from '../lib/billing/plans';
+import { OG_IMAGE_PATH } from '../lib/seo/meta';
+import { usePageMeta } from '../lib/seo/usePageMeta';
 
 function formatPrice(pricePaise: number | null, currency: string): string {
   if (pricePaise === null) return 'Contact sales';
@@ -17,6 +19,16 @@ export default function Pricing() {
   const [plans, setPlans] = useState<PublicPlanCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  usePageMeta({
+    title: 'Pricing — Career Profile',
+    description:
+      'Free to build your career profile, portfolio, and ATS resume. Pro adds higher limits for active job seekers.',
+    canonical: `${origin}/pricing`,
+    ogType: 'website',
+    ogImage: `${origin}${OG_IMAGE_PATH}`,
+  });
 
   useEffect(() => {
     void fetch('/api/billing/plans')
