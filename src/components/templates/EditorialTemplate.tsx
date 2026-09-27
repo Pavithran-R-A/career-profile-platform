@@ -6,7 +6,9 @@ import {
 } from '../../lib/templates/types';
 import { sanitizeUrl } from '../../lib/validators/url';
 import { formatDateRange } from '../../lib/profiles/date-format';
+import { evidenceForProject, evidenceForSkill } from '../../lib/evidence/public';
 import { LinkIcon } from '../portfolio/links';
+import { ProjectEvidence, SkillEvidence } from '../portfolio/EvidenceAffordance';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -161,7 +163,9 @@ export default function EditorialTemplate({
         <section key="projects" className="mb-14">
           <SectionHeading label="Selected work" accent={accent} config={config} />
           <div className="space-y-6">
-            {profile.projects.map((proj, i) => (
+            {profile.projects.map((proj, i) => {
+              const projectEvidence = evidenceForProject(profile.evidence ?? [], proj);
+              return (
               <article
                 key={proj.id}
                 className="rounded-2xl p-6 border"
@@ -208,8 +212,10 @@ export default function EditorialTemplate({
                     </a>
                   )}
                 </div>
+                <ProjectEvidence refs={projectEvidence} mutedColor={muted} />
               </article>
-            ))}
+              );
+            })}
           </div>
         </section>
       ) : null,
@@ -222,9 +228,10 @@ export default function EditorialTemplate({
             {profile.skills.map((s) => (
               <span
                 key={s.id}
-                className="text-[13px] font-medium px-3 py-1 rounded-full"
+                className="text-[13px] font-medium px-3 py-1 rounded-full inline-flex items-center gap-1.5"
                 style={{ backgroundColor: accent + '14', color: accent }}>
                 {s.name}
+                <SkillEvidence ref={evidenceForSkill(profile.evidence ?? [], s.name)} accent={accent} />
               </span>
             ))}
           </div>

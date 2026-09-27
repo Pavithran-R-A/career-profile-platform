@@ -6,7 +6,9 @@ import {
 } from '../../lib/templates/types';
 import { sanitizeUrl } from '../../lib/validators/url';
 import { formatDateRange } from '../../lib/profiles/date-format';
+import { evidenceForProject, evidenceForSkill } from '../../lib/evidence/public';
 import { LinkIcon } from '../portfolio/links';
+import { ProjectEvidence, SkillEvidence } from '../portfolio/EvidenceAffordance';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -110,7 +112,9 @@ export default function TechnicalTemplate({
         <section key="projects" className="mb-12">
           <SectionLabel label="Projects" accent={accent} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {profile.projects.map((proj) => (
+            {profile.projects.map((proj) => {
+              const projectEvidence = evidenceForProject(profile.evidence ?? [], proj);
+              return (
               <article
                 key={proj.id}
                 className="rounded-lg border border-white/10 bg-white/[0.03] p-4 hover:border-white/25 transition-colors">
@@ -155,8 +159,10 @@ export default function TechnicalTemplate({
                     </a>
                   )}
                 </div>
+                <ProjectEvidence refs={projectEvidence} mutedColor="rgba(255,255,255,0.55)" />
               </article>
-            ))}
+              );
+            })}
           </div>
         </section>
       ) : null,
@@ -217,9 +223,10 @@ export default function TechnicalTemplate({
             {profile.skills.map((s) => (
               <span
                 key={s.id}
-                className="text-[13px] text-white/80"
+                className="text-[13px] text-white/80 inline-flex items-center gap-1"
                 style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
                 <span style={{ color: accent }}>·</span> {s.name}
+                <SkillEvidence ref={evidenceForSkill(profile.evidence ?? [], s.name)} accent={accent} />
               </span>
             ))}
           </div>
