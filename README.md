@@ -52,6 +52,8 @@ pnpm dev
 | `pnpm preview`       | Preview production build     |
 | `pnpm test`          | Run unit tests               |
 | `pnpm test:coverage` | Run tests with coverage      |
+| `pnpm test:e2e`      | Run Playwright E2E suite     |
+| `pnpm bundle:scan`   | Report production chunk sizes |
 | `pnpm lint`          | Run ESLint                   |
 | `pnpm typecheck`     | Run TypeScript type checking |
 | `pnpm format`        | Format code with Prettier    |
