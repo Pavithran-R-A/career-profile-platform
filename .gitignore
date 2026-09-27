@@ -28,5 +28,12 @@ pnpm-debug.log*
 # Coverage / reports
 coverage/
 
+# Playwright
+test-results/
+playwright-report/
+e2e/.artifacts/
+e2e/screenshots/
+e2e/**-snapshots/
+
 # Misc
 *.local

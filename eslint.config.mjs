@@ -3,7 +3,7 @@ import globals from 'globals';
 import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/database.types.ts'] },
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/database.types.ts', 'scripts/**/*.mjs'] },
   ...tseslint.configs.recommendedTypeChecked,
   prettier,
   {
@@ -15,7 +15,14 @@ export default tseslint.config(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['eslint.config.mjs'],
+          allowDefaultProject: [
+            'eslint.config.mjs',
+            'playwright.config.ts',
+            'e2e/smoke.spec.ts',
+            'e2e/journeys.spec.ts',
+            'e2e/visual-matrix.spec.ts',
+            'e2e/cwv-baseline.spec.ts',
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },
