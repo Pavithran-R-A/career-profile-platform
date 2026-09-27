@@ -61,6 +61,7 @@ describe('ResumeImport extract contract', () => {
       </MemoryRouter>
     );
 
+    await screen.findByRole('button', { name: /select pdf/i });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['%PDF-1.4 synthetic'], 'resume.pdf', { type: 'application/pdf' });
     fireEvent.change(input, { target: { files: [file] } });
@@ -90,6 +91,7 @@ describe('ResumeImport extract contract', () => {
       </MemoryRouter>
     );
 
+    await screen.findByRole('button', { name: /select pdf/i });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['%PDF-1.4 synthetic'], 'resume.pdf', { type: 'application/pdf' });
     fireEvent.change(input, { target: { files: [file] } });
