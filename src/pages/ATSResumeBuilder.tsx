@@ -7,6 +7,8 @@ import { toATSExportModel } from '../lib/resume/ats-export';
 import { generatePDFBlob } from '../lib/resume/pdf-renderer';
 import ATSPreview from '../components/ATSPreview';
 import { ScaledCanvas } from '../components/marketing/BrowserFrame';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
+import { track } from '../lib/analytics/events';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 
 type BuilderState = 'idle' | 'loading' | 'ready' | 'generating' | 'preview' | 'error';
@@ -76,6 +78,7 @@ function buildATSData(profile: ProfileWithRelations): ATSResumeData {
 }
 
 export default function ATSResumeBuilder() {
+  useNoindexMeta('ATS resume — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
   const [state, setState] = useState<BuilderState>('loading');
@@ -179,6 +182,7 @@ export default function ATSResumeBuilder() {
 
     setAtsData(filteredData);
     setState('preview');
+    track('ats_generated', { source: 'ats_builder' });
   };
 
   const handleExportPDF = async () => {
@@ -205,6 +209,7 @@ export default function ATSResumeBuilder() {
       anchor.click();
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      track('ats_downloaded', { source: 'ats_builder' });
       setState('preview');
     } catch {
       setError('Could not generate the PDF. Please try again.');

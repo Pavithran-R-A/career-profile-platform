@@ -1,8 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
+import { useNoindexMeta } from '../../lib/seo/usePageMeta';
+import { track } from '../../lib/analytics/events';
 
 export default function Signup() {
+  useNoindexMeta('Create your account — Career Profile');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -27,6 +31,7 @@ export default function Signup() {
     }
 
     setLoading(true);
+    track('signup_started', { source: 'signup_page' });
     const { error: authError } = await auth.signUp({
       email,
       password,

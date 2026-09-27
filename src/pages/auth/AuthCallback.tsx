@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { getSupabaseClient } from '../../lib/supabase/client';
+import { useNoindexMeta } from '../../lib/seo/usePageMeta';
+import { track } from '../../lib/analytics/events';
 
 export default function AuthCallback() {
+  useNoindexMeta('Signing in — Career Profile');
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'error'>('loading');
@@ -55,6 +59,8 @@ export default function AuthCallback() {
           if (!profileError && profile) {
             void navigate('/dashboard', { replace: true });
           } else {
+            // First confirmed login with no profile yet = completed signup.
+            track('signup_completed', { source: 'email_confirm' });
             void navigate('/onboarding', { replace: true });
           }
           return;

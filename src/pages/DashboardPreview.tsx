@@ -6,8 +6,10 @@ import { getPreferences, type ProfilePreferences } from '../lib/profiles/prefere
 import { getTemplate } from '../lib/templates/types';
 import { getTemplateComponent } from '../lib/templates/registry';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
 export default function DashboardPreview() {
+  useNoindexMeta('Preview — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);

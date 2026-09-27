@@ -6,6 +6,7 @@ import { ProfileService } from '../lib/profiles/service';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 import type { PlanEntitlements } from '../lib/billing/plans';
 import type { UsageCheck } from '../lib/billing/usage';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
 interface CustomDomainItem {
   id: string;
@@ -24,6 +25,7 @@ interface DotCvQuoteState {
 }
 
 export default function Domains() {
+  useNoindexMeta('Custom domain — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
   const profileService = new ProfileService();

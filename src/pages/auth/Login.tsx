@@ -2,8 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
 import { isSafeRedirect } from '../../lib/validators/url';
+import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 
 export default function Login() {
+  useNoindexMeta('Sign in — Career Profile');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);

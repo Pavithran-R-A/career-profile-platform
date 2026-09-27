@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
 import { validateUsername } from '../lib/validators/username';
+import { useNoindexMeta } from '../lib/seo/usePageMeta';
+import { track } from '../lib/analytics/events';
 
 type OnboardingStep = 'username' | 'basics' | 'complete';
 
 export default function Onboarding() {
+  useNoindexMeta('Set up your profile — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState<OnboardingStep>('username');
@@ -75,6 +78,7 @@ export default function Onboarding() {
         location: location.trim() || null,
       };
       await profileService.updateProfile(created.id, basics);
+      track('profile_created', { source: 'onboarding' });
       setStep('complete');
       setTimeout(() => {
         void navigate('/dashboard');

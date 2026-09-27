@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
 import { getSupabaseClient } from '../../lib/supabase/client';
+import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 
 export default function VerifyEmail() {
+  useNoindexMeta('Verify your email — Career Profile');
+
   const auth = useAuth();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
