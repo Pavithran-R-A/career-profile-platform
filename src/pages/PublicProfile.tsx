@@ -1,8 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import { getPublicProfileByUsername, type PublicPortfolioResult } from '../lib/profiles/public';
 import { getTemplate, normalizeSectionOrder } from '../lib/templates/types';
 import { ensureTemplatesRegistered, getTemplateComponent } from '../lib/templates/registry';
+import { profileMeta } from '../lib/seo/meta';
+import { usePageMeta } from '../lib/seo/usePageMeta';
+import { buildProfileJsonLd } from '../lib/seo/jsonld';
+import { track, oncePerSession } from '../lib/analytics/events';
+import ShareControls from '../components/ShareControls';
+
+const JSONLD_ID = 'profile-jsonld';
+
+function injectProfileJsonLd(data: Record<string, unknown> | null): void {
+  if (typeof document === 'undefined') return;
+  document.getElementById(JSONLD_ID)?.remove();
+  if (!data) return;
+  const script = document.createElement('script');
+  script.id = JSONLD_ID;
+  script.type = 'application/ld+json';
+  script.textContent = JSON.stringify(data).replace(/</g, '\\u003c');
+  document.head.appendChild(script);
+}
 
 export default function PublicProfile() {
   const { username } = useParams<{ username: string }>();
@@ -20,6 +38,7 @@ export default function PublicProfile() {
       .then((data) => {
         if (!data) {
           setError('Profile not found or not published');
+          injectProfileJsonLd(null);
           return;
         }
         setPortfolio(data);
@@ -27,6 +46,55 @@ export default function PublicProfile() {
       .catch(() => setError('Failed to load profile'))
       .finally(() => setLoading(false));
   }, [username]);
+
+  const meta = useMemo(() => {
+    if (!portfolio || !username) return null;
+    const p = portfolio.profile;
+    return profileMeta({
+      displayName: p.display_name,
+      headline: p.headline,
+      about: p.about,
+      canonical: `${window.location.origin}/u/${encodeURIComponent(p.username)}`,
+      avatarUrl: p.avatar_url,
+      ogImageAbsolute: `${window.location.origin}/og-cover.png`,
+    });
+  }, [portfolio, username]);
+
+  const notFoundMeta = useMemo(() => {
+    if (!error || !username) return null;
+    return {
+      title: 'Profile not found — Career Profile',
+      description: 'This profile does not exist or is not published.',
+      canonical: `${window.location.origin}/u/${encodeURIComponent(username)}`,
+      noindex: true,
+    };
+  }, [error, username]);
+
+  usePageMeta(meta ?? notFoundMeta);
+
+  useEffect(() => {
+    if (!portfolio) return;
+    const p = portfolio.profile;
+    injectProfileJsonLd(
+      buildProfileJsonLd({
+        username: p.username,
+        displayName: p.display_name,
+        headline: p.headline,
+        about: p.about,
+        avatarUrl: p.avatar_url,
+        url: `${window.location.origin}/u/${encodeURIComponent(p.username)}`,
+        links: p.links,
+        experiences: p.experiences,
+        education: p.education,
+        skills: p.skills,
+      })
+    );
+    if (oncePerSession(`preview:${p.username}`)) {
+      // Public view of another person's portfolio is not tracked (no session
+      // for anonymous visitors); owner previews track on the dashboard side.
+      track('portfolio_previewed', { template: portfolio.preferences.template_key });
+    }
+  }, [portfolio]);
 
   if (loading) {
     return (
@@ -61,16 +129,34 @@ export default function PublicProfile() {
   const templateKey = portfolio.preferences.template_key || 'minimal';
   const template = getTemplate(templateKey) ?? getTemplate('minimal')!;
   const TemplateComponent = getTemplateComponent(templateKey);
+  const profile = portfolio.profile;
+  const shareUrl = `${window.location.origin}/u/${encodeURIComponent(profile.username)}`;
 
   return (
-    <TemplateComponent
-      profile={portfolio.profile}
-      config={template.config}
-      preferences={{
-        accentKey: portfolio.preferences.accent_key,
-        sectionOrder: normalizeSectionOrder(portfolio.preferences.section_order),
-        hiddenSections: portfolio.preferences.hidden_sections,
-      }}
-    />
+    <div>
+      <TemplateComponent
+        profile={profile}
+        config={template.config}
+        preferences={{
+          accentKey: portfolio.preferences.accent_key,
+          sectionOrder: normalizeSectionOrder(portfolio.preferences.section_order),
+          hiddenSections: portfolio.preferences.hidden_sections,
+        }}
+      />
+      <footer className="border-t border-[var(--border)] py-8 px-4">
+        <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-between gap-4">
+          <p className="text-xs text-[var(--faint-foreground)]">
+            Career profile on{' '}
+            <Link to="/" className="underline underline-offset-2">
+              Career Profile
+            </Link>
+          </p>
+          <ShareControls
+            url={shareUrl}
+            title={`${profile.display_name || profile.username} — career profile`}
+          />
+        </div>
+      </footer>
+    </div>
   );
 }
