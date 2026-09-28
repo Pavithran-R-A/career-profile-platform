@@ -25,7 +25,11 @@ is ON — Supabase rejects reserved domains such as `example.com`).
   the `public_profiles` view (published data only, no `user_id` exposure).
 - Recruiter AI: `POST /api/recruiter/ask` answers strictly from the published
   profile (grounding + truncation + sanitization), IP-rate-limited
-  (30/min), and returns the profile sections it used. Product UI lands next.
+  (30/min), and returns the profile sections it used. The recruiter Q&A
+  panel now ships on public profiles: suggested questions, grounded answers,
+  and "Based on" section citations. It renders only when the deployment has
+  `RECRUITER_AI_ENABLED` on and the AI key configured; otherwise it stays
+  hidden. `GET /api/recruiter/config` is the public, non-secret flag feed.
 - SEO: `sitemap.xml`, `robots.txt`, per-page meta (OG/Twitter/canonical),
   ProfilePage JSON-LD, OG cover image.
 - Privacy-safe funnel analytics: `signup_started → signup_completed →
@@ -57,8 +61,12 @@ the client never sets amounts.
   `docs/PRODUCTION_READINESS.md`.
 - **Billing (Razorpay), GitHub integration, custom domains, `.cv` domains**:
   code paths exist but are unconfigured; the UI shows truthful disabled states.
-- No teams/organizations, no third-party API access (public pages only),
-  no account deletion endpoint yet.
+- No teams/organizations, no third-party API access (public pages only).
+  Account deletion exists: `/dashboard/account/delete` (typed confirmation,
+  fresh re-auth within 10 minutes, storage-first cleanup, server-only auth
+  admin delete, sign-out + redirect). Billing: end-of-cycle cancel/resume is
+  wired (`/api/billing/subscription/{cancel,resume}` + Billing UI); live
+  payments still await production credentials.
 
 ## What we need from beta users
 

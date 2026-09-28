@@ -172,10 +172,24 @@ RATE_LIMIT_KEY_SECRET=
 - [x] .cv purchase gated behind explicit enable flags + live quote
 - [x] No live payments/domains in this pass
 
+## Cancellation / Resume (End-of-Cycle)
+
+- `POST /api/billing/subscription/cancel` — sets `cancel_at_period_end = true`;
+  Pro (and every entitlement) stays active until `current_period_end`.
+- `POST /api/billing/subscription/resume` — clears the flag; renewal proceeds.
+- Both are idempotent (re-applying the same action returns the current state),
+  auth-gated, and feature-gated behind `BILLING_ENABLED`.
+- Provider state remains authoritative: a renewal webhook upserts the
+  subscription and clears the flag; a period that already ended yields a
+  `CONFLICT` for client cancel attempts (expiry handles it instead).
+- `cancel_at_period_end` is exposed via `/api/billing/status` (`cancelAtPeriodEnd`)
+  and reflected truthfully in the Billing UI with a confirm step.
+- Migration: `supabase/migrations/20260928020000_subscription_cancellation.sql`.
+
 ## Future Enhancements
 
 - [ ] Payment method management and invoices
-- [ ] Cancellation / downgrade flows with proration
+- [ ] Immediate cancellation / prorated refunds (not in the product contract today)
 - [ ] DNS verification polling for custom domains
 - [ ] Full .cv purchase flow once provider credentials are live
 - [ ] Platform wildcard `username.OURDOMAIN.com` DNS setup (domain purchase pending)
