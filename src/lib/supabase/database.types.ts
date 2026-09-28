@@ -8,6 +8,36 @@ export type Database = {
   };
   public: {
     Tables: {
+      account_deletion_requests: {
+        Row: {
+          attempts: number;
+          completed_at: string | null;
+          last_error: string | null;
+          requested_at: string;
+          stage: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          attempts?: number;
+          completed_at?: string | null;
+          last_error?: string | null;
+          requested_at?: string;
+          stage?: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          attempts?: number;
+          completed_at?: string | null;
+          last_error?: string | null;
+          requested_at?: string;
+          stage?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       billing_orders: {
         Row: {
           amount_paise: number;
