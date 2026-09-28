@@ -10,9 +10,10 @@ import { LinkIcon } from '../components/portfolio/links';
 import { TemplateCanvas } from '../components/portfolio/TemplateCanvas';
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
 import { track } from '../lib/analytics/events';
-import type { ProfileWithRelations } from '../lib/profiles/repository';
+import type { ProfileWithRelations, AchievementRow } from '../lib/profiles/repository';
 
-type EditSection = 'basics' | 'experience' | 'education' | 'projects' | 'skills' | 'links';
+type EditSection =
+  'basics' | 'experience' | 'education' | 'projects' | 'skills' | 'links' | 'achievements';
 
 const INPUT =
   'w-full px-3 py-2 border border-[var(--border-strong)] rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:border-transparent';
@@ -226,6 +227,7 @@ export default function ProfileEditor() {
   const navigate = useNavigate();
   useNoindexMeta('Edit profile — Career Profile');
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
+  const [achievements, setAchievements] = useState<AchievementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<EditSection>('basics');
@@ -263,6 +265,12 @@ export default function ProfileEditor() {
           void getPreferences(p.id)
             .then(setPreferences)
             .catch(() => setPreferences(null));
+          void supabase
+            .from('profile_achievements')
+            .select('*')
+            .eq('profile_id', p.id)
+            .order('sort_order')
+            .then(({ data }) => setAchievements((data as AchievementRow[]) ?? []));
         }
       });
     }
@@ -688,6 +696,92 @@ export default function ProfileEditor() {
     }
   };
 
+  // ── Achievements (owner-curated; public only when is_public is set) ──
+
+  const handleAchievementAdd = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const fd = new FormData(e.currentTarget);
+    const sourceUrl = ((fd.get('sourceUrl') as string) || '').trim();
+    if (sourceUrl && !isHttpUrl(sourceUrl)) {
+      setError('The source must be a full http:// or https:// address.');
+      setSaving(false);
+      return;
+    }
+    const row = {
+      profile_id: profile.id,
+      title: ((fd.get('title') as string) || '').trim(),
+      description: (fd.get('description') as string) || null,
+      metric_text: (fd.get('metricText') as string) || null,
+      timeframe: (fd.get('timeframe') as string) || null,
+      source_url: sourceUrl || null,
+      is_featured: fd.get('featured') === 'on',
+      is_public: fd.get('isPublic') === 'on',
+      sort_order: achievements.length,
+    };
+    try {
+      const { data, error } = await supabase
+        .from('profile_achievements')
+        .insert(row)
+        .select()
+        .single();
+      if (error) throw error;
+      setAchievements([...achievements, data as AchievementRow]);
+      (e.target as HTMLFormElement).reset();
+      flashSuccess('Achievement added.');
+    } catch {
+      setError("We couldn't add this achievement. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAchievementDelete = async (id: string) => {
+    if (!confirm('Delete this achievement? This can’t be undone.')) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { error } = await supabase.from('profile_achievements').delete().eq('id', id);
+      if (error) throw error;
+      setAchievements(achievements.filter((a) => a.id !== id));
+      flashSuccess('Achievement removed.');
+    } catch {
+      setError("We couldn't delete this achievement. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAchievementMove = async (index: number, dir: -1 | 1) => {
+    const rows = [...achievements];
+    const target = index + dir;
+    if (target < 0 || target >= rows.length) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const a = rows[index];
+      const b = rows[target];
+      const { error: e1 } = await supabase
+        .from('profile_achievements')
+        .update({ sort_order: b.sort_order })
+        .eq('id', a.id);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase
+        .from('profile_achievements')
+        .update({ sort_order: a.sort_order })
+        .eq('id', b.id);
+      if (e2) throw e2;
+      [rows[index], rows[target]] = [rows[target], rows[index]];
+      rows.forEach((r, i) => (r.sort_order = i));
+      setAchievements(rows);
+    } catch {
+      setError("We couldn't reorder this achievement. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const sections: { id: EditSection; label: string }[] = [
     { id: 'basics', label: 'Basics' },
     { id: 'experience', label: 'Experience' },
@@ -695,6 +789,7 @@ export default function ProfileEditor() {
     { id: 'projects', label: 'Projects' },
     { id: 'skills', label: 'Skills' },
     { id: 'links', label: 'Links' },
+    { id: 'achievements', label: 'Achievements' },
   ];
 
   const isEditing = (key: EditingKey) => editing === key;
@@ -1668,6 +1763,157 @@ export default function ProfileEditor() {
                 </div>
                 <button type="submit" disabled={saving} className="btn btn-primary">
                   {saving ? 'Adding…' : 'Add link'}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {activeSection === 'achievements' && (
+            <div>
+              <h2 className="section-title mb-1">Achievements</h2>
+              <p className="text-sm text-[var(--muted-foreground)] mb-5">
+                Concrete wins worth bragging about — what you did, how, and what changed. Featured
+                achievements lead your public portfolio's "Featured work" section.
+              </p>
+
+              {achievements.length === 0 ? (
+                <EmptyState
+                  title="No achievements yet"
+                  body="Capture a win while it's fresh: the result, the number, the timeframe. These become the strongest part of your portfolio."
+                  cta="Add an achievement below"
+                />
+              ) : (
+                <div className="space-y-3 mb-6">
+                  {achievements.map((a, idx) => (
+                    <article key={a.id} className="card card-pad">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="text-[15px] font-semibold text-[var(--ink)]">{a.title}</h3>
+                          {a.metric_text && (
+                            <p
+                              className="text-sm font-medium mt-0.5"
+                              style={{ color: 'var(--accent-text)' }}>
+                              {a.metric_text}
+                            </p>
+                          )}
+                          {a.description && (
+                            <p className="text-sm text-[var(--muted-foreground)] mt-1.5 leading-relaxed">
+                              {a.description}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap items-center gap-2 mt-2.5 text-[11px]">
+                            {a.timeframe && (
+                              <span className="status-chip !text-[10px]">{a.timeframe}</span>
+                            )}
+                            {a.is_featured && (
+                              <span className="status-chip status-chip-live !text-[10px]">
+                                Featured
+                              </span>
+                            )}
+                            <span className="text-[var(--faint-foreground)]">
+                              {a.is_public
+                                ? 'Public on your portfolio'
+                                : 'Private (never shown publicly)'}
+                            </span>
+                            {a.source_url && (
+                              <a
+                                href={sanitizeUrl(a.source_url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[var(--muted-foreground)] hover:text-[var(--accent)] underline underline-offset-2">
+                                Source
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <CardActions
+                          onEdit={() => toggleEdit(`achievements:${a.id}`)}
+                          onDelete={() => void handleAchievementDelete(a.id)}
+                          onMoveUp={() => void handleAchievementMove(idx, -1)}
+                          onMoveDown={() => void handleAchievementMove(idx, 1)}
+                          canMoveUp={idx > 0}
+                          canMoveDown={idx < achievements.length - 1}
+                          deleteLabel={`Delete achievement ${a.title}`}
+                        />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              <form
+                onSubmit={(e) => void handleAchievementAdd(e)}
+                className="card card-pad space-y-4">
+                <h3 className="text-sm font-semibold text-[var(--ink)]">Add achievement</h3>
+                <Field
+                  label="Title"
+                  htmlFor="ach-new-title"
+                  hint="What did you accomplish? e.g. “Led migration to a zero-downtime deploy pipeline”.">
+                  <input
+                    id="ach-new-title"
+                    name="title"
+                    type="text"
+                    required
+                    maxLength={200}
+                    className={INPUT}
+                  />
+                </Field>
+                <Field
+                  label="Result (optional)"
+                  htmlFor="ach-new-metric"
+                  hint="What changed — in your own words. No need to invent numbers.">
+                  <input
+                    id="ach-new-metric"
+                    name="metricText"
+                    type="text"
+                    maxLength={300}
+                    placeholder="e.g., Deploys went from weekly and risky to daily and boring"
+                    className={INPUT}
+                  />
+                </Field>
+                <Field label="How (optional)" htmlFor="ach-new-desc">
+                  <textarea
+                    id="ach-new-desc"
+                    name="description"
+                    rows={3}
+                    maxLength={2000}
+                    className={INPUT}
+                  />
+                </Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Timeframe (optional)" htmlFor="ach-new-time">
+                    <input
+                      id="ach-new-time"
+                      name="timeframe"
+                      type="text"
+                      maxLength={60}
+                      placeholder="e.g., Q2 2026, 6 weeks"
+                      className={INPUT}
+                    />
+                  </Field>
+                  <Field label="Source URL (optional)" htmlFor="ach-new-source">
+                    <input
+                      id="ach-new-source"
+                      name="sourceUrl"
+                      type="url"
+                      maxLength={500}
+                      placeholder="https://"
+                      className={INPUT}
+                    />
+                  </Field>
+                </div>
+                <div className="flex flex-wrap gap-5">
+                  <label className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                    <input type="checkbox" name="featured" className="h-4 w-4" />
+                    Featured (shows first, in "Featured work")
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                    <input type="checkbox" name="isPublic" className="h-4 w-4" />
+                    Public on my portfolio
+                  </label>
+                </div>
+                <button type="submit" disabled={saving} className="btn btn-primary">
+                  {saving ? 'Adding…' : 'Add achievement'}
                 </button>
               </form>
             </div>

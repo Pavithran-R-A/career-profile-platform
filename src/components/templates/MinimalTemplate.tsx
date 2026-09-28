@@ -9,6 +9,7 @@ import { formatDateRange } from '../../lib/profiles/date-format';
 import { evidenceForProject, evidenceForSkill } from '../../lib/evidence/public';
 import { LinkIcon } from '../portfolio/links';
 import { ProjectEvidence, SkillEvidence } from '../portfolio/EvidenceAffordance';
+import { FeaturedAchievements } from '../portfolio/FeaturedAchievements';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -66,6 +67,20 @@ export default function MinimalTemplate({ profile, config, preferences }: Minima
   const hiddenExpCount = profile.experiences.length - visibleExps.length;
 
   const sectionMap: Record<string, React.ReactNode> = {
+    featured:
+      (profile.achievements?.length ?? 0) > 0 ? (
+        <div key="featured">
+          <FeaturedAchievements
+            achievements={profile.achievements ?? []}
+            accent={accent}
+            textColor={config.colors.text}
+            mutedColor={muted}
+            heading="Featured work"
+            headingFont={config.fonts.heading}
+          />
+        </div>
+      ) : null,
+
     basics: profile.about ? (
       <section key="basics" className="mb-14">
         <SectionLabel muted={muted}>About</SectionLabel>
@@ -135,52 +150,52 @@ export default function MinimalTemplate({ profile, config, preferences }: Minima
             {profile.projects.map((proj) => {
               const projectEvidence = evidenceForProject(profile.evidence ?? [], proj);
               return (
-              <article
-                key={proj.id}
-                className="rounded-xl border p-5 transition-shadow hover:shadow-[var(--shadow-card)]"
-                style={{ borderColor: muted + '35', background: config.colors.background }}>
-                <div className="flex items-start justify-between gap-3">
-                  <h3
-                    className="text-[15px] font-semibold leading-snug"
-                    style={{ color: config.colors.text }}>
-                    {proj.name}
-                  </h3>
-                  <span
-                    aria-hidden="true"
-                    className="text-lg leading-none"
-                    style={{ color: accent }}>
-                    ↗
-                  </span>
-                </div>
-                {proj.description && (
-                  <p className="text-sm leading-relaxed mt-2" style={{ color: muted }}>
-                    {proj.description}
-                  </p>
-                )}
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium">
-                  {proj.project_url && (
-                    <a
-                      href={sanitizeUrl(proj.project_url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 underline underline-offset-2 hover:opacity-70"
+                <article
+                  key={proj.id}
+                  className="rounded-xl border p-5 transition-shadow hover:shadow-[var(--shadow-card)]"
+                  style={{ borderColor: muted + '35', background: config.colors.background }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <h3
+                      className="text-[15px] font-semibold leading-snug"
+                      style={{ color: config.colors.text }}>
+                      {proj.name}
+                    </h3>
+                    <span
+                      aria-hidden="true"
+                      className="text-lg leading-none"
                       style={{ color: accent }}>
-                      View live
-                    </a>
+                      ↗
+                    </span>
+                  </div>
+                  {proj.description && (
+                    <p className="text-sm leading-relaxed mt-2" style={{ color: muted }}>
+                      {proj.description}
+                    </p>
                   )}
-                  {proj.repository_url && (
-                    <a
-                      href={sanitizeUrl(proj.repository_url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 underline underline-offset-2 hover:opacity-70"
-                      style={{ color: muted }}>
-                      Source
-                    </a>
-                  )}
-                </div>
-                <ProjectEvidence refs={projectEvidence} mutedColor={muted} />
-              </article>
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium">
+                    {proj.project_url && (
+                      <a
+                        href={sanitizeUrl(proj.project_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 underline underline-offset-2 hover:opacity-70"
+                        style={{ color: accent }}>
+                        View live
+                      </a>
+                    )}
+                    {proj.repository_url && (
+                      <a
+                        href={sanitizeUrl(proj.repository_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 underline underline-offset-2 hover:opacity-70"
+                        style={{ color: muted }}>
+                        Source
+                      </a>
+                    )}
+                  </div>
+                  <ProjectEvidence refs={projectEvidence} mutedColor={muted} />
+                </article>
               );
             })}
           </div>
@@ -198,7 +213,10 @@ export default function MinimalTemplate({ profile, config, preferences }: Minima
                 className="text-[13px] px-3 py-1 rounded-full border inline-flex items-center gap-1.5"
                 style={{ borderColor: muted + '40', color: config.colors.text }}>
                 {s.name}
-                <SkillEvidence ref={evidenceForSkill(profile.evidence ?? [], s.name)} accent={accent} />
+                <SkillEvidence
+                  ref={evidenceForSkill(profile.evidence ?? [], s.name)}
+                  accent={accent}
+                />
               </span>
             ))}
           </div>

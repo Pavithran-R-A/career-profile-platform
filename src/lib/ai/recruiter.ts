@@ -64,9 +64,9 @@ export const MAX_RECRUITER_QUESTION_CHARS = 400;
 export const MAX_RECRUITER_BRIEF_CHARS = 6000;
 export const MAX_RECRUITER_ANSWER_CHARS = 1200;
 
-export function validateRecruiterQuestion(question: unknown):
-  | { ok: true; question: string }
-  | { ok: false } {
+export function validateRecruiterQuestion(
+  question: unknown
+): { ok: true; question: string } | { ok: false } {
   if (typeof question !== 'string') return { ok: false };
   const trimmed = question.trim();
   if (trimmed.length < 1 || trimmed.length > MAX_RECRUITER_QUESTION_CHARS) {
@@ -75,7 +75,11 @@ export function validateRecruiterQuestion(question: unknown):
   return { ok: true, question: trimmed };
 }
 
-function yearLabel(start: number | null | undefined, end: number | null | undefined, isCurrent?: boolean | null): string {
+function yearLabel(
+  start: number | null | undefined,
+  end: number | null | undefined,
+  isCurrent?: boolean | null
+): string {
   const s = start == null ? '?' : String(start);
   if (isCurrent) return `${s}–present`;
   const e = end == null ? '?' : String(end);
@@ -109,7 +113,9 @@ export function buildProfileBrief(profile: RecruiterProfileData): string {
     push('Education:');
     for (const ed of profile.education) {
       const degree = [ed.degree, ed.field_of_study].filter(Boolean).join(', ');
-      push(`- ${ed.institution}${degree ? ` — ${degree}` : ''}, ${yearLabel(ed.start_year, ed.end_year)}`);
+      push(
+        `- ${ed.institution}${degree ? ` — ${degree}` : ''}, ${yearLabel(ed.start_year, ed.end_year)}`
+      );
     }
   }
 

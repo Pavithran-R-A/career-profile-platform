@@ -20,6 +20,21 @@ export interface ProfileWithRelations {
   links: LinkRow[];
 }
 
+export interface AchievementRow {
+  id: string;
+  profile_id: string;
+  title: string;
+  description: string | null;
+  metric_text: string | null;
+  timeframe: string | null;
+  source_url: string | null;
+  is_featured: boolean;
+  is_public: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ExperienceRow {
   id: string;
   profile_id: string;

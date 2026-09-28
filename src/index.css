@@ -371,6 +371,12 @@
     color: var(--success);
   }
 
+  .status-chip-danger {
+    background-color: var(--danger-surface);
+    border-color: var(--danger-border);
+    color: var(--danger);
+  }
+
   .side-nav-link {
     display: block;
     width: 100%;

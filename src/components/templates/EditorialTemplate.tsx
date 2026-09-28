@@ -9,6 +9,7 @@ import { formatDateRange } from '../../lib/profiles/date-format';
 import { evidenceForProject, evidenceForSkill } from '../../lib/evidence/public';
 import { LinkIcon } from '../portfolio/links';
 import { ProjectEvidence, SkillEvidence } from '../portfolio/EvidenceAffordance';
+import { FeaturedAchievements } from '../portfolio/FeaturedAchievements';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -90,6 +91,20 @@ export default function EditorialTemplate({
   const hiddenExpCount = profile.experiences.length - visibleExps.length;
 
   const sectionMap: Record<string, React.ReactNode> = {
+    featured:
+      (profile.achievements?.length ?? 0) > 0 ? (
+        <div key="featured">
+          <FeaturedAchievements
+            achievements={profile.achievements ?? []}
+            accent={accent}
+            textColor={config.colors.text}
+            mutedColor={muted}
+            heading="Featured work"
+            headingFont={config.fonts.heading}
+          />
+        </div>
+      ) : null,
+
     basics: profile.about ? (
       <section key="basics" className="mb-14">
         <p
@@ -166,54 +181,56 @@ export default function EditorialTemplate({
             {profile.projects.map((proj, i) => {
               const projectEvidence = evidenceForProject(profile.evidence ?? [], proj);
               return (
-              <article
-                key={proj.id}
-                className="rounded-2xl p-6 border"
-                style={{
-                  borderColor: muted + '30',
-                  backgroundColor: i % 2 === 0 ? muted + '0D' : 'transparent',
-                }}>
-                <div className="flex items-baseline justify-between gap-3">
-                  <h3
-                    className="text-base font-bold"
-                    style={{ color: config.colors.text, fontFamily: config.fonts.heading }}>
-                    {proj.name}
-                  </h3>
-                  <span
-                    className="text-xs font-bold tabular-nums"
-                    style={{ color: accent, fontFamily: config.fonts.mono }}>
-                    {String(i + 1).padStart(2, '0')}
-                  </span>
-                </div>
-                {proj.description && (
-                  <p className="text-sm leading-relaxed mt-2 max-w-[60ch]" style={{ color: muted }}>
-                    {proj.description}
-                  </p>
-                )}
-                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs font-semibold">
-                  {proj.project_url && (
-                    <a
-                      href={sanitizeUrl(proj.project_url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline underline-offset-2 hover:opacity-70"
-                      style={{ color: accent }}>
-                      View live →
-                    </a>
-                  )}
-                  {proj.repository_url && (
-                    <a
-                      href={sanitizeUrl(proj.repository_url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline underline-offset-2 hover:opacity-70"
+                <article
+                  key={proj.id}
+                  className="rounded-2xl p-6 border"
+                  style={{
+                    borderColor: muted + '30',
+                    backgroundColor: i % 2 === 0 ? muted + '0D' : 'transparent',
+                  }}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h3
+                      className="text-base font-bold"
+                      style={{ color: config.colors.text, fontFamily: config.fonts.heading }}>
+                      {proj.name}
+                    </h3>
+                    <span
+                      className="text-xs font-bold tabular-nums"
+                      style={{ color: accent, fontFamily: config.fonts.mono }}>
+                      {String(i + 1).padStart(2, '0')}
+                    </span>
+                  </div>
+                  {proj.description && (
+                    <p
+                      className="text-sm leading-relaxed mt-2 max-w-[60ch]"
                       style={{ color: muted }}>
-                      Source code
-                    </a>
+                      {proj.description}
+                    </p>
                   )}
-                </div>
-                <ProjectEvidence refs={projectEvidence} mutedColor={muted} />
-              </article>
+                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs font-semibold">
+                    {proj.project_url && (
+                      <a
+                        href={sanitizeUrl(proj.project_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline underline-offset-2 hover:opacity-70"
+                        style={{ color: accent }}>
+                        View live →
+                      </a>
+                    )}
+                    {proj.repository_url && (
+                      <a
+                        href={sanitizeUrl(proj.repository_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline underline-offset-2 hover:opacity-70"
+                        style={{ color: muted }}>
+                        Source code
+                      </a>
+                    )}
+                  </div>
+                  <ProjectEvidence refs={projectEvidence} mutedColor={muted} />
+                </article>
               );
             })}
           </div>
@@ -231,7 +248,10 @@ export default function EditorialTemplate({
                 className="text-[13px] font-medium px-3 py-1 rounded-full inline-flex items-center gap-1.5"
                 style={{ backgroundColor: accent + '14', color: accent }}>
                 {s.name}
-                <SkillEvidence ref={evidenceForSkill(profile.evidence ?? [], s.name)} accent={accent} />
+                <SkillEvidence
+                  ref={evidenceForSkill(profile.evidence ?? [], s.name)}
+                  accent={accent}
+                />
               </span>
             ))}
           </div>

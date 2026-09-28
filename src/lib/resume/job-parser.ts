@@ -472,7 +472,3 @@ export function parseJobDescription(text: string): ParsedJob {
     parsedAt: new Date().toISOString(),
   });
 }
-
-export function parseJobFromUrl(_url: string): Promise<ParsedJob> {
-  throw new Error('URL parsing not implemented. Provide raw text instead.');
-}

@@ -14,12 +14,7 @@ import type { ResumeExtraction } from '../ai/provider';
 import type { ProfileWithRelations } from '../profiles/repository';
 
 export type ReviewSectionKey =
-  | 'identity'
-  | 'experience'
-  | 'education'
-  | 'skills'
-  | 'projects'
-  | 'links';
+  'identity' | 'experience' | 'education' | 'skills' | 'projects' | 'links';
 
 export const REVIEW_SECTION_KEYS: ReviewSectionKey[] = [
   'identity',
@@ -63,11 +58,31 @@ export function buildReviewModel(
   // ── Identity / basics ─────────────────────────────────────────
   {
     const identity = draft.identity ?? {};
-    const fields: Array<{ key: string; label: string; proposed: string | null | undefined; current: string | null | undefined }> = [
-      { key: 'display_name', label: 'Display name', proposed: identity.displayName, current: existing?.display_name },
-      { key: 'headline', label: 'Headline', proposed: identity.headline, current: existing?.headline },
+    const fields: Array<{
+      key: string;
+      label: string;
+      proposed: string | null | undefined;
+      current: string | null | undefined;
+    }> = [
+      {
+        key: 'display_name',
+        label: 'Display name',
+        proposed: identity.displayName,
+        current: existing?.display_name,
+      },
+      {
+        key: 'headline',
+        label: 'Headline',
+        proposed: identity.headline,
+        current: existing?.headline,
+      },
       { key: 'about', label: 'About', proposed: identity.about, current: existing?.about },
-      { key: 'location', label: 'Location', proposed: identity.location, current: existing?.location },
+      {
+        key: 'location',
+        label: 'Location',
+        proposed: identity.location,
+        current: existing?.location,
+      },
     ];
     const nonEmpty = (v: string | null | undefined): v is string =>
       typeof v === 'string' && v.trim().length > 0;
@@ -75,7 +90,10 @@ export function buildReviewModel(
     const current = fields.filter((f) => nonEmpty(f.current));
 
     const conflictNotes = fields
-      .filter((f) => nonEmpty(f.current) && nonEmpty(f.proposed) && f.proposed!.trim() !== f.current!.trim())
+      .filter(
+        (f) =>
+          nonEmpty(f.current) && nonEmpty(f.proposed) && f.proposed!.trim() !== f.current!.trim()
+      )
       .map((f) => `${f.label} is already set — your current value is kept.`);
 
     sections.push({
@@ -157,7 +175,9 @@ export function buildReviewModel(
       proposedCount: proposed.length,
       conflictNotes:
         newSkills.length < proposed.length
-          ? [`${proposed.length - newSkills.length} proposed ${proposed.length - newSkills.length === 1 ? 'skill is' : 'skills are'} already on your profile and will be skipped.`]
+          ? [
+              `${proposed.length - newSkills.length} proposed ${proposed.length - newSkills.length === 1 ? 'skill is' : 'skills are'} already on your profile and will be skipped.`,
+            ]
           : [],
       safe: true,
       proposalPreview: previewLines([proposed.map((s) => s.name).join(', ')]),
@@ -202,7 +222,9 @@ export function buildReviewModel(
       proposedCount: proposed.length,
       conflictNotes:
         newLinks.length < proposed.length
-          ? [`${proposed.length - newLinks.length} proposed ${proposed.length - newLinks.length === 1 ? 'link is' : 'links are'} already on your profile and will be skipped.`]
+          ? [
+              `${proposed.length - newLinks.length} proposed ${proposed.length - newLinks.length === 1 ? 'link is' : 'links are'} already on your profile and will be skipped.`,
+            ]
           : [],
       safe: true,
       proposalPreview: previewLines(proposed.map((l) => `${l.label}: ${l.url}`)),
@@ -210,9 +232,7 @@ export function buildReviewModel(
     });
   }
 
-  const safeKeys = sections
-    .filter((s) => s.hasProposal && s.safe)
-    .map((s) => s.key);
+  const safeKeys = sections.filter((s) => s.hasProposal && s.safe).map((s) => s.key);
 
   return {
     sections,

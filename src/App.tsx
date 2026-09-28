@@ -3,27 +3,30 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { AuthProvider } from './lib/auth/context';
 import Layout from './components/Layout';
 import Home from './pages/Home';
-import Login from './pages/auth/Login';
-import Signup from './pages/auth/Signup';
-import ForgotPassword from './pages/auth/ForgotPassword';
-import ResetPassword from './pages/auth/ResetPassword';
-import VerifyEmail from './pages/auth/VerifyEmail';
-import AuthCallback from './pages/auth/AuthCallback';
-import Dashboard from './pages/Dashboard';
-import ProfileEditor from './pages/ProfileEditor';
-import ResumeImport from './pages/ResumeImport';
-import AppearanceEditor from './pages/AppearanceEditor';
-import Onboarding from './pages/Onboarding';
-import NotFound from './pages/NotFound';
-import Pricing from './pages/Pricing';
-import Billing from './pages/Billing';
-import Domains from './pages/Domains';
-import JobTailoring from './pages/JobTailoring';
-import DashboardPreview from './pages/DashboardPreview';
-import PublicProfile from './pages/PublicProfile';
-import GitHubDashboard from './pages/GitHubDashboard';
 
-// Heavy PDF/renderer deps stay out of the initial bundle.
+// Authenticated app internals and secondary routes are route-level lazy:
+// the landing page must not eagerly load Supabase-heavy editor code, the
+// template editor, GitHub, billing or domain tools. The PDF stack is pulled
+// in by the ATS builder chunk (already isolated).
+const Login = lazy(() => import('./pages/auth/Login'));
+const Signup = lazy(() => import('./pages/auth/Signup'));
+const ForgotPassword = lazy(() => import('./pages/auth/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'));
+const VerifyEmail = lazy(() => import('./pages/auth/VerifyEmail'));
+const AuthCallback = lazy(() => import('./pages/auth/AuthCallback'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const ProfileEditor = lazy(() => import('./pages/ProfileEditor'));
+const ResumeImport = lazy(() => import('./pages/ResumeImport'));
+const AppearanceEditor = lazy(() => import('./pages/AppearanceEditor'));
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const Pricing = lazy(() => import('./pages/Pricing'));
+const Billing = lazy(() => import('./pages/Billing'));
+const Domains = lazy(() => import('./pages/Domains'));
+const JobTailoring = lazy(() => import('./pages/JobTailoring'));
+const DashboardPreview = lazy(() => import('./pages/DashboardPreview'));
+const PublicProfile = lazy(() => import('./pages/PublicProfile'));
+const GitHubDashboard = lazy(() => import('./pages/GitHubDashboard'));
 const ATSResumeBuilder = lazy(() => import('./pages/ATSResumeBuilder'));
 
 function RouteFallback() {

@@ -1,9 +1,17 @@
 import type { ProfileWithRelations } from '../profiles/repository';
 import type { ParsedJob } from './job-parser';
 import type { MatchingResult, RequirementMatch } from './requirement-matcher';
-import type { TailoredProfile } from './tailor-service';
 import { MatchStrength } from './requirement-matcher';
 import { JobRequirementPriority } from './job-parser';
+
+/** Minimal shape of a tailored profile needed for context summaries. */
+interface TailoredProfileLike {
+  headline: string;
+  about: string;
+  skills: string[];
+  experienceOrder: string[];
+  projectOrder: string[];
+}
 
 export interface PublicContext {
   profile: PublicProfileContext;
@@ -72,7 +80,7 @@ export function buildPublicContext(
   profile: ProfileWithRelations,
   job: ParsedJob,
   matchingResult: MatchingResult,
-  tailoredProfile: TailoredProfile
+  tailoredProfile: TailoredProfileLike
 ): PublicContext {
   return {
     profile: buildProfileContext(profile),
@@ -160,7 +168,9 @@ export function buildMatchingContext(matchingResult: MatchingResult): PublicMatc
   };
 }
 
-export function buildTailoringContext(tailoredProfile: TailoredProfile): PublicTailoringContext {
+export function buildTailoringContext(
+  tailoredProfile: TailoredProfileLike
+): PublicTailoringContext {
   const aboutPreview = tailoredProfile.about
     ? tailoredProfile.about.substring(0, 200) + (tailoredProfile.about.length > 200 ? '...' : '')
     : '';

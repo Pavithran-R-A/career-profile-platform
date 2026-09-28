@@ -151,10 +151,7 @@ export class BharatCodeProvider implements AIProvider {
         }),
       });
     } catch {
-      throw new AIExtractionError(
-        'AI_PROVIDER_ERROR',
-        'AI provider request failed'
-      );
+      throw new AIExtractionError('AI_PROVIDER_ERROR', 'AI provider request failed');
     }
 
     if (!response.ok) {
@@ -248,10 +245,7 @@ export class BharatCodeProvider implements AIProvider {
     const validated = resumeExtractionSchema.safeParse(parsed);
 
     if (!validated.success) {
-      throw new AIExtractionError(
-        'AI_INVALID_RESPONSE',
-        'AI response validation failed'
-      );
+      throw new AIExtractionError('AI_INVALID_RESPONSE', 'AI response validation failed');
     }
 
     return validated.data;

@@ -34,6 +34,11 @@ export async function getPreferences(profileId: string): Promise<ProfilePreferen
   };
 }
 
+/**
+ * Persist the whole appearance configuration as ONE row upsert.
+ * Every field is always written, so a save can never reset sibling fields
+ * to schema defaults (the previous per-field upserts did exactly that).
+ */
 export async function upsertPreferences(
   profileId: string,
   updates: Partial<
@@ -51,61 +56,6 @@ export async function upsertPreferences(
     },
     { onConflict: 'profile_id' }
   );
-
-  if (error) return { error: error.message };
-  return {};
-}
-
-export async function updateSectionOrder(
-  profileId: string,
-  sectionOrder: string[]
-): Promise<{ error?: string }> {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
-    .from('profile_preferences')
-    .upsert({ profile_id: profileId, section_order: sectionOrder }, { onConflict: 'profile_id' });
-
-  if (error) return { error: error.message };
-  return {};
-}
-
-export async function updateHiddenSections(
-  profileId: string,
-  hiddenSections: string[]
-): Promise<{ error?: string }> {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
-    .from('profile_preferences')
-    .upsert(
-      { profile_id: profileId, hidden_sections: hiddenSections },
-      { onConflict: 'profile_id' }
-    );
-
-  if (error) return { error: error.message };
-  return {};
-}
-
-export async function updateTemplate(
-  profileId: string,
-  templateKey: string
-): Promise<{ error?: string }> {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
-    .from('profile_preferences')
-    .upsert({ profile_id: profileId, template_key: templateKey }, { onConflict: 'profile_id' });
-
-  if (error) return { error: error.message };
-  return {};
-}
-
-export async function updateAccent(
-  profileId: string,
-  accentKey: string
-): Promise<{ error?: string }> {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
-    .from('profile_preferences')
-    .upsert({ profile_id: profileId, accent_key: accentKey }, { onConflict: 'profile_id' });
 
   if (error) return { error: error.message };
   return {};

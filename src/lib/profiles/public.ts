@@ -84,6 +84,18 @@ const EvidenceSchema = z.object({
   repository_topics: z.array(z.string()).nullable(),
 });
 
+/** Owner-curated, opt-in public achievement (public-safe columns only). */
+const AchievementSchema = z.object({
+  id: uuid,
+  title: z.string(),
+  description: z.string().nullable(),
+  metric_text: z.string().nullable(),
+  timeframe: z.string().nullable(),
+  source_url: z.string().nullable(),
+  is_featured: z.boolean(),
+  sort_order: z.number(),
+});
+
 export const PublicPreferencesSchema = z.object({
   template_key: z.string(),
   accent_key: z.string(),
@@ -116,6 +128,7 @@ const PublicPortfolioSchema = z.object({
   projects: z.array(ProjectSchema),
   links: z.array(LinkSchema),
   evidence: z.array(EvidenceSchema).default([]),
+  achievements: z.array(AchievementSchema).default([]),
   preferences: PublicPreferencesSchema,
 });
 
@@ -127,9 +140,10 @@ export interface PublicPortfolioResult {
 }
 
 function toPortfolio(row: PublicPortfolio): PublicPortfolioResult {
-  const { experiences, education, skills, projects, links, preferences, ...basics } = row;
+  const { experiences, education, skills, projects, links, preferences, achievements, ...basics } =
+    row;
   return {
-    profile: { ...basics, experiences, education, skills, projects, links },
+    profile: { ...basics, experiences, education, skills, projects, links, achievements },
     preferences,
   };
 }

@@ -27,7 +27,9 @@ const profile: RecruiterProfileData = {
       description: 'Built computation pipelines.',
     },
   ],
-  education: [{ institution: 'University of London', degree: 'BSc', start_year: 2017, end_year: 2020 }],
+  education: [
+    { institution: 'University of London', degree: 'BSc', start_year: 2017, end_year: 2020 },
+  ],
   projects: [{ name: 'Difference Engine CLI', project_url: 'https://github.com/ada/cli' }],
   skills: [{ name: 'TypeScript' }, { name: 'Rust' }],
   links: [{ label: 'LinkedIn', url: 'https://linkedin.com/in/ada' }],
@@ -125,8 +127,7 @@ describe('sanitizeRecruiterAnswer', () => {
   });
 
   it('strips prompt fragments and markdown the model might leak', () => {
-    const dirty =
-      'Answer. ```json\n{"x":1}\n```\nSTRICT GROUNDING RULES:\n1. do not invent things';
+    const dirty = 'Answer. ```json\n{"x":1}\n```\nSTRICT GROUNDING RULES:\n1. do not invent things';
     const clean = sanitizeRecruiterAnswer(dirty);
     expect(clean).not.toContain('STRICT GROUNDING');
     expect(clean).not.toContain('```');
@@ -152,7 +153,13 @@ describe('nonEmptySections', () => {
       'evidence',
     ]);
     expect(
-      nonEmptySections({ ...profile, display_name: null, about: null, headline: null, location: null })
+      nonEmptySections({
+        ...profile,
+        display_name: null,
+        about: null,
+        headline: null,
+        location: null,
+      })
     ).not.toContain('basics');
   });
 });

@@ -44,15 +44,29 @@ export type Template = z.infer<typeof TemplateSchema>;
 import type { ProfileWithRelations } from '../profiles/repository';
 import type { PublicEvidenceItem } from '../evidence/public';
 
+/** Public-safe owner-curated achievement as rendered by templates. */
+export interface PublicAchievementItem {
+  id: string;
+  title: string;
+  description: string | null;
+  metric_text: string | null;
+  timeframe: string | null;
+  source_url: string | null;
+  is_featured: boolean;
+  sort_order: number;
+}
+
 /**
  * Profiles rendered by portfolio templates. `user_id` is never needed for
  * presentation and is omitted from the public-safe shape, so it is optional.
  * `evidence` is only present on published public portfolios (owner-opted-in,
- * public-flagged evidence); owner previews may omit it.
+ * public-flagged evidence); owner previews may omit it. Same opt-in rule
+ * applies to `achievements`.
  */
 export type PortfolioProfile = Omit<ProfileWithRelations, 'user_id'> & {
   user_id?: string;
   evidence?: PublicEvidenceItem[];
+  achievements?: PublicAchievementItem[];
 };
 
 /** Legacy stored orders used "about"; templates render it as "basics". */

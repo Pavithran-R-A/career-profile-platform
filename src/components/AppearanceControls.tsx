@@ -1,12 +1,4 @@
-import { useState, useCallback } from 'react';
 import TemplateSelector from './TemplateSelector';
-import {
-  type ProfilePreferences,
-  updateTemplate,
-  updateAccent,
-  updateSectionOrder,
-  updateHiddenSections,
-} from '../lib/profiles/preferences';
 
 const ACCENT_PRESETS: Record<string, { label: string; color: string }> = {
   blue: { label: 'Blue', color: '#2563eb' },
@@ -30,208 +22,162 @@ const SECTION_LABELS: Record<string, string> = {
 };
 
 interface AppearanceControlsProps {
-  profileId: string;
-  preferences: ProfilePreferences;
-  onChange?: (prefs: ProfilePreferences) => void;
+  draft: {
+    template_key: string;
+    accent_key: string;
+    section_order: string[];
+    hidden_sections: string[];
+  };
+  onTemplate: (key: string) => void;
+  onAccent: (key: string) => void;
+  onMoveSection: (index: number, direction: -1 | 1) => void;
+  onSectionHidden: (section: string, hidden: boolean) => void;
 }
 
+/**
+ * Pure presentation over the canonical appearance draft: every interaction
+ * emits a synchronous draft mutation. No local persistence, no per-section
+ * save buttons — the editor owns saving and the preview renders from draft.
+ */
 export default function AppearanceControls({
-  profileId,
-  preferences,
-  onChange,
+  draft,
+  onTemplate,
+  onAccent,
+  onMoveSection,
+  onSectionHidden,
 }: AppearanceControlsProps) {
-  const [templateKey, setTemplateKey] = useState(preferences.template_key);
-  const [accentKey, setAccentKey] = useState(preferences.accent_key);
-  const [sectionOrder, setSectionOrder] = useState<string[]>(preferences.section_order);
-  const [hidden, setHidden] = useState(new Set(preferences.hidden_sections));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const emitChange = useCallback(
-    (overrides: Partial<ProfilePreferences>) => {
-      onChange?.({
-        ...preferences,
-        ...overrides,
-      });
-    },
-    [onChange, preferences]
-  );
-
-  const handleTemplateSelect = useCallback(
-    async (id: string) => {
-      setTemplateKey(id);
-      setError(null);
-      setSaving(true);
-      const { error: err } = await updateTemplate(profileId, id);
-      setSaving(false);
-      if (err) {
-        setError(err);
-        return;
-      }
-      emitChange({ template_key: id });
-    },
-    [emitChange, profileId]
-  );
-
-  const handleAccentSelect = useCallback(
-    async (key: string) => {
-      setAccentKey(key);
-      setError(null);
-      setSaving(true);
-      const { error: err } = await updateAccent(profileId, key);
-      setSaving(false);
-      if (err) {
-        setError(err);
-        return;
-      }
-      emitChange({ accent_key: key });
-    },
-    [emitChange, profileId]
-  );
-
-  const toggleSection = useCallback((section: string) => {
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (next.has(section)) {
-        next.delete(section);
-      } else {
-        next.add(section);
-      }
-      return next;
-    });
-  }, []);
-
-  const saveVisibility = useCallback(async () => {
-    const arr = Array.from(hidden);
-    setError(null);
-    setSaving(true);
-    const { error: err } = await updateHiddenSections(profileId, arr);
-    setSaving(false);
-    if (err) {
-      setError(err);
-      return;
-    }
-    emitChange({ hidden_sections: arr });
-  }, [emitChange, hidden, profileId]);
-
-  const moveSection = useCallback((index: number, direction: -1 | 1) => {
-    setSectionOrder((prev) => {
-      const next = [...prev];
-      const target = index + direction;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }, []);
-
-  const saveOrder = useCallback(async () => {
-    setError(null);
-    setSaving(true);
-    const { error: err } = await updateSectionOrder(profileId, sectionOrder);
-    setSaving(false);
-    if (err) {
-      setError(err);
-      return;
-    }
-    emitChange({ section_order: sectionOrder });
-  }, [emitChange, profileId, sectionOrder]);
+  const hiddenSet = new Set(draft.hidden_sections);
 
   return (
     <div className="space-y-8">
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
-          {error}
-        </div>
-      )}
-
       <section>
-        <TemplateSelector
-          selectedId={templateKey}
-          onSelect={(id) => void handleTemplateSelect(id)}
-        />
+        <TemplateSelector selectedId={draft.template_key} onSelect={onTemplate} />
       </section>
 
       <section>
-        <label className="block text-sm font-medium text-gray-700 mb-3">Accent Color</label>
-        <div className="flex flex-wrap gap-3">
-          {Object.entries(ACCENT_PRESETS).map(([key, { label, color }]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => void handleAccentSelect(key)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm transition-all ${
-                accentKey === key
-                  ? 'border-gray-900 bg-gray-50 font-medium'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}>
-              <span
-                className="w-4 h-4 rounded-full flex-shrink-0"
-                style={{ backgroundColor: color }}
-              />
-              {label}
-            </button>
-          ))}
+        <div className="flex items-baseline justify-between mb-3">
+          <span className="text-sm font-semibold text-[var(--ink)]">Accent color</span>
+          <span className="text-xs text-[var(--faint-foreground)]">
+            Applied across the template
+          </span>
         </div>
-      </section>
-
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <label className="text-sm font-medium text-gray-700">
-            Section Order &amp; Visibility
-          </label>
-          <button
-            type="button"
-            onClick={() => void saveOrder()}
-            disabled={saving}
-            className="text-sm px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-50">
-            Save order
-          </button>
-        </div>
-        <div className="space-y-1">
-          {sectionOrder.map((section, idx) => (
-            <div
-              key={section}
-              className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
-              <div className="flex flex-col gap-0.5">
-                <button
-                  type="button"
-                  onClick={() => moveSection(idx, -1)}
-                  disabled={idx === 0}
-                  className="text-gray-400 hover:text-gray-700 disabled:opacity-30 text-xs leading-none"
-                  aria-label="Move up">
-                  ▲
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveSection(idx, 1)}
-                  disabled={idx === sectionOrder.length - 1}
-                  className="text-gray-400 hover:text-gray-700 disabled:opacity-30 text-xs leading-none"
-                  aria-label="Move down">
-                  ▼
-                </button>
-              </div>
-              <span className="flex-1 text-sm">{SECTION_LABELS[section] ?? section}</span>
+        <div className="flex flex-wrap gap-2.5" role="group" aria-label="Accent color">
+          {Object.entries(ACCENT_PRESETS).map(([key, { label, color }]) => {
+            const isActive = draft.accent_key === key;
+            return (
               <button
+                key={key}
                 type="button"
-                onClick={() => toggleSection(section)}
-                aria-label={`${hidden.has(section) ? 'Hidden' : 'Visible'}: ${SECTION_LABELS[section] ?? section}`}
-                className={`text-xs font-medium px-2.5 py-1 rounded min-h-[28px] ${
-                  hidden.has(section)
-                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    : 'bg-green-50 text-green-800 hover:bg-green-100'
-                }`}>
-                {hidden.has(section) ? 'Hidden' : 'Visible'}
+                onClick={() => onAccent(key)}
+                aria-pressed={isActive}
+                title={label}
+                className={`group flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all ${
+                  isActive
+                    ? 'border-[var(--ink)] scale-110'
+                    : 'border-transparent hover:border-[var(--border-strong)]'
+                }`}
+                style={{ backgroundColor: color }}>
+                <span className="sr-only">{label}</span>
+                {isActive && (
+                  <svg
+                    className="w-4 h-4 text-white drop-shadow"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={3}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                )}
               </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
-        <button
-          type="button"
-          onClick={() => void saveVisibility()}
-          disabled={saving}
-          className="mt-3 text-sm px-3 py-1.5 rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-50">
-          Save visibility
-        </button>
+        <p className="text-xs text-[var(--faint-foreground)] mt-2" aria-hidden="true">
+          {ACCENT_PRESETS[draft.accent_key]?.label ?? 'Blue'}
+        </p>
+      </section>
+
+      <section>
+        <div className="flex items-baseline justify-between mb-3">
+          <span className="text-sm font-semibold text-[var(--ink)]">Sections</span>
+          <span className="text-xs text-[var(--faint-foreground)]">Order &amp; visibility</span>
+        </div>
+        <ul className="space-y-1.5" aria-label="Section order and visibility">
+          {draft.section_order.map((section, idx) => {
+            const label = SECTION_LABELS[section] ?? section;
+            const isHidden = hiddenSet.has(section);
+            return (
+              <li
+                key={section}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 transition-colors ${
+                  isHidden
+                    ? 'border-[var(--border)] bg-[var(--surface-muted)] opacity-70'
+                    : 'border-[var(--border)] bg-white'
+                }`}>
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => onMoveSection(idx, -1)}
+                    disabled={idx === 0}
+                    aria-label={`Move ${label} up`}
+                    className="w-6 h-4.5 rounded text-[var(--faint-foreground)] hover:text-[var(--ink)] hover:bg-[var(--surface-muted)] disabled:opacity-25 disabled:pointer-events-none leading-none">
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMoveSection(idx, 1)}
+                    disabled={idx === draft.section_order.length - 1}
+                    aria-label={`Move ${label} down`}
+                    className="w-6 h-4.5 rounded text-[var(--faint-foreground)] hover:text-[var(--ink)] hover:bg-[var(--surface-muted)] disabled:opacity-25 disabled:pointer-events-none leading-none">
+                    ▼
+                  </button>
+                </div>
+                <span
+                  className={`flex-1 text-sm min-w-0 truncate ${
+                    isHidden ? 'text-[var(--faint-foreground)] line-through' : 'text-[var(--ink)]'
+                  }`}>
+                  {label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onSectionHidden(section, !isHidden)}
+                  aria-pressed={!isHidden}
+                  aria-label={`${isHidden ? 'Show' : 'Hide'} ${label}`}
+                  title={isHidden ? `Show ${label}` : `Hide ${label}`}
+                  className={`shrink-0 w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+                    isHidden
+                      ? 'text-[var(--faint-foreground)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)]'
+                      : 'text-[var(--muted-foreground)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)]'
+                  }`}>
+                  {isHidden ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path
+                        d="M3 3l18 18M10.6 10.7a2.4 2.4 0 003.3 3.3M7 7.2C4.7 8.6 3 10.8 2.2 12c1.7 2.9 5.2 6 9.8 6 1.6 0 3-.4 4.3-1m-2.2-9.4A9.6 9.6 0 0121.8 12c-.5.9-1.3 2-2.5 3"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path
+                        d="M2.2 12C3.9 8.9 7.5 6 12 6s8.1 2.9 9.8 6c-1.7 3.1-5.3 6-9.8 6s-8.1-2.9-9.8-6z"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                      />
+                      <circle cx="12" cy="12" r="2.4" stroke="currentColor" strokeWidth="1.7" />
+                    </svg>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </section>
     </div>
   );

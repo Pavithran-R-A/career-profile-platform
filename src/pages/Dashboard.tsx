@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
 import { profileCompletion } from '../lib/profiles/completion';
-import { getPreferences, type ProfilePreferences } from '../lib/profiles/preferences';
+import { getPreferences } from '../lib/profiles/preferences';
+import { getTemplate } from '../lib/templates/types';
 import { getSupabaseClient } from '../lib/supabase/client';
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
 import { oncePerSession, track } from '../lib/analytics/events';
@@ -62,13 +63,6 @@ interface ResumeStatusRow {
   created_at: string;
 }
 
-interface BetaFunnelCounts {
-  resume_uploaded: number;
-  portfolio_published: number;
-  ats_downloaded: number;
-  profile_completed: number;
-}
-
 const EMPTY_PROFILE_KEYS = ['experiences', 'education', 'projects', 'skills', 'links'] as const;
 
 function profileIsEmpty(profile: ProfileWithRelations): boolean {
@@ -86,7 +80,22 @@ const RESUME_STATUS_LABELS: Record<string, string> = {
   error: 'Needs attention',
 };
 
-function nextBestAction(summary: ReturnType<typeof profileCompletion>, isPublished: boolean) {
+/**
+ * Portfolio card state machine. Exactly one state applies:
+ *   incomplete — missing required content; publish disabled with truthful reason
+ *   draft      — complete but private; PublishControls is the ONE publish surface
+ *   published  — live; open/copy/unpublish, no publish CTA anywhere
+ */
+type PortfolioState = 'incomplete' | 'draft' | 'published';
+
+/**
+ * Next-best-action must never duplicate the portfolio card's primary CTA:
+ * while the publish action exists on the card, the NBA points somewhere else.
+ */
+function nextBestAction(
+  summary: ReturnType<typeof profileCompletion>,
+  portfolioState: PortfolioState
+) {
   const incomplete = summary.items.find((i) => !i.completed);
   if (incomplete) {
     return {
@@ -96,12 +105,12 @@ function nextBestAction(summary: ReturnType<typeof profileCompletion>, isPublish
       to: '/dashboard/profile',
     };
   }
-  if (!isPublished) {
+  if (portfolioState !== 'published') {
     return {
-      title: 'Publish your portfolio',
-      body: 'Everything required is in place. Preview it, then publish to get your shareable link.',
-      cta: 'Go to publish',
-      to: '#live-card',
+      title: 'Make your resume application-ready',
+      body: 'Run the ATS builder against your profile, then download a parseable PDF.',
+      cta: 'Open ATS builder',
+      to: '/dashboard/resume/ats',
     };
   }
   return {
@@ -117,23 +126,41 @@ export default function Dashboard() {
   const navigate = useNavigate();
   useNoindexMeta('Dashboard — Career Profile');
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
-  const [preferences, setPreferences] = useState<ProfilePreferences | null>(null);
+  const [templateKey, setTemplateKey] = useState<string>('minimal');
+  const [templateIsDefault, setTemplateIsDefault] = useState(true);
+  const [accentKey, setAccentKey] = useState<string>('blue');
+  const [sectionOrder, setSectionOrder] = useState<string[]>([]);
+  const [hiddenSections, setHiddenSections] = useState<string[]>([]);
   const [resume, setResume] = useState<ResumeStatusRow | null | 'loading'>('loading');
-  const [betaFunnel, setBetaFunnel] = useState<BetaFunnelCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  const profileService = new ProfileService();
+  const profileServiceRef = useRef<ProfileService | null>(null);
+  if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
 
   useEffect(() => {
     if (auth.status === 'authenticated') {
-      void profileService.getProfile(auth.user.id).then((p) => {
+      void profileServiceRef.current!.getProfile(auth.user.id).then((p) => {
         setProfile(p);
         setLoading(false);
         if (p) {
           void getPreferences(p.id)
-            .then(setPreferences)
-            .catch(() => setPreferences(null));
+            .then((prefs) => {
+              if (prefs) {
+                setTemplateKey(prefs.template_key);
+                setTemplateIsDefault(false);
+                setAccentKey(prefs.accent_key);
+                setSectionOrder(prefs.section_order);
+                setHiddenSections(prefs.hidden_sections);
+              } else {
+                setTemplateKey('minimal');
+                setTemplateIsDefault(true);
+              }
+            })
+            .catch(() => {
+              setTemplateKey('minimal');
+              setTemplateIsDefault(true);
+            });
           void (async () => {
             try {
               const { data } = await getSupabaseClient()
@@ -157,37 +184,6 @@ export default function Dashboard() {
     if (auth.status === 'unauthenticated') {
       setLoading(false);
     }
-  }, [auth]);
-
-  // Private-beta funnel visibility: the owner's own milestone counts.
-  useEffect(() => {
-    if (auth.status !== 'authenticated' || !auth.user) return;
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const { data } = await getSupabaseClient()
-          .from('funnel_events')
-          .select('event_name');
-        const rows = (data ?? []) as Array<{ event_name: string }>;
-        const counts: BetaFunnelCounts = {
-          resume_uploaded: 0,
-          portfolio_published: 0,
-          ats_downloaded: 0,
-          profile_completed: 0,
-        };
-        for (const row of rows) {
-          if (row.event_name in counts) counts[row.event_name as keyof BetaFunnelCounts] += 1;
-        }
-        if (!cancelled) setBetaFunnel(counts);
-      } catch {
-        if (!cancelled) setBetaFunnel(null);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [auth]);
 
   useEffect(() => {
@@ -234,9 +230,24 @@ export default function Dashboard() {
   const summary = profileCompletion(profile);
   const isPublished = profile.visibility === 'published';
   const isEmpty = profileIsEmpty(profile);
+
+  // State machine: an incomplete profile cannot publish — say so truthfully.
+  const requirementsMet = summary.percentage >= 60; // basics + at least two content sections
+  const portfolioState: PortfolioState = isPublished
+    ? 'published'
+    : requirementsMet
+      ? 'draft'
+      : 'incomplete';
+
   const publicUrl = `${window.location.origin}/u/${profile.username}`;
-  const action = nextBestAction(summary, isPublished);
-  const templateKey = preferences?.template_key || 'minimal';
+  const action = nextBestAction(summary, portfolioState);
+
+  // Truthful template label: an unsaved preference row still renders the
+  // default template, so say "Default: Minimal" instead of pretending none exists.
+  const template = getTemplate(templateKey) ?? getTemplate('minimal')!;
+  const templateLabel = templateIsDefault
+    ? `Default: ${template.metadata.name}`
+    : template.metadata.name;
 
   const copyLink = async () => {
     try {
@@ -288,8 +299,8 @@ export default function Dashboard() {
             Build your profile
           </h2>
           <p className="text-sm text-[var(--muted-foreground)] mt-1.5 max-w-xl leading-relaxed">
-            The fastest way is to import the CV you already use. We structure it, you review
-            every line, and only what you approve lands in your profile.
+            The fastest way is to import the CV you already use. We structure it, you review every
+            line, and only what you approve lands in your profile.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link to="/dashboard/resume" className="btn btn-primary !min-h-[44px] !py-2.5">
@@ -302,7 +313,7 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Dominant live-state card */}
+      {/* Dominant live-state card — the single home of publish/unpublish */}
       <section
         id="live-card"
         className="scroll-mt-24 card overflow-hidden"
@@ -311,10 +322,12 @@ export default function Dashboard() {
           <div className="p-6 sm:p-8 flex flex-col">
             <div className="flex flex-wrap items-center gap-3">
               <span className={`status-chip ${isPublished ? 'status-chip-live' : ''}`}>
-                {profile.visibility}
+                {isPublished ? 'Live' : 'Draft'}
               </span>
               <span className="text-sm text-[var(--muted-foreground)]">
-                {isPublished ? 'Your portfolio is live' : 'Private until you publish'}
+                {isPublished
+                  ? 'Anyone with your link can view your portfolio'
+                  : 'Private until you publish'}
               </span>
             </div>
 
@@ -342,20 +355,24 @@ export default function Dashboard() {
                   </span>
                 </div>
               </div>
+            ) : portfolioState === 'incomplete' ? (
+              <div className="mt-5">
+                <p className="text-sm text-[var(--muted-foreground)] max-w-md leading-relaxed">
+                  Add a bit more about your work first — a portfolio with just a name doesn&apos;t
+                  help recruiters. Everything else is ready when you are.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link to="/dashboard/profile" className="btn btn-primary !min-h-[44px] !py-2.5">
+                    Continue your profile
+                  </Link>
+                </div>
+              </div>
             ) : (
               <div className="mt-5 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn btn-primary !min-h-[44px] !py-2.5"
-                  onClick={() =>
-                    document.getElementById('publish-controls')?.scrollIntoView({ block: 'center' })
-                  }>
-                  Publish my portfolio
-                </button>
                 <Link
                   to="/dashboard/appearance"
                   className="btn btn-secondary !min-h-[44px] !py-2.5">
-                  Pick a style first
+                  Change appearance
                 </Link>
               </div>
             )}
@@ -364,12 +381,13 @@ export default function Dashboard() {
               <span>Last updated {new Date(profile.updated_at).toLocaleDateString()}</span>
               <span>
                 Template:{' '}
-                <span className="font-semibold text-[var(--muted-foreground)] capitalize">
-                  {templateKey}
+                <span className="font-semibold text-[var(--muted-foreground)]">
+                  {templateLabel}
                 </span>
               </span>
             </div>
 
+            {/* Publish control lives exactly once, inside the portfolio card */}
             <div id="publish-controls" className="mt-5 pt-5 border-t border-[var(--border)]">
               <PublishControls
                 profileId={profile.id}
@@ -393,18 +411,14 @@ export default function Dashboard() {
               <TemplateCanvas
                 templateKey={templateKey}
                 profile={profile}
-                preferences={
-                  preferences
-                    ? {
-                        accentKey: preferences.accent_key,
-                        sectionOrder: preferences.section_order,
-                        hiddenSections: preferences.hidden_sections,
-                      }
-                    : undefined
-                }
+                preferences={{
+                  accentKey,
+                  sectionOrder,
+                  hiddenSections,
+                }}
                 scale={0.52}
                 height={300}
-                label={`Your ${templateKey} portfolio thumbnail`}
+                label={`Your ${template.metadata.name} portfolio thumbnail`}
               />
             </div>
           </div>
@@ -447,7 +461,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* 2. Next best action */}
+        {/* 2. Next best action — never duplicates the portfolio card's CTA */}
         <section className="card card-pad flex flex-col" aria-labelledby="nba-heading">
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--faint-foreground)]">
             Next best action
@@ -458,15 +472,9 @@ export default function Dashboard() {
           <p className="text-sm text-[var(--muted-foreground)] mt-2 leading-relaxed flex-1">
             {action.body}
           </p>
-          {action.to.startsWith('#') ? (
-            <a href={action.to} className="btn btn-primary btn-block mt-5">
-              {action.cta}
-            </a>
-          ) : (
-            <Link to={action.to} className="btn btn-primary btn-block mt-5">
-              {action.cta}
-            </Link>
-          )}
+          <Link to={action.to} className="btn btn-secondary btn-block mt-5">
+            {action.cta}
+          </Link>
         </section>
 
         {/* 3. Quick actions */}
@@ -539,21 +547,6 @@ export default function Dashboard() {
           </Link>
         </div>
       </section>
-
-      {/* Private-beta funnel visibility (own events only, no vanity metrics) */}
-      {betaFunnel && (
-        <section className="mt-6" aria-label="Private beta funnel">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-[var(--faint-foreground)]">
-            <span className="font-semibold uppercase tracking-wider text-[10px] text-[var(--muted-foreground)]">
-              Private beta funnel
-            </span>
-            <span>CV imports: {betaFunnel.resume_uploaded}</span>
-            <span>Published: {betaFunnel.portfolio_published}</span>
-            <span>ATS downloads: {betaFunnel.ats_downloaded}</span>
-            <span>Completed: {betaFunnel.profile_completed}</span>
-          </div>
-        </section>
-      )}
     </div>
   );
 }

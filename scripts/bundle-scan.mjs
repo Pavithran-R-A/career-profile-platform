@@ -40,9 +40,7 @@ const js = files.filter((f) => f.name.endsWith('.js')).reduce((s, f) => s + f.by
 const css = files.filter((f) => f.name.endsWith('.css')).reduce((s, f) => s + f.bytes, 0);
 const other = total - js - css;
 console.log('');
-console.log(
-  `Total: ${fmt(total)}  (js ${fmt(js)} · css ${fmt(css)} · other ${fmt(other)})`
-);
+console.log(`Total: ${fmt(total)}  (js ${fmt(js)} · css ${fmt(css)} · other ${fmt(other)})`);
 
 const heavy = bySize.filter((f) => f.bytes > 500 * 1024);
 if (heavy.length > 0) {

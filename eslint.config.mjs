@@ -15,14 +15,7 @@ export default tseslint.config(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: [
-            'eslint.config.mjs',
-            'playwright.config.ts',
-            'e2e/smoke.spec.ts',
-            'e2e/journeys.spec.ts',
-            'e2e/visual-matrix.spec.ts',
-            'e2e/cwv-baseline.spec.ts',
-          ],
+          allowDefaultProject: ['eslint.config.mjs', 'playwright.config.ts', 'e2e/*.spec.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },

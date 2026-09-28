@@ -129,9 +129,8 @@ describe('production routes (actual AppRoutes)', () => {
   it('/dashboard/resume/tailor renders JobTailoring', async () => {
     renderAt('/dashboard/resume/tailor');
     expect(await screen.findByText('Job tailoring')).toBeInTheDocument();
-    // three-stage workflow rail
-    expect(screen.getByText('Profile evidence')).toBeInTheDocument();
-    expect(screen.getByText('Tailored output')).toBeInTheDocument();
+    // workflow input stage (deterministic requirement analysis, no fake score)
+    expect(screen.getByText('Paste the job description')).toBeInTheDocument();
   });
 
   it('/dashboard/preview renders the owner preview', async () => {
@@ -156,9 +155,10 @@ describe('production routes (actual AppRoutes)', () => {
     expect(await screen.findByText('ATS resume')).toBeInTheDocument();
   });
 
-  it('unknown routes render the 404 page', () => {
+  it('unknown routes render the 404 page', async () => {
     renderAt('/definitely-not-a-route');
-    expect(screen.getByText('404')).toBeInTheDocument();
+    // 404 is now route-level lazy; wait for the chunk to resolve.
+    expect(await screen.findByText('404')).toBeInTheDocument();
   });
 });
 

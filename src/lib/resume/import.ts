@@ -58,12 +58,7 @@ export interface BasicsImport {
 }
 
 export type ImportSectionKey =
-  | 'experience'
-  | 'education'
-  | 'projects'
-  | 'skills'
-  | 'links'
-  | 'basics';
+  'experience' | 'education' | 'projects' | 'skills' | 'links' | 'basics';
 
 export interface ResumeImportPayload {
   profile_id: string;
@@ -132,8 +127,8 @@ export function buildImportPayload(input: {
         location: exp.location || null,
         start_year: start.year,
         start_month: start.month,
-        end_year: exp.isCurrent ? null : end?.year ?? null,
-        end_month: exp.isCurrent ? null : end?.month ?? null,
+        end_year: exp.isCurrent ? null : (end?.year ?? null),
+        end_month: exp.isCurrent ? null : (end?.month ?? null),
         is_current: Boolean(exp.isCurrent),
         description: exp.description || null,
       });
@@ -185,9 +180,7 @@ export function buildImportPayload(input: {
   if (selected.has('links')) {
     payload.links = extraction.links
       .map((link) => ({ label: link.label, url: sanitizeUrl(link.url) }))
-      .filter((link): link is { label: string; url: string } =>
-        Boolean(link.label && link.url)
-      );
+      .filter((link): link is { label: string; url: string } => Boolean(link.label && link.url));
   }
 
   if (selected.has('basics')) {
