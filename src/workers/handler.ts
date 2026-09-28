@@ -7,6 +7,7 @@ import {
 } from '../lib/billing/entitlements';
 import { checkUsage, windowKeyFor } from '../lib/billing/usage';
 import { createRazorpayOrder, isRazorpayConfigured } from '../lib/billing/razorpay';
+import { applyCancelAction, type CancelAction } from '../lib/billing/cancellation';
 import { processRazorpayWebhook, makeVerifier } from '../lib/billing/webhooks';
 import { validateAddDomain, buildVerificationToken } from '../lib/domains/custom';
 import { quoteDotCvDomain, isDotCvEnabled, isDotCvPurchaseEnabled } from '../lib/domains/dotcv';
@@ -23,6 +24,7 @@ import {
 } from '../lib/ai/recruiter';
 import { normalizeUsername, validateUsername } from '../lib/validators/username';
 import { isHttpUrl } from '../lib/validators/url';
+import { isRecentAuth } from '../lib/account/deletion';
 import { z } from 'zod';
 import type { PlanEntitlements } from '../lib/billing/plans';
 import type { SubscriptionState } from '../lib/billing/entitlements';
@@ -55,6 +57,7 @@ export interface Env {
   RATE_LIMIT_KEY_SECRET?: string;
   BILLING_ENABLED?: string;
   DOMAINS_ENABLED?: string;
+  RECRUITER_AI_ENABLED?: string;
   RECRUITER_RATE_LIMITER?: {
     limit: (key: string) => { allowed: boolean; hits: number };
   };
@@ -81,7 +84,13 @@ export type ApiErrorCode =
   | 'AI_INVALID_RESPONSE'
   | 'EXTRACTION_FAILED'
   | 'RATE_LIMITED'
-  | 'PROFILE_NOT_FOUND';
+  | 'PROFILE_NOT_FOUND'
+  | 'NOT_PRO'
+  | 'PERIOD_END_MISSING'
+  | 'ALREADY_DONE'
+  | 'CONFLICT'
+  | 'REAUTH_REQUIRED'
+  | 'DELETE_FAILED';
 
 type EnvStringKey = Exclude<keyof Env, 'RECRUITER_RATE_LIMITER'>;
 
@@ -98,7 +107,10 @@ function getAdminKey(env: Env): string {
  * production. This keeps preview environments from mutating production
  * billing or domain provisioning by accident.
  */
-function featureEnabled(env: Env, flag: 'BILLING_ENABLED' | 'DOMAINS_ENABLED'): boolean {
+function featureEnabled(
+  env: Env,
+  flag: 'BILLING_ENABLED' | 'DOMAINS_ENABLED' | 'RECRUITER_AI_ENABLED'
+): boolean {
   const raw = getEnvValue(env, flag).toLowerCase();
   if (raw === 'true' || raw === '1') return true;
   if (raw === 'false' || raw === '0') return false;
@@ -615,7 +627,287 @@ async function handleRecruiterAsk(
   }
 }
 
+// ─── Account deletion (server-only; admin key never leaves the worker) ──
+
+/**
+ * Permanent account deletion for the authenticated user.
+ *
+ * Order matters:
+ *   1. verifyAuth → the caller must hold a valid session.
+ *   2. Re-auth freshness: the access token must have been issued within the
+ *      last 10 minutes (`iat` claim of the session user). Long-lived sessions
+ *      must re-authenticate first — this is the "recent authenticated user
+ *      confirmation" gate.
+ *   3. Storage objects (resumes bucket, `${userId}/` prefix) are removed via
+ *      the admin client BEFORE the auth user disappears (storage policies
+ *      reference the user; after deletion nothing authorizes those ops).
+ *   4. Explicit non-cascading rows are deleted; everything else cascades from
+ *      auth.users.
+ *   5. Supabase Auth admin delete. On failure the account still signs in, so
+ *      the user can retry — no half-deleted state is observable.
+ */
+async function handleAccountDelete(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, {
+      code: 'UNAUTHORIZED',
+      requestId,
+    });
+
+  const supabaseUrl = getEnvValue(env, 'SUPABASE_URL') || getEnvValue(env, 'VITE_SUPABASE_URL');
+  const adminKey = getAdminKey(env);
+  if (!supabaseUrl || !adminKey) {
+    return json({ error: 'Account deletion is not configured' }, 503, origin, env, {
+      code: 'SERVER_NOT_CONFIGURED',
+      requestId,
+    });
+  }
+
+  try {
+    // 2. Freshness check via the auth server (also re-validates the token).
+    const publishableKey =
+      getEnvValue(env, 'SUPABASE_PUBLISHABLE_KEY') ||
+      getEnvValue(env, 'VITE_SUPABASE_PUBLISHABLE_KEY');
+    if (!publishableKey) {
+      return json({ error: 'Account deletion is not configured' }, 503, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+
+    const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${auth.token}`, apikey: publishableKey },
+    });
+    if (!userRes.ok) {
+      return json({ error: 'Unauthorized' }, 401, origin, env, {
+        code: 'UNAUTHORIZED',
+        requestId,
+      });
+    }
+    const user = (await userRes.json()) as { id?: string; iat?: number };
+    if (!user.id || user.id !== auth.userId || !isRecentAuth(user.iat)) {
+      return json(
+        { error: 'Please sign in again before deleting your account.' },
+        401,
+        origin,
+        env,
+        { code: 'REAUTH_REQUIRED', requestId }
+      );
+    }
+
+    const supabase = createServerClient(supabaseUrl, adminKey);
+
+    // 3. Storage first: find every resume path owned by this user and remove
+    // the objects while the user still exists.
+    const { data: storageRows } = await supabase
+      .from('resume_sources' as never)
+      .select('storage_path')
+      .eq('user_id', auth.userId as never);
+
+    const paths = ((storageRows ?? []) as Array<{ storage_path?: unknown }>)
+      .map((r) => (typeof r.storage_path === 'string' ? r.storage_path : ''))
+      .filter((p) => p.startsWith(`${auth.userId}/`));
+
+    if (paths.length > 0) {
+      const { error: removeError } = await supabase.storage.from('resumes').remove(paths);
+      if (removeError) {
+        // Non-fatal: objects may already be gone; log and continue.
+        console.error(
+          JSON.stringify({ t: 'delete_storage_error', id: requestId, count: paths.length })
+        );
+      }
+    }
+
+    // 4. Explicit rows without cascade.
+    const { error: subDeleteError } = await supabase
+      .from('user_subscriptions' as never)
+      .delete()
+      .eq('user_id', auth.userId as never);
+    if (subDeleteError) {
+      console.error(JSON.stringify({ t: 'delete_sub_error', id: requestId }));
+    }
+
+    const { error: resumeDeleteError } = await supabase
+      .from('resume_sources' as never)
+      .delete()
+      .eq('user_id', auth.userId as never);
+    if (resumeDeleteError) {
+      console.error(JSON.stringify({ t: 'delete_resume_rows_error', id: requestId }));
+    }
+
+    // 5. Auth admin delete — cascades profiles, sections, evidence,
+    // billing orders, funnel events, achievements, preferences, etc.
+    const adminRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${auth.userId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminKey}`, apikey: adminKey },
+    });
+
+    if (!adminRes.ok && adminRes.status !== 404) {
+      console.error(
+        JSON.stringify({ t: 'delete_auth_error', id: requestId, status: adminRes.status })
+      );
+      return json(
+        { error: 'We could not complete the deletion. Please try again.' },
+        502,
+        origin,
+        env,
+        { code: 'DELETE_FAILED', requestId }
+      );
+    }
+
+    console.log(JSON.stringify({ t: 'account_deleted', id: requestId }));
+    return json({ deleted: true }, 200, origin, env, { requestId });
+  } catch {
+    console.error(JSON.stringify({ t: 'delete_error', id: requestId, code: 'INTERNAL' }));
+    return json({ error: 'Account deletion failed' }, 500, origin, env, {
+      code: 'INTERNAL',
+      requestId,
+    });
+  }
+}
+
 // ─── Billing helpers ────────────────────────────────────────────
+
+/**
+ * End-of-cycle cancel/resume for the current Pro subscription.
+ *
+ * Idempotent: repeating an already-applied action returns the current state
+ * (code ALREADY_DONE + ok=true semantics are expressed via ok/alreadyApplied).
+ * Provider state stays authoritative — a stale row (period already ended) is
+ * a CONFLICT, and the webhook path remains the only writer on renewal.
+ */
+async function handleSubscriptionCancel(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string,
+  action: CancelAction
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, {
+      code: 'UNAUTHORIZED',
+      requestId,
+    });
+
+  try {
+    if (!featureEnabled(env, 'BILLING_ENABLED')) {
+      return json({ error: 'Billing is not available in this environment.' }, 503, origin, env, {
+        code: 'FEATURE_DISABLED',
+        requestId,
+      });
+    }
+
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+
+    const supabase = createServerClient(supabaseUrl, adminKey);
+    const { data: row } = await supabase
+      .from('user_subscriptions' as never)
+      .select('*')
+      .eq('user_id', auth.userId as never)
+      .maybeSingle();
+
+    const record = (row ?? {}) as Record<string, unknown>;
+    const result = applyCancelAction(
+      {
+        plan: typeof record.plan === 'string' ? record.plan : null,
+        status: typeof record.status === 'string' ? record.status : null,
+        current_period_end:
+          typeof record.current_period_end === 'string' ? record.current_period_end : null,
+        cancel_at_period_end:
+          typeof record.cancel_at_period_end === 'boolean' ? record.cancel_at_period_end : null,
+      },
+      action
+    );
+
+    if (!result.ok || !result.row) {
+      const status =
+        result.code === 'NOT_PRO'
+          ? 409
+          : result.code === 'PERIOD_END_MISSING' || result.code === 'CONFLICT'
+            ? 409
+            : 400;
+      return json(
+        { error: CANCEL_ERROR_MESSAGES[result.code ?? 'CONFLICT'] },
+        status,
+        origin,
+        env,
+        { code: result.code === 'NOT_PRO' ? 'NOT_PRO' : 'CONFLICT', requestId }
+      );
+    }
+
+    const alreadyApplied =
+      typeof record.cancel_at_period_end === 'boolean' &&
+      record.cancel_at_period_end === result.row.cancel_at_period_end &&
+      record.status === result.row.status;
+
+    const { error: updateError } = await supabase
+      .from('user_subscriptions' as never)
+      .update({
+        status: result.row.status,
+        cancel_at_period_end: result.row.cancel_at_period_end,
+      } as never)
+      .eq('user_id', auth.userId as never);
+
+    if (updateError) {
+      console.error(
+        JSON.stringify({
+          t: 'cancel_update_error',
+          id: requestId,
+          code: updateError.code || 'INTERNAL',
+        })
+      );
+      return json({ error: 'Failed to update subscription' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+
+    // Entitlements stay Pro until current_period_end; report the honest view.
+    return json(
+      {
+        alreadyApplied,
+        subscription: {
+          plan: result.row.plan,
+          status: result.row.status,
+          cancelAtPeriodEnd: result.row.cancel_at_period_end,
+          currentPeriodEnd: result.row.current_period_end,
+          entitlementsUntil: result.row.cancel_at_period_end ? result.row.current_period_end : null,
+        },
+      },
+      200,
+      origin,
+      env,
+      { requestId }
+    );
+  } catch {
+    console.error(JSON.stringify({ t: 'cancel_error', id: requestId, code: 'INTERNAL' }));
+    return json({ error: 'Failed to update subscription' }, 500, origin, env, {
+      code: 'INTERNAL',
+      requestId,
+    });
+  }
+}
+
+const CANCEL_ERROR_MESSAGES: Record<string, string> = {
+  NOT_PRO: 'No paid subscription to cancel.',
+  PERIOD_END_MISSING: 'Subscription period information is missing; contact support.',
+  CONFLICT: 'Subscription state changed; refresh and try again.',
+  ALREADY_CANCELED: 'Already canceled.',
+  ALREADY_ACTIVE: 'Subscription is already active.',
+};
 
 async function getSubscription(env: Env, userId: string): Promise<SubscriptionState> {
   const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
@@ -684,6 +976,24 @@ async function handleGetBillingStatus(
     const subscription = await getSubscription(env, auth.userId);
     const entitlements = resolveEntitlements(subscription);
 
+    // Pending end-of-cycle cancellation info for the Billing UI.
+    let cancelAtPeriodEnd = false;
+    {
+      const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+      const adminKey = getAdminKey(env);
+      if (supabaseUrl && adminKey) {
+        const supabase = createServerClient(supabaseUrl, adminKey);
+        const { data: subRow } = await supabase
+          .from('user_subscriptions' as never)
+          .select('cancel_at_period_end')
+          .eq('user_id', auth.userId as never)
+          .maybeSingle();
+        cancelAtPeriodEnd =
+          ((subRow as { cancel_at_period_end?: boolean } | null)?.cancel_at_period_end ?? false) ===
+          true;
+      }
+    }
+
     const metrics = [
       'resume_variants',
       'github_repos',
@@ -707,6 +1017,7 @@ async function handleGetBillingStatus(
       {
         subscription,
         entitlements,
+        cancelAtPeriodEnd,
         usage,
         pricePaise: readProAnnualPricePaise(getEnvValue(env, 'PRO_ANNUAL_PRICE_PAISE')),
         currency: getEnvValue(env, 'CURRENCY') || 'INR',
@@ -921,6 +1232,8 @@ async function handleWebhook(
             user_id: userId,
             plan: 'pro',
             status: 'active',
+            // A renewal cancels any pending end-of-cycle cancellation.
+            cancel_at_period_end: false,
             current_period_start: new Date().toISOString(),
             current_period_end: periodEnd.toISOString(),
             provider: 'razorpay',
@@ -1218,6 +1531,14 @@ export async function handleRequest(
     return handleWebhook(request, origin, env, id);
   }
 
+  if (url.pathname === '/api/billing/subscription/cancel' && request.method === 'POST') {
+    return handleSubscriptionCancel(request, origin, env, id, 'cancel');
+  }
+
+  if (url.pathname === '/api/billing/subscription/resume' && request.method === 'POST') {
+    return handleSubscriptionCancel(request, origin, env, id, 'resume');
+  }
+
   if (url.pathname === '/api/domains/custom' && request.method === 'POST') {
     return handleAddCustomDomain(request, origin, env, id);
   }
@@ -1230,8 +1551,27 @@ export async function handleRequest(
     return handleResumeExtract(request, origin, env, id);
   }
 
+  if (url.pathname === '/api/recruiter/config' && request.method === 'GET') {
+    // Public, non-secret config for the recruiter panel on public profiles.
+    return json(
+      {
+        enabled: featureEnabled(env, 'RECRUITER_AI_ENABLED'),
+        aiConfigured: Boolean(getEnvValue(env, 'BHARATCODE_API_KEY')),
+        maxQuestionChars: 400,
+      },
+      200,
+      origin,
+      env,
+      id ? { requestId: id } : undefined
+    );
+  }
+
   if (url.pathname === '/api/recruiter/ask' && request.method === 'POST') {
     return handleRecruiterAsk(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/account/delete' && request.method === 'POST') {
+    return handleAccountDelete(request, origin, env, id);
   }
 
   return json({ error: 'Not Found' }, 404, origin, env, {

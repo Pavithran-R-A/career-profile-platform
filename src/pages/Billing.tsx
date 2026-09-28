@@ -10,10 +10,12 @@ import { useNoindexMeta } from '../lib/seo/usePageMeta';
 interface BillingStatus {
   subscription: SubscriptionState;
   entitlements: PlanEntitlements;
+  cancelAtPeriodEnd?: boolean;
   usage: Record<string, UsageCheck>;
   pricePaise: number | null;
   currency: string;
   razorpayConfigured: boolean;
+  billingEnabled?: boolean;
 }
 
 declare global {
@@ -30,6 +32,8 @@ export default function Billing() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   const loadStatus = useCallback(async (token: string) => {
     try {
@@ -131,11 +135,44 @@ export default function Billing() {
     );
   }
 
+  const changeSubscription = async (action: 'cancel' | 'resume') => {
+    if (auth.status !== 'authenticated') return;
+    const supabase = getSupabaseClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+
+    setCancelBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/billing/subscription/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || 'Could not update your subscription');
+      }
+      await loadStatus(token);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCancelBusy(false);
+      setCancelConfirmOpen(false);
+    }
+  };
+
   if (auth.status === 'unauthenticated' || !status) {
     return null;
   }
 
   const isPro = status.entitlements.planId === 'pro';
+  const cancelPending = status.cancelAtPeriodEnd === true;
+  const renewDate = status.subscription.currentPeriodEnd
+    ? new Date(status.subscription.currentPeriodEnd).toLocaleDateString()
+    : null;
 
   const usageRows = [
     { key: 'resume_variants', label: 'Resume variants', row: status.usage.resume_variants },
@@ -175,6 +212,72 @@ export default function Billing() {
             {isPro ? 'Pro' : 'Free'}
           </span>
         </div>
+
+        {isPro && cancelPending && (
+          <div className="border-t pt-4">
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              Cancellation scheduled — Pro stays active through{' '}
+              <strong>{renewDate ?? 'the end of your billing cycle'}</strong>, then your account
+              moves to the Free plan. Nothing is deleted.
+            </p>
+            <div className="flex items-center justify-between mt-3">
+              <p className="text-sm text-gray-500">
+                Changed your mind? Keep Pro and renew as usual.
+              </p>
+              <button
+                onClick={() => void changeSubscription('resume')}
+                disabled={cancelBusy}
+                className="bg-gray-900 text-white px-4 py-2 rounded-md hover:bg-gray-800 disabled:opacity-50">
+                {cancelBusy ? 'Working…' : 'Resume Pro'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isPro && !cancelPending && (
+          <div className="border-t pt-4">
+            {!cancelConfirmOpen ? (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">
+                  {renewDate ? `Renews on ${renewDate}.` : 'Annual plan.'} Cancel anytime — you keep
+                  Pro until the period ends.
+                </p>
+                <button
+                  onClick={() => setCancelConfirmOpen(true)}
+                  disabled={!status.billingEnabled}
+                  className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50">
+                  Cancel subscription
+                </button>
+              </div>
+            ) : (
+              <div
+                role="alertdialog"
+                aria-label="Confirm cancellation"
+                className="border border-amber-200 bg-amber-50 rounded-md p-4">
+                <p className="font-medium text-amber-900">Cancel Pro at the end of this cycle?</p>
+                <p className="text-sm text-amber-800 mt-1">
+                  You keep every Pro feature until{' '}
+                  <strong>{renewDate ?? 'the end of your billing cycle'}</strong>. After that your
+                  plan becomes Free — your profile, portfolio and resumes stay yours.
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => void changeSubscription('cancel')}
+                    disabled={cancelBusy}
+                    className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 disabled:opacity-50">
+                    {cancelBusy ? 'Working…' : 'Yes, cancel at period end'}
+                  </button>
+                  <button
+                    onClick={() => setCancelConfirmOpen(false)}
+                    disabled={cancelBusy}
+                    className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50">
+                    Keep Pro
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {!isPro && (
           <div className="border-t pt-4">
