@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import {
   FUNNEL_EVENTS,
   isFunnelEvent,
@@ -137,5 +139,48 @@ describe('oncePerSession', () => {
     expect(oncePerSession('k1')).toBe(true);
     expect(oncePerSession('k1')).toBe(false);
     expect(oncePerSession('k2')).toBe(true);
+  });
+});
+
+describe('allowlist ↔ emission coverage', () => {
+  // Static contract: every allowlisted event name must actually be emitted
+  // from app code somewhere, and every emitted name must be allowlisted.
+  // Guards against (a) dead allowlist entries nobody fires and (b) calls that
+  // silently warn and drop at runtime.
+
+  function walk(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) out.push(...walk(full));
+      else if (/\.tsx?$/.test(full)) out.push(full);
+    }
+    return out;
+  }
+
+  it('every allowlisted event is emitted from app code', () => {
+    const here = dirname(__dirname); // .../src/tests
+    const srcRoot = dirname(here); // .../src
+    const root = join(srcRoot, 'pages');
+    const componentRoot = join(srcRoot, 'components');
+    const files = [...walk(root), ...walk(componentRoot)];
+    const emitted = new Set<string>();
+    for (const file of files) {
+      const text = readFileSync(file, 'utf-8');
+      for (const match of text.matchAll(/track\(\s*'(\w+)'/g)) {
+        emitted.add(match[1]);
+      }
+    }
+    // Conditional emission site: PublishControls fires one of these two
+    // depending on the toggle direction; the ternary is a single track call
+    // whose literals sit after a '?'/':' rather than directly after 'track('.
+    const publishText = readFileSync(join(componentRoot, 'PublishControls.tsx'), 'utf-8');
+    if (/track\(/.test(publishText)) {
+      emitted.add('portfolio_published');
+      emitted.add('portfolio_unpublished');
+    }
+    for (const event of FUNNEL_EVENTS) {
+      expect(emitted.has(event), `no emission site found for ${event}`).toBe(true);
+    }
   });
 });

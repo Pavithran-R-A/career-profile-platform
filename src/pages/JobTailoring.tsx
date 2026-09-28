@@ -122,6 +122,11 @@ export default function JobTailoring() {
       })();
 
       track('tailoring_started', { source: 'job_tailoring' });
+      // The analysis result was produced (deterministic, client-side).
+      track('tailoring_completed', {
+        source: 'job_tailoring',
+        count: parsed.requirements.length,
+      });
       setState('result');
     } catch {
       setState('error');

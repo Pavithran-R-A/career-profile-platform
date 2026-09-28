@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getSupabaseClient } from '../lib/supabase/client';
+import { track } from '../lib/analytics/events';
 
 interface PublishControlsProps {
   profileId: string;
@@ -40,6 +41,12 @@ export default function PublishControls({
         .eq('id', profileId);
 
       if (updateError) throw updateError;
+
+      // Funnel milestone: the single publish surface is the only place this
+      // fires, so published/unpublished counts stay truthful.
+      track(isPublished ? 'portfolio_unpublished' : 'portfolio_published', {
+        source: 'dashboard',
+      });
 
       onPublishChange(!isPublished);
     } catch {
