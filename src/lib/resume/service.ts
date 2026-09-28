@@ -133,20 +133,6 @@ export class ResumeService {
     return data as unknown as ResumeSource;
   }
 
-  async getResumesByProfile(profileId: string): Promise<ResumeSource[]> {
-    const { data, error } = await this.supabase
-      .from('resume_sources')
-      .select('*')
-      .eq('profile_id', profileId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      throw new Error(toCustomerMessage(error, 'load'));
-    }
-
-    return (data || []) as unknown as ResumeSource[];
-  }
-
   async deleteResume(resumeId: string): Promise<void> {
     const resume = await this.getResume(resumeId);
     if (!resume) {

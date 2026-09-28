@@ -65,12 +65,29 @@
 - Tokens stored server-side only
 - Refresh tokens handled by Supabase client
 
-## File Upload Risks (Future Stages)
+## File Upload Risks
 
-- Resume uploads must validate MIME type
-- File size limits enforced
-- Storage buckets with appropriate access policies
+- Resume uploads validate MIME type and PDF magic bytes
+- File size limits enforced (6 MiB, 20 pages)
+- Storage bucket is private; access goes through RLS-scoped paths (`{userId}/{fileId}.pdf`)
 - No direct public access to uploaded files
+
+## Account Deletion
+
+- `POST /api/account/delete` requires a valid session **and** recent
+  authentication: the access token's `iat` must be within the last 10
+  minutes (`REAUTH_REQUIRED` otherwise). Long-lived sessions re-authenticate
+  in the UI first.
+- Deletion order: Storage objects (resumes bucket) → explicit non-cascading
+  rows (`user_subscriptions`, `resume_sources`) → Supabase Auth admin delete
+  (cascades all remaining owned rows).
+- The admin/secret key is used only inside the worker; the browser never
+  sees it and no admin operation is exposed through any client path.
+- Failure semantics: storage/row cleanup problems are logged and skipped;
+  a failed auth delete returns 502 and the account remains fully usable so
+  the user can retry — no observable half-deleted state.
+- The UI path (`/dashboard/account/delete`) is noindex, requires typing
+  "DELETE", states the permanence warning, and signs the user out on success.
 
 ## CORS Policy
 

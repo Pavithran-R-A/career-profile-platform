@@ -93,7 +93,12 @@ describe('anon access to user_subscriptions is denied (live RLS)', () => {
 describe('cancel/resume semantics (server mirror)', () => {
   const future = new Date(Date.now() + 30 * 86400000).toISOString();
   const past = new Date(Date.now() - 86400000).toISOString();
-  const base = { plan: 'pro', status: 'active', current_period_end: future, cancel_at_period_end: false };
+  const base = {
+    plan: 'pro',
+    status: 'active',
+    current_period_end: future,
+    cancel_at_period_end: false,
+  };
 
   it('repeated cancel is idempotent (same target state, no error)', () => {
     const first = applyCancelAction(base, 'cancel');
