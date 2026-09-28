@@ -18,6 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 import { applyCancelAction, describeCancellation } from '../../lib/billing/cancellation';
+import { EXPLICIT_TABLES } from '../../lib/account/deletion';
 import type { Database } from '../../lib/supabase/database.types';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -57,8 +58,9 @@ describe('remote schema: cancel_at_period_end exists', () => {
 
 // Anonymous RLS: with only the publishable key and no session, every
 // operation on user_subscriptions must return zero rows / an RLS error —
-// never data.
-describe('anon access to user_subscriptions is denied (live RLS)', () => {
+// never data. The deletion marker table has NO policies at all, so even
+// authenticated clients can never touch it (worker-only).
+describe('anon access to sensitive tables is denied (live RLS)', () => {
   it.skipIf(!supabaseUrl || !publishableKey)(
     'anon select returns no rows and anon update affects nothing',
     async () => {
@@ -86,6 +88,33 @@ describe('anon access to user_subscriptions is denied (live RLS)', () => {
       if (updated !== null) expect((updated as unknown[]).length).toBe(0);
     }
   );
+
+  it.skipIf(!supabaseUrl || !publishableKey)(
+    'deletion marker table is completely inaccessible to clients (worker-only)',
+    async () => {
+      const anon = createClient<Database>(supabaseUrl!, publishableKey!, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+
+      // SELECT: no grant → error, never rows.
+      const { data, error } = await anon.from('account_deletion_requests').select('*').limit(5);
+      expect(error).not.toBeNull();
+      expect(data).toBeNull();
+
+      // INSERT: a client must never be able to forge a deletion marker.
+      const { error: insertError } = await anon.from('account_deletion_requests').insert({
+        user_id: '00000000-0000-4000-8000-00000000dead',
+        stage: 'requested',
+      });
+      expect(insertError).not.toBeNull();
+    }
+  );
+
+  it('the marker table is covered by the explicit non-cascading plan check', () => {
+    // The marker itself cascades from auth.users (FK), so it must NOT be in
+    // EXPLICIT_TABLES — assert the plan remains truthful.
+    expect(EXPLICIT_TABLES).not.toContain('account_deletion_requests');
+  });
 });
 
 // Idempotency + conflict semantics of the state machine (server behavior

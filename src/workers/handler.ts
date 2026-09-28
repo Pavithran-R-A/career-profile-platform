@@ -24,7 +24,15 @@ import {
 } from '../lib/ai/recruiter';
 import { normalizeUsername, validateUsername } from '../lib/validators/username';
 import { isHttpUrl } from '../lib/validators/url';
-import { isRecentAuth } from '../lib/account/deletion';
+import {
+  isRecentAuth,
+  newDeletionRequest,
+  recordAttempt,
+  responseForAuthDeleteFailure,
+  DELETION_PARTIAL_MESSAGE,
+  DELETION_FAILED_MESSAGE,
+  type DeletionStage,
+} from '../lib/account/deletion';
 import { z } from 'zod';
 import type { PlanEntitlements } from '../lib/billing/plans';
 import type { SubscriptionState } from '../lib/billing/entitlements';
@@ -90,7 +98,8 @@ export type ApiErrorCode =
   | 'ALREADY_DONE'
   | 'CONFLICT'
   | 'REAUTH_REQUIRED'
-  | 'DELETE_FAILED';
+  | 'DELETE_FAILED'
+  | 'DELETE_PARTIAL';
 
 type EnvStringKey = Exclude<keyof Env, 'RECRUITER_RATE_LIMITER'>;
 
@@ -632,19 +641,31 @@ async function handleRecruiterAsk(
 /**
  * Permanent account deletion for the authenticated user.
  *
- * Order matters:
+ * The steps below span Storage, several tables, and Supabase Auth and CANNOT
+ * be one transaction. The design is therefore explicitly IDEMPOTENT and
+ * RECOVERABLE rather than atomic:
+ *
  *   1. verifyAuth → the caller must hold a valid session.
  *   2. Re-auth freshness: the access token must have been issued within the
- *      last 10 minutes (`iat` claim of the session user). Long-lived sessions
- *      must re-authenticate first — this is the "recent authenticated user
- *      confirmation" gate.
- *   3. Storage objects (resumes bucket, `${userId}/` prefix) are removed via
- *      the admin client BEFORE the auth user disappears (storage policies
- *      reference the user; after deletion nothing authorizes those ops).
- *   4. Explicit non-cascading rows are deleted; everything else cascades from
- *      auth.users.
- *   5. Supabase Auth admin delete. On failure the account still signs in, so
- *      the user can retry — no half-deleted state is observable.
+ *      last 10 minutes (`iat` claim). This is the "recent authenticated user
+ *      confirmation" gate; stale tokens are rejected.
+ *   3. A durable pending-deletion marker row is upserted FIRST (attempt N).
+ *      It makes an interrupted attempt observable and every retry explicit.
+ *   4. Storage objects (resumes bucket, prefix filtered to the verified
+ *      `${userId}/`) are removed while the user still exists. Already-absent
+ *      objects are tolerated — storage.remove does not fail on missing keys.
+ *   5. Non-cascading rows are deleted keyed by the verified userId. "0 rows
+ *      affected" (already cleaned by an earlier attempt) is success.
+ *   6. Auth admin delete. A 404 (user already deleted by a prior attempt) is
+ *      SUCCESS — that is the retry-completion path.
+ *
+ * If any step fails after earlier steps ran, the marker row records the
+ * stage and the customer gets truthful wording: some cleanup may already
+ * have completed, please retry. Retrying re-runs the whole plan and safely
+ * skips what is already gone.
+ *
+ * Cross-user isolation: every delete is keyed by the userId verified against
+ * the fresh session; the client never supplies an id.
  */
 async function handleAccountDelete(
   request: Request,
@@ -701,48 +722,139 @@ async function handleAccountDelete(
     }
 
     const supabase = createServerClient(supabaseUrl, adminKey);
+    const userId = auth.userId;
 
-    // 3. Storage first: find every resume path owned by this user and remove
-    // the objects while the user still exists.
-    const { data: storageRows } = await supabase
-      .from('resume_sources' as never)
-      .select('storage_path')
-      .eq('user_id', auth.userId as never);
+    // 3. Durable marker: create-or-advance (attempt N on retries). Upsert by
+    // the verified userId only; this row is cascade-deleted with the auth
+    // user, so a successful deletion leaves no orphan marker.
+    const { data: existingMarker } = await supabase
+      .from('account_deletion_requests' as never)
+      .select('*')
+      .eq('user_id', userId as never)
+      .maybeSingle();
+    const prior = existingMarker as (Record<string, unknown> & { attempts?: number }) | null;
+    const marker = recordAttempt(
+      prior
+        ? {
+            user_id: userId,
+            stage: (typeof prior.stage === 'string' ? prior.stage : 'requested') as DeletionStage,
+            requested_at:
+              typeof prior.requested_at === 'string'
+                ? prior.requested_at
+                : new Date().toISOString(),
+            updated_at:
+              typeof prior.updated_at === 'string' ? prior.updated_at : new Date().toISOString(),
+            completed_at: typeof prior.completed_at === 'string' ? prior.completed_at : null,
+            last_error: typeof prior.last_error === 'string' ? prior.last_error : null,
+            attempts: typeof prior.attempts === 'number' ? prior.attempts : 1,
+          }
+        : newDeletionRequest(userId),
+      new Date()
+    );
+    await supabase.from('account_deletion_requests' as never).upsert({
+      user_id: userId,
+      stage: marker.stage,
+      attempts: marker.attempts,
+      requested_at: marker.requested_at,
+      updated_at: marker.updated_at,
+      completed_at: marker.completed_at,
+      last_error: null,
+    } as never);
 
-    const paths = ((storageRows ?? []) as Array<{ storage_path?: unknown }>)
-      .map((r) => (typeof r.storage_path === 'string' ? r.storage_path : ''))
-      .filter((p) => p.startsWith(`${auth.userId}/`));
+    // 4. Storage: remove owned objects while the user still exists. Resolve
+    // the user's profile id server-side (never client-supplied); on a retry
+    // where the profile is already gone, the sentinel id matches nothing and
+    // the (empty) path list is skipped — already-absent is tolerated.
+    const { data: profileRow } = await supabase
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', userId as never)
+      .maybeSingle();
+    const profileId = (profileRow as { id?: string } | null)?.id ?? null;
+
+    let paths: string[] = [];
+    if (profileId) {
+      const { data: storageRows } = await supabase
+        .from('resume_sources' as never)
+        .select('storage_path')
+        .eq('profile_id', profileId as never);
+      paths = ((storageRows ?? []) as Array<{ storage_path?: unknown }>)
+        .map((r) => (typeof r.storage_path === 'string' ? r.storage_path : ''))
+        .filter((p) => p.length > 0 && p.startsWith(`${userId}/`));
+    }
 
     if (paths.length > 0) {
+      // Already-absent objects do not fail storage.remove; a hard failure
+      // here leaves the marker at 'requested' and stays retryable.
       const { error: removeError } = await supabase.storage.from('resumes').remove(paths);
       if (removeError) {
-        // Non-fatal: objects may already be gone; log and continue.
         console.error(
           JSON.stringify({ t: 'delete_storage_error', id: requestId, count: paths.length })
         );
+        await supabase
+          .from('account_deletion_requests' as never)
+          .update({
+            stage: 'requested',
+            updated_at: new Date().toISOString(),
+            last_error: 'storage_remove_failed',
+          } as never)
+          .eq('user_id', userId as never);
+        return json({ error: DELETION_PARTIAL_MESSAGE }, 502, origin, env, {
+          code: 'DELETE_PARTIAL',
+          requestId,
+        });
       }
     }
+    await supabase
+      .from('account_deletion_requests' as never)
+      .update({ stage: 'storage_cleaned', updated_at: new Date().toISOString() } as never)
+      .eq('user_id', userId as never);
 
-    // 4. Explicit rows without cascade.
+    // 5. Non-cascading rows: 0 rows affected (already cleaned on a retry)
+    // is success. The resume rows are keyed by the server-resolved profile id;
+    // if the profile is already gone, there is nothing to delete.
     const { error: subDeleteError } = await supabase
       .from('user_subscriptions' as never)
       .delete()
-      .eq('user_id', auth.userId as never);
-    if (subDeleteError) {
-      console.error(JSON.stringify({ t: 'delete_sub_error', id: requestId }));
+      .eq('user_id', userId as never);
+    let resumeDeleteError: { code?: string } | null = null;
+    if (profileId) {
+      const { error } = await supabase
+        .from('resume_sources' as never)
+        .delete()
+        .eq('profile_id', profileId as never);
+      resumeDeleteError = error;
     }
-
-    const { error: resumeDeleteError } = await supabase
-      .from('resume_sources' as never)
-      .delete()
-      .eq('user_id', auth.userId as never);
-    if (resumeDeleteError) {
-      console.error(JSON.stringify({ t: 'delete_resume_rows_error', id: requestId }));
+    if (subDeleteError || resumeDeleteError) {
+      console.error(
+        JSON.stringify({
+          t: 'delete_rows_error',
+          id: requestId,
+          code: subDeleteError?.code || resumeDeleteError?.code || 'INTERNAL',
+        })
+      );
+      await supabase
+        .from('account_deletion_requests' as never)
+        .update({
+          stage: 'storage_cleaned',
+          updated_at: new Date().toISOString(),
+          last_error: 'row_delete_failed',
+        } as never)
+        .eq('user_id', userId as never);
+      return json({ error: DELETION_PARTIAL_MESSAGE }, 502, origin, env, {
+        code: 'DELETE_PARTIAL',
+        requestId,
+      });
     }
+    await supabase
+      .from('account_deletion_requests' as never)
+      .update({ stage: 'rows_cleaned', updated_at: new Date().toISOString() } as never)
+      .eq('user_id', userId as never);
 
-    // 5. Auth admin delete — cascades profiles, sections, evidence,
-    // billing orders, funnel events, achievements, preferences, etc.
-    const adminRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${auth.userId}`, {
+    // 6. Auth admin delete — cascades profiles, sections, evidence, billing
+    // orders, funnel events, achievements, preferences AND the marker row.
+    // 404 means a prior attempt already deleted the user: retry succeeded.
+    const adminRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${adminKey}`, apikey: adminKey },
     });
@@ -751,20 +863,27 @@ async function handleAccountDelete(
       console.error(
         JSON.stringify({ t: 'delete_auth_error', id: requestId, status: adminRes.status })
       );
-      return json(
-        { error: 'We could not complete the deletion. Please try again.' },
-        502,
-        origin,
-        env,
-        { code: 'DELETE_FAILED', requestId }
-      );
+      await supabase
+        .from('account_deletion_requests' as never)
+        .update({
+          stage: 'rows_cleaned',
+          updated_at: new Date().toISOString(),
+          last_error: 'auth_delete_failed',
+        } as never)
+        .eq('user_id', userId as never);
+      // Truthful: earlier steps already ran; the account is NOT intact.
+      const outcome = responseForAuthDeleteFailure(true, adminRes.status);
+      return json(outcome.body, outcome.status, origin, env, {
+        code: (outcome.code ?? 'DELETE_FAILED') as ApiErrorCode,
+        requestId,
+      });
     }
 
-    console.log(JSON.stringify({ t: 'account_deleted', id: requestId }));
+    console.log(JSON.stringify({ t: 'account_deleted', id: requestId, attempt: marker.attempts }));
     return json({ deleted: true }, 200, origin, env, { requestId });
   } catch {
     console.error(JSON.stringify({ t: 'delete_error', id: requestId, code: 'INTERNAL' }));
-    return json({ error: 'Account deletion failed' }, 500, origin, env, {
+    return json({ error: DELETION_FAILED_MESSAGE }, 500, origin, env, {
       code: 'INTERNAL',
       requestId,
     });

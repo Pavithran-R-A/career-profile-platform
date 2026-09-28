@@ -87,7 +87,7 @@ export default function AccountDelete() {
         setError(
           body.error === 'Please sign in again before deleting your account.'
             ? 'Please confirm your password again to continue.'
-            : body.error || 'Deletion failed. You are still signed in — please try again.'
+            : body.error || 'Deletion failed. Please try again.'
         );
         setPhase('reauth');
         return;

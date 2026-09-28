@@ -3,6 +3,25 @@
 Date: 2026-09-24 (UTC)
 Constraints honored: Confirm Email left ON; no SUPABASE_SECRET_KEY requested; no `admin.createUser(email_confirm=true)` bypass; no repeated resends.
 
+## Account Deletion Semantics Correction (2026-09-28)
+
+A correctness audit found the earlier claim "no observable half-deleted
+state" to be unsafe: deletion spans Storage, tables, and Supabase Auth and
+cannot be one transaction. Corrected design (shipped):
+
+- Deletion is explicitly **idempotent and recoverable**, not atomic. Every
+  step tolerates already-cleaned state (absent objects, 0-row deletes, 404
+  from the auth admin delete = retry completion).
+- A durable `account_deletion_requests` marker (worker-only, cascade-deleted
+  with the auth user) records stage + attempt count so partial progress is
+  observable and retries are explicit.
+- Partial failure after progress returns truthful customer wording ("some
+  cleanup may already have completed; please retry") — never a claim that
+  the account is fully intact.
+- Regression-tested: retry-after-auth-failure, retry-after-storage/rows,
+  idempotent second request, cross-user isolation, stale-token rejection,
+  secret isolation.
+
 ## Auth / Email Classification (per Dashboard confirmation)
 
 - AUTH CONFIGURATION = PASS

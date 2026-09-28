@@ -39,3 +39,6 @@ e2e/**-snapshots/
 *.local
 # Supabase CLI generated temp state (project ref, CLI version)
 supabase/.temp/
+
+# Freebuff workspace-internal state (agent metadata; never commit)
+.freebuff/
