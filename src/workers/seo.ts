@@ -92,10 +92,7 @@ export function handleRobots(request: Request): Response {
 
 export async function handleSitemap(request: Request, env: Env): Promise<Response> {
   const origin = originOf(request);
-  const entries: SitemapEntry[] = [
-    { loc: `${origin}/` },
-    { loc: `${origin}/pricing` },
-  ];
+  const entries: SitemapEntry[] = [{ loc: `${origin}/` }, { loc: `${origin}/pricing` }];
 
   try {
     const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL;

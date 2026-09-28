@@ -9,6 +9,7 @@ import { formatDateRange } from '../../lib/profiles/date-format';
 import { evidenceForProject, evidenceForSkill } from '../../lib/evidence/public';
 import { LinkIcon } from '../portfolio/links';
 import { ProjectEvidence, SkillEvidence } from '../portfolio/EvidenceAffordance';
+import { FeaturedAchievements } from '../portfolio/FeaturedAchievements';
 
 interface TemplatePreferences {
   accentKey: string;
@@ -96,6 +97,20 @@ export default function TechnicalTemplate({
     : null;
 
   const sectionMap: Record<string, React.ReactNode> = {
+    featured:
+      (profile.achievements?.length ?? 0) > 0 ? (
+        <div key="featured">
+          <FeaturedAchievements
+            achievements={profile.achievements ?? []}
+            accent={accent}
+            textColor="#ffffff"
+            mutedColor="rgba(255,255,255,0.6)"
+            heading="Featured work"
+            headingFont="ui-monospace, SFMono-Regular, monospace"
+          />
+        </div>
+      ) : null,
+
     basics: profile.about ? (
       <section key="basics" className="mb-12">
         <SectionLabel label="Profile" accent={accent} />
@@ -115,52 +130,52 @@ export default function TechnicalTemplate({
             {profile.projects.map((proj) => {
               const projectEvidence = evidenceForProject(profile.evidence ?? [], proj);
               return (
-              <article
-                key={proj.id}
-                className="rounded-lg border border-white/10 bg-white/[0.03] p-4 hover:border-white/25 transition-colors">
-                <div className="flex items-start justify-between gap-2">
-                  <h3
-                    className="text-[14px] font-semibold text-white"
-                    style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
-                    {proj.name}
-                  </h3>
-                  <span aria-hidden="true" className="text-white/30 text-xs mt-0.5">
-                    ↗
-                  </span>
-                </div>
-                {proj.description && (
-                  <p className="text-[13px] leading-relaxed mt-2 text-white/60">
-                    {proj.description}
-                  </p>
-                )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {proj.project_url && (
-                    <a
-                      href={sanitizeUrl(proj.project_url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] font-semibold px-2 py-0.5 rounded border"
-                      style={{
-                        color: accent,
-                        borderColor: accent + '55',
-                        fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-                      }}>
-                      [live]
-                    </a>
-                  )}
-                  {proj.repository_url && (
-                    <a
-                      href={sanitizeUrl(proj.repository_url)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] font-semibold px-2 py-0.5 rounded border border-white/20 text-white/70 hover:border-white/40"
+                <article
+                  key={proj.id}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] p-4 hover:border-white/25 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3
+                      className="text-[14px] font-semibold text-white"
                       style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
-                      [src]
-                    </a>
+                      {proj.name}
+                    </h3>
+                    <span aria-hidden="true" className="text-white/30 text-xs mt-0.5">
+                      ↗
+                    </span>
+                  </div>
+                  {proj.description && (
+                    <p className="text-[13px] leading-relaxed mt-2 text-white/60">
+                      {proj.description}
+                    </p>
                   )}
-                </div>
-                <ProjectEvidence refs={projectEvidence} mutedColor="rgba(255,255,255,0.55)" />
-              </article>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {proj.project_url && (
+                      <a
+                        href={sanitizeUrl(proj.project_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-semibold px-2 py-0.5 rounded border"
+                        style={{
+                          color: accent,
+                          borderColor: accent + '55',
+                          fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+                        }}>
+                        [live]
+                      </a>
+                    )}
+                    {proj.repository_url && (
+                      <a
+                        href={sanitizeUrl(proj.repository_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-semibold px-2 py-0.5 rounded border border-white/20 text-white/70 hover:border-white/40"
+                        style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
+                        [src]
+                      </a>
+                    )}
+                  </div>
+                  <ProjectEvidence refs={projectEvidence} mutedColor="rgba(255,255,255,0.55)" />
+                </article>
               );
             })}
           </div>
@@ -226,7 +241,10 @@ export default function TechnicalTemplate({
                 className="text-[13px] text-white/80 inline-flex items-center gap-1"
                 style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
                 <span style={{ color: accent }}>·</span> {s.name}
-                <SkillEvidence ref={evidenceForSkill(profile.evidence ?? [], s.name)} accent={accent} />
+                <SkillEvidence
+                  ref={evidenceForSkill(profile.evidence ?? [], s.name)}
+                  accent={accent}
+                />
               </span>
             ))}
           </div>

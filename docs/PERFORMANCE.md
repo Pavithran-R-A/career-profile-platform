@@ -4,14 +4,14 @@
 
 Measured from `dist/client` via `pnpm bundle:scan` (`scripts/bundle-scan.mjs`):
 
-| Asset | Size | When it loads |
-| --- | --- | --- |
-| `pdfjs-*.js` | 1563 kB | lazy — ATS route only (`/dashboard/resume/ats`) |
-| `react-pdf.browser-*.js` | 1171 kB | lazy — ATS route only |
-| `index-*.js` | 792 kB | initial (all routes) |
-| `ATSResumeBuilder-*.js` | 20 kB | lazy — ATS route |
-| `index-*.css` | 61 kB | initial |
-| `og-cover.png` (dist root) | 24 kB | only by crawlers/social cards |
+| Asset                      | Size    | When it loads                                   |
+| -------------------------- | ------- | ----------------------------------------------- |
+| `pdfjs-*.js`               | 1563 kB | lazy — ATS route only (`/dashboard/resume/ats`) |
+| `react-pdf.browser-*.js`   | 1171 kB | lazy — ATS route only                           |
+| `index-*.js`               | 792 kB  | initial (all routes)                            |
+| `ATSResumeBuilder-*.js`    | 20 kB   | lazy — ATS route                                |
+| `index-*.css`              | 61 kB   | initial                                         |
+| `og-cover.png` (dist root) | 24 kB   | only by crawlers/social cards                   |
 
 Notes:
 

@@ -36,9 +36,7 @@ const ALUMNI_MAX = 3;
 const SKILLS_MAX = 12;
 
 /** Filter profile links down to unique, safe absolute http(s) URLs. */
-export function safeSameAsLinks(
-  links: Array<{ label: string; url: string }>
-): string[] {
+export function safeSameAsLinks(links: Array<{ label: string; url: string }>): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const link of links) {
@@ -68,8 +66,7 @@ export function buildProfileJsonLd(input: JsonLdProfileInput): Record<string, un
 
   // Current role first, then the most recent listed experience.
   const sorted = [...input.experiences].sort(
-    (a, b) =>
-      Number(b.is_current) - Number(a.is_current) || b.sort_order - a.sort_order
+    (a, b) => Number(b.is_current) - Number(a.is_current) || b.sort_order - a.sort_order
   );
   const latest = sorted.find((e) => e.role && e.company);
   if (latest) {

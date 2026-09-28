@@ -5,7 +5,9 @@ import { ProfileService } from '../lib/profiles/service';
 import { sanitizeUrl } from '../lib/validators/url';
 import { toATSExportModel } from '../lib/resume/ats-export';
 import { generatePDFBlob } from '../lib/resume/pdf-renderer';
+import { buildATSViewModel } from '../lib/resume/ats-view-model';
 import ATSPreview from '../components/ATSPreview';
+import ATSGuidance from '../components/ATSGuidance';
 import { ScaledCanvas } from '../components/marketing/BrowserFrame';
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
 import { track } from '../lib/analytics/events';
@@ -519,8 +521,65 @@ export default function ATSResumeBuilder() {
             </div>
           </div>
 
-          {/* Dominant preview */}
-          <div className="flex-1 min-w-0">
+          {/* Dominant preview + guidance */}
+          <div className="flex-1 min-w-0 space-y-5">
+            {profile && state === 'ready' && (
+              <ATSGuidance
+                viewModel={buildATSViewModel(
+                  {
+                    id: profile.id,
+                    userId: auth.user.id,
+                    createdAt: profile.created_at,
+                    updatedAt: profile.updated_at,
+                    preferences: {
+                      username: profile.username,
+                      visibility: profile.visibility,
+                      showEmail: true,
+                    },
+                    identity: {
+                      fullName: profile.display_name || profile.username,
+                      headline: profile.headline || '',
+                      location: profile.location,
+                      avatarUrl: profile.avatar_url,
+                    },
+                    about: profile.about,
+                    links: profile.links.map(({ label, url }) => ({ label, url })),
+                    experiences: profile.experiences.map((exp) => ({
+                      id: exp.id,
+                      role: exp.role,
+                      company: exp.company,
+                      location: exp.location,
+                      startDate: String(exp.start_year),
+                      endDate: exp.is_current ? null : exp.end_year ? String(exp.end_year) : null,
+                      description: exp.description || '',
+                    })),
+                    education: profile.education.map((edu) => ({
+                      id: edu.id,
+                      degree: edu.degree || '',
+                      institution: edu.institution,
+                      field: edu.field_of_study,
+                      startDate: edu.start_year ? String(edu.start_year) : '',
+                      endDate: edu.end_year ? String(edu.end_year) : null,
+                    })),
+                    skills: profile.skills.map((s) => ({ name: s.name, evidenceCount: 0 })),
+                    projects: profile.projects.map((proj) => ({
+                      id: proj.id,
+                      name: proj.name,
+                      description: proj.description || '',
+                      url: proj.project_url,
+                      repoUrl: proj.repository_url,
+                      technologies: [],
+                    })),
+                  },
+                  {
+                    email: contactEmail || null,
+                    phone: contactPhone || null,
+                    showEmail: true,
+                    showPhone: true,
+                  }
+                )}
+              />
+            )}
             <div className="lg:sticky lg:top-24">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--faint-foreground)]">

@@ -84,7 +84,9 @@ describe('trackEvent', () => {
   it('inserts only allowlisted events with sanitized metadata', async () => {
     tablesTouched.length = 0;
     const insert = vi.fn().mockResolvedValue({ error: null });
-    vi.mocked(getSupabaseClient).mockReturnValue(clientWithSession({ user: { id: 'u1' } }, insert) as never);
+    vi.mocked(getSupabaseClient).mockReturnValue(
+      clientWithSession({ user: { id: 'u1' } }, insert) as never
+    );
 
     await trackEvent('resume_uploaded', { source: 'resume_import', email: 'nope' });
 
@@ -93,9 +95,7 @@ describe('trackEvent', () => {
       event_name: 'resume_uploaded',
       metadata: { source: 'resume_import' },
     });
-    expect(tablesTouched).toEqual([
-      'funnel_events',
-    ]);
+    expect(tablesTouched).toEqual(['funnel_events']);
   });
 
   it('drops unknown events without any write', async () => {

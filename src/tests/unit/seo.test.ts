@@ -9,11 +9,7 @@ import {
   MAX_TITLE_LENGTH,
   MAX_DESCRIPTION_LENGTH,
 } from '../../lib/seo/meta';
-import {
-  buildProfileJsonLd,
-  safeSameAsLinks,
-  jsonLdScript,
-} from '../../lib/seo/jsonld';
+import { buildProfileJsonLd, safeSameAsLinks, jsonLdScript } from '../../lib/seo/jsonld';
 import { buildSitemapXml, toLastmodDate, escapeXml } from '../../lib/seo/sitemap';
 import { buildRobotsTxt } from '../../lib/seo/robots';
 

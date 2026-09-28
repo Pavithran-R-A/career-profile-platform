@@ -99,7 +99,14 @@ describe('buildReviewModel', () => {
 
   it('marks every proposed section safe for an empty profile', () => {
     const model = buildReviewModel(null, draft());
-    expect(model.safeKeys).toEqual(['identity', 'experience', 'education', 'skills', 'projects', 'links']);
+    expect(model.safeKeys).toEqual([
+      'identity',
+      'experience',
+      'education',
+      'skills',
+      'projects',
+      'links',
+    ]);
     expect(model.sections.every((s) => s.conflictNotes.length === 0)).toBe(true);
   });
 

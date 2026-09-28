@@ -19,16 +19,16 @@ How the app ships to Cloudflare Workers, and how the stable preview is updated i
 
 Full reference: `.env.example`. Resolution in the worker (`getEnvValue`) falls back from each key to its `VITE_`-prefixed name, so one `.env.local` works for the client build and the worker.
 
-| Key | Needed for | Required |
-| --- | --- | --- |
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | everything (client + worker public reads) | yes |
-| `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) | service-role operations | no in beta |
-| `BHARATCODE_API_KEY` | CV extraction + recruiter AI | no — routes answer 503 `AI extraction is not configured` until set |
-| `RAZORPAY_*` | billing | no — billing shows a truthful disabled state |
-| `GITHUB_*` | GitHub integration | no — disabled |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID` | custom domains (Workers for SaaS) | no — disabled |
-| `DOTCV_*` | `.cv` domain provider | no — off by default |
-| `ENVIRONMENT` | worker behavior | set in `wrangler.toml` (`production` / `preview` via `[previews.vars]`) |
+| Key                                                                   | Needed for                                | Required                                                                |
+| --------------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`                  | everything (client + worker public reads) | yes                                                                     |
+| `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`)                | service-role operations                   | no in beta                                                              |
+| `BHARATCODE_API_KEY`                                                  | CV extraction + recruiter AI              | no — routes answer 503 `AI extraction is not configured` until set      |
+| `RAZORPAY_*`                                                          | billing                                   | no — billing shows a truthful disabled state                            |
+| `GITHUB_*`                                                            | GitHub integration                        | no — disabled                                                           |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID` | custom domains (Workers for SaaS)         | no — disabled                                                           |
+| `DOTCV_*`                                                             | `.cv` domain provider                     | no — off by default                                                     |
+| `ENVIRONMENT`                                                         | worker behavior                           | set in `wrangler.toml` (`production` / `preview` via `[previews.vars]`) |
 
 Secrets are never written into `dist/`; only `VITE_`-prefixed values are visible to browser code.
 

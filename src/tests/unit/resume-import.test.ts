@@ -58,14 +58,7 @@ function makeExtraction(overrides: Partial<ResumeExtraction> = {}): ResumeExtrac
 }
 
 function allSelected() {
-  return new Set([
-    'basics',
-    'experience',
-    'education',
-    'projects',
-    'skills',
-    'links',
-  ] as const);
+  return new Set(['basics', 'experience', 'education', 'projects', 'skills', 'links'] as const);
 }
 
 describe('parseImportDate', () => {
@@ -215,10 +208,7 @@ describe('buildImportPayload', () => {
       extraction: makeExtraction(),
       selected: new Set(['skills']),
     });
-    expect(payload.skills).toEqual([
-      { name: 'TypeScript' },
-      { name: 'Rust' },
-    ]);
+    expect(payload.skills).toEqual([{ name: 'TypeScript' }, { name: 'Rust' }]);
   });
 
   it('sanitizes link URLs', () => {

@@ -1,55 +1,55 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useBlocker } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
 import { getPreferences, type ProfilePreferences } from '../lib/profiles/preferences';
+import {
+  initialAppearanceState,
+  setTemplate,
+  setAccent,
+  moveSection,
+  setSectionHidden,
+  resetToSaved,
+  saveAppearance,
+  type AppearanceState,
+} from '../lib/profiles/appearance-draft';
 import { getTemplate } from '../lib/templates/types';
 import { TemplateCanvas } from '../components/portfolio/TemplateCanvas';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 import AppearanceControls from '../components/AppearanceControls';
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
-const DEFAULT_PREFERENCES: ProfilePreferences = {
-  id: '',
-  profile_id: '',
-  template_key: 'minimal',
-  accent_key: 'blue',
-  section_order: ['basics', 'education', 'experience', 'skills', 'projects'],
-  hidden_sections: [],
-};
-
 export default function AppearanceEditor() {
   useNoindexMeta('Appearance — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
-  const [preferences, setPreferences] = useState<ProfilePreferences>(DEFAULT_PREFERENCES);
+  const [appearance, setAppearance] = useState<AppearanceState | null>(null);
   const [loading, setLoading] = useState(true);
+  const saveTimer = useRef<number | null>(null);
 
-  const profileService = new ProfileService();
+  // Module-singleton ProfileService would remount loops; construct once.
+  const profileServiceRef = useRef<ProfileService | null>(null);
+  if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
 
   useEffect(() => {
     if (auth.status !== 'authenticated') return;
 
     void (async () => {
       try {
-        const loaded = await profileService.getProfile(auth.user.id);
+        const loaded = await profileServiceRef.current!.getProfile(auth.user.id);
         if (!loaded) {
           void navigate('/onboarding');
           return;
         }
         setProfile(loaded);
         const prefs = await getPreferences(loaded.id);
-        if (prefs) {
-          setPreferences(prefs);
-        } else {
-          setPreferences({ ...DEFAULT_PREFERENCES, profile_id: loaded.id });
-        }
+        setAppearance(initialAppearanceState(prefs));
       } finally {
         setLoading(false);
       }
     })();
-  }, [auth, navigate, profileService]);
+  }, [auth, navigate]);
 
   useEffect(() => {
     if (auth.status === 'unauthenticated') {
@@ -63,10 +63,55 @@ export default function AppearanceEditor() {
     }
   }, [auth, loading, navigate]);
 
-  if (auth.status === 'loading' || loading) {
+  // Debounced autosave: every draft change persists shortly after; the
+  // preview updates instantly from draft state, never waiting for the wire.
+  const queueSave = useCallback((state: AppearanceState) => {
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      saveTimer.current = null;
+      void saveAppearance(state).then(setAppearance);
+    }, 600);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    },
+    []
+  );
+
+  // Warn before leaving with unsaved changes (autosave makes this rare —
+  // it fires only when persistence failed and the user navigates anyway).
+  // useBlocker needs a data router; the App uses BrowserRouter (data mode),
+  // but guard anyway so embedders/tests without a data router don't crash.
+  let blocker: ReturnType<typeof useBlocker> | { state: 'idle' } = { state: 'idle' };
+  try {
+    blocker = useBlocker(
+      ({ currentLocation, nextLocation }) =>
+        Boolean(appearance?.dirty) && currentLocation.pathname !== nextLocation.pathname
+    );
+  } catch {
+    // No data router context: skip in-app nav blocking.
+  }
+
+  const update = useCallback(
+    (next: AppearanceState) => {
+      setAppearance(next);
+      queueSave(next);
+    },
+    [queueSave]
+  );
+
+  if (auth.status === 'loading' || loading || !appearance) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+      <div className="page-shell" role="status" aria-label="Loading appearance">
+        <div className="space-y-4">
+          <div className="skeleton h-9 w-56" />
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,430px)_minmax(0,1fr)] gap-6">
+            <div className="skeleton h-[560px] rounded-xl" />
+            <div className="skeleton h-[560px] rounded-xl" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -75,39 +120,123 @@ export default function AppearanceEditor() {
     return null;
   }
 
+  const preferences: ProfilePreferences = appearance.current;
   const template = getTemplate(preferences.template_key);
+  const templateName = template?.metadata.name ?? 'Minimal';
+
+  const statusChip =
+    appearance.status === 'error'
+      ? { label: "Couldn't save — retry", cls: 'status-chip-danger', action: 'retry' as const }
+      : appearance.status === 'saving'
+        ? { label: 'Saving…', cls: 'status-chip', action: null }
+        : appearance.dirty
+          ? { label: 'Unsaved', cls: 'status-chip', action: null }
+          : { label: 'Saved', cls: 'status-chip-live', action: null };
+
+  const onRetry = () => {
+    if (saveTimer.current !== null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    void saveAppearance(appearance).then(setAppearance);
+  };
 
   return (
     <div className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-8">
-      <div className="flex items-center justify-between gap-4 mb-6">
+      {blocker.state === 'blocked' && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="appearance-blocker-title">
+          <div className="card card-pad max-w-md w-full">
+            <h2 id="appearance-blocker-title" className="section-title">
+              Unsaved appearance changes
+            </h2>
+            <p className="text-sm text-[var(--muted-foreground)] mt-2">
+              Your latest change could not be saved yet. Leave anyway, or stay and try again?
+            </p>
+            <div className="flex gap-3 mt-4">
+              <button
+                type="button"
+                onClick={() => void blocker.proceed()}
+                className="btn btn-primary flex-1">
+                Leave anyway
+              </button>
+              <button
+                type="button"
+                onClick={() => void blocker.reset()}
+                className="btn btn-secondary flex-1">
+                Stay and retry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="page-title">Appearance</h1>
           <p className="page-subtitle">
             A small design studio for your portfolio — changes preview instantly.
           </p>
         </div>
-        <button onClick={() => void navigate('/dashboard')} className="link-quiet text-sm">
-          &larr; Back to dashboard
-        </button>
+        <div className="flex items-center gap-3">
+          <span
+            className={`status-chip !text-[11px] ${statusChip.cls}`}
+            role="status"
+            aria-live="polite">
+            {statusChip.label}
+          </span>
+          {statusChip.action === 'retry' && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="text-sm font-semibold"
+              style={{ color: 'var(--accent-text)' }}>
+              Retry
+            </button>
+          )}
+          {appearance.dirty && (
+            <button
+              type="button"
+              onClick={() => {
+                if (saveTimer.current !== null) {
+                  window.clearTimeout(saveTimer.current);
+                  saveTimer.current = null;
+                }
+                setAppearance(resetToSaved(appearance));
+              }}
+              className="link-quiet text-sm">
+              Reset to saved
+            </button>
+          )}
+          <button onClick={() => void navigate('/dashboard')} className="link-quiet text-sm">
+            &larr; Back to dashboard
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,430px)_minmax(0,1fr)] gap-6 items-start">
-        {/* Controls */}
+        {/* Controls — mutate the same draft the preview renders */}
         <div className="card card-pad">
           <AppearanceControls
-            profileId={profile.id}
-            preferences={preferences}
-            onChange={setPreferences}
+            draft={appearance.current}
+            onTemplate={(key) => update(setTemplate(appearance, key))}
+            onAccent={(key) => update(setAccent(appearance, key))}
+            onMoveSection={(index, dir) => update(moveSection(appearance, index, dir))}
+            onSectionHidden={(section, hidden) =>
+              update(setSectionHidden(appearance, section, hidden))
+            }
           />
         </div>
 
-        {/* Large live preview */}
+        {/* Large live preview — renders from draft state, no refetch */}
         <section aria-label="Template preview" className="xl:sticky xl:top-24">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
             <h2 className="section-title">Live preview</h2>
             <p className="text-xs text-[var(--faint-foreground)]">
-              Showing the {template?.metadata.name ?? 'Minimal'} template — saving a change above
-              updates this preview.
+              {templateName} template · updates as you change controls
             </p>
           </div>
           <div className="rounded-xl border border-[var(--border)] overflow-hidden bg-white shadow-[var(--shadow-card)]">
@@ -130,7 +259,7 @@ export default function AppearanceEditor() {
               }}
               scale={0.78}
               height={640}
-              label={`Live ${template?.metadata.name ?? 'Minimal'} template preview`}
+              label={`Live ${templateName} template preview`}
             />
           </div>
         </section>

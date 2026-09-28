@@ -172,7 +172,11 @@ function json(
 ): Response {
   const body =
     extras && (extras.code || extras.requestId)
-      ? { ...(typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {}), ...(extras.code ? { code: extras.code } : {}), ...(extras.requestId ? { requestId: extras.requestId } : {}) }
+      ? {
+          ...(typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {}),
+          ...(extras.code ? { code: extras.code } : {}),
+          ...(extras.requestId ? { requestId: extras.requestId } : {}),
+        }
       : data;
   return new Response(JSON.stringify(body), {
     status,
@@ -485,7 +489,8 @@ function toRecruiterProfileData(row: Record<string, unknown>): RecruiterProfileD
       evidence_type: typeof ev.evidence_type === 'string' ? ev.evidence_type : 'record',
       subject: typeof ev.subject === 'string' ? ev.subject : null,
       summary: typeof ev.summary === 'string' ? ev.summary : null,
-      source_url: typeof ev.source_url === 'string' && isHttpUrl(ev.source_url) ? ev.source_url : null,
+      source_url:
+        typeof ev.source_url === 'string' && isHttpUrl(ev.source_url) ? ev.source_url : null,
       repository_full_name:
         typeof ev.repository_full_name === 'string' ? ev.repository_full_name : null,
       repository_url:
@@ -595,13 +600,9 @@ async function handleRecruiterAsk(
   try {
     const raw = await provider.complete(buildRecruiterMessages(brief, question.question), 400);
     const answer = sanitizeRecruiterAnswer(raw);
-    return json(
-      { answer, grounded: true, sections: nonEmptySections(profile) },
-      200,
-      origin,
-      env,
-      { requestId }
-    );
+    return json({ answer, grounded: true, sections: nonEmptySections(profile) }, 200, origin, env, {
+      requestId,
+    });
   } catch (err) {
     if (err instanceof AIExtractionError) {
       return aiErrorToResponse(err, origin, env, requestId);
@@ -656,7 +657,11 @@ async function getUsageCount(
 
 // ─── Route handlers ─────────────────────────────────────────────
 
-async function handleGetPlans(origin: string | null, env: Env, requestId: string): Promise<Response> {
+async function handleGetPlans(
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
   const price = readProAnnualPricePaise(getEnvValue(env, 'PRO_ANNUAL_PRICE_PAISE'));
   const currency = getEnvValue(env, 'CURRENCY') || 'INR';
   return json({ plans: buildPublicPlans(price, currency) }, 200, origin, env, { requestId });
@@ -669,10 +674,11 @@ async function handleGetBillingStatus(
   requestId: string
 ): Promise<Response> {
   const auth = await verifyAuth(request, env);
-  if (!auth) return json({ error: 'Unauthorized' }, 401, origin, env, {
-    code: 'UNAUTHORIZED',
-    requestId,
-  });
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, {
+      code: 'UNAUTHORIZED',
+      requestId,
+    });
 
   try {
     const subscription = await getSubscription(env, auth.userId);
@@ -732,10 +738,11 @@ async function handleCreateOrder(
   requestId: string
 ): Promise<Response> {
   const auth = await verifyAuth(request, env);
-  if (!auth) return json({ error: 'Unauthorized' }, 401, origin, env, {
-    code: 'UNAUTHORIZED',
-    requestId,
-  });
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, {
+      code: 'UNAUTHORIZED',
+      requestId,
+    });
 
   try {
     if (!featureEnabled(env, 'BILLING_ENABLED')) {
@@ -921,7 +928,11 @@ async function handleWebhook(
 
           if (subError) {
             console.error(
-              JSON.stringify({ t: 'subscription_error', id: requestId, code: subError.code || 'INTERNAL' })
+              JSON.stringify({
+                t: 'subscription_error',
+                id: requestId,
+                code: subError.code || 'INTERNAL',
+              })
             );
           }
         },
@@ -945,17 +956,24 @@ async function handleAddCustomDomain(
   requestId: string
 ): Promise<Response> {
   const auth = await verifyAuth(request, env);
-  if (!auth) return json({ error: 'Unauthorized' }, 401, origin, env, {
-    code: 'UNAUTHORIZED',
-    requestId,
-  });
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, {
+      code: 'UNAUTHORIZED',
+      requestId,
+    });
 
   try {
     if (!featureEnabled(env, 'DOMAINS_ENABLED')) {
-      return json({ error: 'Custom domains are not available in this environment.' }, 503, origin, env, {
-        code: 'FEATURE_DISABLED',
-        requestId,
-      });
+      return json(
+        { error: 'Custom domains are not available in this environment.' },
+        503,
+        origin,
+        env,
+        {
+          code: 'FEATURE_DISABLED',
+          requestId,
+        }
+      );
     }
 
     const body = (await request.json()) as { hostname?: string; profileId?: string };
@@ -1052,7 +1070,9 @@ async function handleAddCustomDomain(
           } as never)
           .eq('id', (domain as { id: string }).id as never);
       } catch {
-        console.error(JSON.stringify({ t: 'cloudflare_hostname_error', id: requestId, code: 'CLOUDFLARE' }));
+        console.error(
+          JSON.stringify({ t: 'cloudflare_hostname_error', id: requestId, code: 'CLOUDFLARE' })
+        );
       }
     }
 
@@ -1084,17 +1104,24 @@ async function handleDotCvQuote(
   requestId: string
 ): Promise<Response> {
   const auth = await verifyAuth(request, env);
-  if (!auth) return json({ error: 'Unauthorized' }, 401, origin, env, {
-    code: 'UNAUTHORIZED',
-    requestId,
-  });
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, {
+      code: 'UNAUTHORIZED',
+      requestId,
+    });
 
   try {
     if (!featureEnabled(env, 'DOMAINS_ENABLED')) {
-      return json({ error: 'Domain registration is not available in this environment.' }, 503, origin, env, {
-        code: 'FEATURE_DISABLED',
-        requestId,
-      });
+      return json(
+        { error: 'Domain registration is not available in this environment.' },
+        503,
+        origin,
+        env,
+        {
+          code: 'FEATURE_DISABLED',
+          requestId,
+        }
+      );
     }
 
     const body = (await request.json()) as { domain?: string };

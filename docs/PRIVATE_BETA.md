@@ -29,19 +29,19 @@ is ON — Supabase rejects reserved domains such as `example.com`).
 - SEO: `sitemap.xml`, `robots.txt`, per-page meta (OG/Twitter/canonical),
   ProfilePage JSON-LD, OG cover image.
 - Privacy-safe funnel analytics: `signup_started → signup_completed →
-  profile_created → resume_uploaded → profile_completed → ats_generated →
-  ats_downloaded`, plus `profile_updated`. No PII in events; allowlisted names;
+profile_created → resume_uploaded → profile_completed → ats_generated →
+ats_downloaded`, plus `profile_updated`. No PII in events; allowlisted names;
   metadata sanitized.
 
 ## Plans (server-authoritative pricing)
 
-| | Free | Pro (annual) |
-| --- | --- | --- |
-| ATS resume variants | 3 | 20 |
-| Recruiter AI questions / day | 10 | 100 |
-| Job tailoring / month | 3 | 30 |
-| Custom domains | 0 | 1 |
-| Remove platform branding | no | yes |
+|                              | Free | Pro (annual) |
+| ---------------------------- | ---- | ------------ |
+| ATS resume variants          | 3    | 20           |
+| Recruiter AI questions / day | 10   | 100          |
+| Job tailoring / month        | 3    | 30           |
+| Custom domains               | 0    | 1            |
+| Remove platform branding     | no   | yes          |
 
 Price authority is the worker (`PRO_ANNUAL_PRICE_PAISE`, default ₹1,999/yr);
 the client never sets amounts.

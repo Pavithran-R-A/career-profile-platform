@@ -90,13 +90,13 @@ function matchRepository(
     projectUrls.some((u) => u !== null && u === normalizeUrl(repo.url))
   );
   if (byUrl) {
-    return evidence.find((item) => normalizeUrl(item.repository_url) === normalizeUrl(byUrl.url)) ?? null;
+    return (
+      evidence.find((item) => normalizeUrl(item.repository_url) === normalizeUrl(byUrl.url)) ?? null
+    );
   }
 
   const nameKey = project.name.trim().toLowerCase();
-  const byName = repos.find(
-    (repo) => repoName(repo.fullName)?.toLowerCase() === nameKey
-  );
+  const byName = repos.find((repo) => repoName(repo.fullName)?.toLowerCase() === nameKey);
   if (byName) {
     return (
       evidence.find((item) => normalizeUrl(item.repository_url) === normalizeUrl(byName.url)) ??
@@ -146,7 +146,7 @@ export function evidenceForProject(
 
   const projectLinkUrl = normalizeUrl(project.project_url)
     ? project.project_url
-    : match?.repository_url ?? null;
+    : (match?.repository_url ?? null);
   if (projectLinkUrl && !refs.repository) {
     refs.projectLink = {
       source: EVIDENCE_SOURCE_LABELS.projectLink,

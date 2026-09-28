@@ -52,15 +52,13 @@ async function loadPendingReview(profileId: string): Promise<StuckReview | null>
     .limit(1)
     .maybeSingle();
 
-  const row = data as
-    | {
-        id: string;
-        original_filename: string;
-        status: string;
-        structured_draft: ResumeExtraction | null;
-        updated_at: string;
-      }
-    | null;
+  const row = data as {
+    id: string;
+    original_filename: string;
+    status: string;
+    structured_draft: ResumeExtraction | null;
+    updated_at: string;
+  } | null;
 
   if (!row) return null;
   if (row.status !== 'structured' && row.status !== 'error') return null;
@@ -141,7 +139,13 @@ export default function ResumeImport() {
           import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
           supabase
         );
-        await service.updateResumeStatus(resumeId, status, extra?.structuredDraft, extra?.warnings, extra?.errorMessage);
+        await service.updateResumeStatus(
+          resumeId,
+          status,
+          extra?.structuredDraft,
+          extra?.warnings,
+          extra?.errorMessage
+        );
       } catch {
         // Status bookkeeping must never fail the user's flow.
       }
@@ -295,9 +299,12 @@ export default function ResumeImport() {
     void (async () => {
       setState('extracting');
       try {
-        const extraction = (await extractAndStructure(currentResume.id)) as unknown as ResumeExtraction;
+        const extraction = (await extractAndStructure(
+          currentResume.id
+        )) as unknown as ResumeExtraction;
         const validated = resumeExtractionSchema.safeParse(extraction);
-        if (!validated.success) throw new Error('Extraction result was not in the expected format.');
+        if (!validated.success)
+          throw new Error('Extraction result was not in the expected format.');
         setDraft(validated.data);
         void updateResumeStatusSafely(currentResume.id, 'structured', {
           structuredDraft: validated.data,
@@ -311,7 +318,9 @@ export default function ResumeImport() {
             setState('empty');
             return;
           }
-          setError(err.userMessage || 'We could not structure your resume right now. Please try again.');
+          setError(
+            err.userMessage || 'We could not structure your resume right now. Please try again.'
+          );
           setState('error');
           return;
         }
@@ -416,13 +425,17 @@ export default function ResumeImport() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6" role="alert">
+        <div
+          className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6"
+          role="alert">
           {error}
         </div>
       )}
 
       {extractionBlocked && state === 'empty' && (
-        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg mb-6" role="status">
+        <div
+          className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg mb-6"
+          role="status">
           <p className="font-medium">Resume saved.</p>
           <p className="text-sm mt-1">
             Automatic extraction isn't available on this environment. Your file is safe on your
@@ -431,24 +444,21 @@ export default function ResumeImport() {
           <div className="flex flex-wrap gap-3 mt-3">
             <Link
               to="/dashboard/profile"
-              className="bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 text-sm"
-            >
+              className="bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 text-sm">
               Add details manually
             </Link>
             {currentResume && (
               <button
                 type="button"
                 onClick={retryExtraction}
-                className="border border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50 text-sm"
-              >
+                className="border border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50 text-sm">
                 Retry extraction
               </button>
             )}
             <button
               type="button"
               onClick={() => setExtractionBlocked(false)}
-              className="border border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50 text-sm"
-            >
+              className="border border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-50 text-sm">
               Dismiss
             </button>
           </div>
@@ -471,8 +481,7 @@ export default function ResumeImport() {
                   <button
                     type="button"
                     onClick={() => resumeSavedReview(pendingReview)}
-                    className="btn btn-primary !min-h-[44px] !py-2.5"
-                  >
+                    className="btn btn-primary !min-h-[44px] !py-2.5">
                     Review extracted data
                   </button>
                 )}
@@ -480,16 +489,14 @@ export default function ResumeImport() {
                   <button
                     type="button"
                     onClick={retryExtraction}
-                    className="btn btn-secondary !min-h-[44px] !py-2.5"
-                  >
+                    className="btn btn-secondary !min-h-[44px] !py-2.5">
                     Retry
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setPendingReview(null)}
-                  className="btn btn-secondary !min-h-[44px] !py-2.5"
-                >
+                  className="btn btn-secondary !min-h-[44px] !py-2.5">
                   Dismiss
                 </button>
               </div>
@@ -514,8 +521,7 @@ export default function ResumeImport() {
               fontWeight: 600,
               letterSpacing: '-0.02em',
               lineHeight: 1.15,
-            }}
-          >
+            }}>
             Turn your existing resume into structured data
           </h2>
           <p className="text-sm text-[var(--muted-foreground)] mt-3 max-w-md mx-auto leading-relaxed">
@@ -533,12 +539,13 @@ export default function ResumeImport() {
                 <div className="flex-1 rounded-xl border border-[var(--border)] p-3.5 bg-[var(--surface-warm)] min-w-0">
                   <span
                     className="w-5 h-5 rounded-full text-white text-[10px] font-bold flex items-center justify-center"
-                    style={{ background: 'var(--ink)' }}
-                  >
+                    style={{ background: 'var(--ink)' }}>
                     {n}
                   </span>
                   <p className="text-sm font-semibold text-[var(--ink)] mt-2">{title}</p>
-                  <p className="text-xs text-[var(--muted-foreground)] mt-0.5 leading-snug">{body}</p>
+                  <p className="text-xs text-[var(--muted-foreground)] mt-0.5 leading-snug">
+                    {body}
+                  </p>
                 </div>
                 {i < arr.length - 1 && (
                   <svg
@@ -547,8 +554,7 @@ export default function ResumeImport() {
                     height="10"
                     viewBox="0 0 18 10"
                     fill="none"
-                    aria-hidden="true"
-                  >
+                    aria-hidden="true">
                     <path
                       d="M0 5h13m0 0-4-4m4 4-4 4"
                       stroke="currentColor"
@@ -570,21 +576,20 @@ export default function ResumeImport() {
               Preparing upload…
             </p>
           ) : (
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf"
-            onChange={(e) => void handleFileSelect(e)}
-            className="hidden"
-            aria-label="Resume PDF file"
-          />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              onChange={(e) => void handleFileSelect(e)}
+              className="hidden"
+              aria-label="Resume PDF file"
+            />
           )}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="btn btn-primary mt-5 !min-h-[48px] !px-8"
-            disabled={!profileLoaded}
-          >
+            disabled={!profileLoaded}>
             Select PDF
           </button>
         </div>
@@ -649,7 +654,9 @@ export default function ResumeImport() {
                       className="mt-1"
                     />
                     <div className="min-w-0 flex-1">
-                      <h3 id={`review-${section.key}`} className="font-medium flex flex-wrap items-center gap-2">
+                      <h3
+                        id={`review-${section.key}`}
+                        className="font-medium flex flex-wrap items-center gap-2">
                         {section.title}
                         {section.hasProposal && (
                           <span className="text-xs font-normal text-gray-500">
@@ -696,8 +703,7 @@ export default function ResumeImport() {
                           {section.conflictNotes.map((note, i) => (
                             <li
                               key={i}
-                              className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5"
-                            >
+                              className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
                               {note}
                             </li>
                           ))}
@@ -725,15 +731,13 @@ export default function ResumeImport() {
               type="button"
               onClick={() => void handleApply(selectedSections)}
               disabled={!selectedHasProposal}
-              className="btn btn-primary !min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+              className="btn btn-primary !min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed">
               Apply selected items ({selectedSections.size})
             </button>
             <button
               type="button"
               onClick={applyAllSafe}
-              className="btn btn-secondary !min-h-[44px]"
-            >
+              className="btn btn-secondary !min-h-[44px]">
               Apply all safe items
             </button>
             <button type="button" onClick={reset} className="btn btn-secondary !min-h-[44px]">
@@ -753,8 +757,17 @@ export default function ResumeImport() {
       {state === 'complete' && (
         <div className="card p-8 sm:p-10 text-center">
           <div className="mx-auto w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-            <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            <svg
+              className="w-6 h-6 text-green-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
             </svg>
           </div>
           <h2 className="text-xl font-semibold text-[var(--ink)]">Profile updated</h2>
@@ -802,8 +815,7 @@ export default function ResumeImport() {
                 reset();
                 if (currentResume) void retryExtraction();
               }}
-              className="btn btn-primary !min-h-[44px]"
-            >
+              className="btn btn-primary !min-h-[44px]">
               Try again
             </button>
             <Link to="/dashboard/profile" className="btn btn-secondary !min-h-[44px]">

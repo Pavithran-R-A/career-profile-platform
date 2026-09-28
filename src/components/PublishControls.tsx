@@ -8,6 +8,10 @@ interface PublishControlsProps {
   variant?: 'light' | 'dark';
 }
 
+/**
+ * The single publish/unpublish surface for a portfolio. The Dashboard renders
+ * it exactly once; no other component may offer publish actions.
+ */
 export default function PublishControls({
   profileId,
   isPublished,
@@ -50,13 +54,13 @@ export default function PublishControls({
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-[var(--ink)]'}`}>
-            {isPublished ? 'Your profile is public' : 'Keep it private for now'}
+            {isPublished ? 'Your portfolio is public' : 'Ready to share?'}
           </p>
           <p
             className={`text-xs mt-0.5 ${isDark ? 'text-white/60' : 'text-[var(--faint-foreground)]'}`}>
             {isPublished
-              ? 'Anyone with the link can view your portfolio.'
-              : 'Publish when you are ready to share your link.'}
+              ? 'Anyone with your link can view it. Unpublish to make it private again.'
+              : 'Publishing makes your link viewable by anyone. You can unpublish anytime.'}
           </p>
         </div>
 
@@ -81,7 +85,7 @@ export default function PublishControls({
           ) : isPublished ? (
             'Unpublish'
           ) : (
-            'Publish'
+            'Publish portfolio'
           )}
         </button>
       </div>

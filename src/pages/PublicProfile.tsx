@@ -7,6 +7,7 @@ import { profileMeta } from '../lib/seo/meta';
 import { usePageMeta } from '../lib/seo/usePageMeta';
 import { buildProfileJsonLd } from '../lib/seo/jsonld';
 import { track, oncePerSession } from '../lib/analytics/events';
+import { sanitizeUrl } from '../lib/validators/url';
 import ShareControls from '../components/ShareControls';
 
 const JSONLD_ID = 'profile-jsonld';
@@ -132,6 +133,14 @@ export default function PublicProfile() {
   const profile = portfolio.profile;
   const shareUrl = `${window.location.origin}/u/${encodeURIComponent(profile.username)}`;
 
+  // Recruiter conversion: owner-configured public links only. Auth email is
+  // never exposed; a public contact email requires an explicit profile link.
+  const CONTACT_LABEL_RE = /email|mail|contact/i;
+  const contactLink = profile.links.find(
+    (l) => CONTACT_LABEL_RE.test(l.label) || /mailto:/i.test(l.url)
+  );
+  const actionLinks = profile.links.filter((l) => l !== contactLink).slice(0, 4);
+
   return (
     <div>
       <TemplateComponent
@@ -144,17 +153,52 @@ export default function PublicProfile() {
         }}
       />
       <footer className="border-t border-[var(--border)] py-8 px-4">
-        <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <p className="text-xs text-[var(--faint-foreground)]">
-            Career profile on{' '}
-            <Link to="/" className="underline underline-offset-2">
-              Career Profile
-            </Link>
-          </p>
-          <ShareControls
-            url={shareUrl}
-            title={`${profile.display_name || profile.username} — career profile`}
-          />
+        <div className="max-w-3xl mx-auto">
+          <div
+            className="rounded-xl border border-[var(--border)] bg-[var(--surface-warm)] p-5 sm:p-6 mb-8"
+            aria-label="Contact and links">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--faint-foreground)]">
+              Get in touch
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2.5">
+              {contactLink && (
+                <a
+                  href={sanitizeUrl(contactLink.url) ?? '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary !min-h-[44px] !py-2.5">
+                  {CONTACT_LABEL_RE.test(contactLink.label) ? contactLink.label : 'Email'}
+                </a>
+              )}
+              {actionLinks.map((link) => (
+                <a
+                  key={link.id}
+                  href={sanitizeUrl(link.url) ?? '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary !min-h-[44px] !py-2.5">
+                  {link.label}
+                </a>
+              ))}
+              {profile.links.length === 0 && (
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  This candidate hasn&apos;t added public contact links yet.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="text-xs text-[var(--faint-foreground)]">
+              Career profile on{' '}
+              <Link to="/" className="underline underline-offset-2">
+                Career Profile
+              </Link>
+            </p>
+            <ShareControls
+              url={shareUrl}
+              title={`${profile.display_name || profile.username} — career profile`}
+            />
+          </div>
         </div>
       </footer>
     </div>

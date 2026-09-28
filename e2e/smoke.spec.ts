@@ -6,15 +6,24 @@ test.describe('smoke: pages load with correct head metadata', () => {
     expect(response?.status()).toBe(200);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(await page.title()).toMatch(/Career Profile/);
-    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', /recruiters/);
-    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', /og-cover\.png/);
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+      'content',
+      /recruiters/
+    );
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+      'content',
+      /og-cover\.png/
+    );
   });
 
   test('pricing page has a clean canonical', async ({ page }) => {
     await page.goto('/pricing');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     const origin = new URL(page.url()).origin;
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${origin}/pricing`);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      'href',
+      `${origin}/pricing`
+    );
   });
 
   test('unknown route renders the 404 page', async ({ page }) => {
