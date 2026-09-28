@@ -28,6 +28,7 @@ const DashboardPreview = lazy(() => import('./pages/DashboardPreview'));
 const PublicProfile = lazy(() => import('./pages/PublicProfile'));
 const GitHubDashboard = lazy(() => import('./pages/GitHubDashboard'));
 const ATSResumeBuilder = lazy(() => import('./pages/ATSResumeBuilder'));
+const AccountDelete = lazy(() => import('./pages/AccountDelete'));
 
 function RouteFallback() {
   return (
@@ -67,6 +68,7 @@ export function AppRoutes() {
         <Route path="/dashboard/preview" element={<DashboardPreview />} />
         <Route path="/dashboard/github" element={<GitHubDashboard />} />
         <Route path="/dashboard/billing" element={<Billing />} />
+        <Route path="/dashboard/account/delete" element={<AccountDelete />} />
         <Route path="/dashboard/domains" element={<Domains />} />
         <Route path="/dashboard/ats" element={<Navigate to="/dashboard/resume/ats" replace />} />
         <Route path="/pricing" element={<Pricing />} />

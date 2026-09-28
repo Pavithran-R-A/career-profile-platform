@@ -101,6 +101,12 @@ function AccountMenu({ onSignOut, initial }: { onSignOut: () => void; initial: s
             className="block px-4 py-2.5 text-sm text-[var(--foreground)] hover:bg-[var(--surface-muted)]">
             Pricing
           </Link>
+          <Link
+            to="/dashboard/account/delete"
+            role="menuitem"
+            className="block px-4 py-2.5 text-sm text-[var(--muted-foreground)] hover:bg-[var(--surface-muted)]">
+            Delete account
+          </Link>
           <button
             type="button"
             role="menuitem"
@@ -234,6 +240,12 @@ export default function Layout() {
                   onClick={() => setMenuOpen(false)}
                   className="block px-3 py-3 rounded-md text-base text-[var(--foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
                   Appearance
+                </Link>
+                <Link
+                  to="/dashboard/account/delete"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-3 py-3 rounded-md text-base text-[var(--muted-foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
+                  Delete account
                 </Link>
                 <button
                   onClick={handleSignOut}

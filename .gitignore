@@ -37,3 +37,5 @@ e2e/**-snapshots/
 
 # Misc
 *.local
+# Supabase CLI generated temp state (project ref, CLI version)
+supabase/.temp/
