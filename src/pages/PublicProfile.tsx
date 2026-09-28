@@ -9,6 +9,7 @@ import { buildProfileJsonLd } from '../lib/seo/jsonld';
 import { track, oncePerSession } from '../lib/analytics/events';
 import { sanitizeUrl } from '../lib/validators/url';
 import ShareControls from '../components/ShareControls';
+import RecruiterAsk from '../components/RecruiterAsk';
 
 const JSONLD_ID = 'profile-jsonld';
 
@@ -201,6 +202,9 @@ export default function PublicProfile() {
           </div>
         </div>
       </footer>
+      {/* Recruiter Q&A sits between the portfolio and the global footer;
+          renders only when the deployment enables the assistant. */}
+      <RecruiterAsk username={profile.username} />
     </div>
   );
 }
