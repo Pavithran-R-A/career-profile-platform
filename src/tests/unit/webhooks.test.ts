@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { createHmac } from 'node:crypto';
 import {
   processRazorpayWebhook,
   extractEvent,
@@ -70,9 +71,6 @@ function orderPaidBody(orderId = 'order_QxpGkAPCbWToEx', paymentId = 'pay_QxpGnR
 }
 
 function hmacHex(raw: string, secret: string): string {
-  // Node crypto is available in the test runtime.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { createHmac } = require('node:crypto') as typeof import('node:crypto');
   return createHmac('sha256', secret).update(raw).digest('hex');
 }
 
