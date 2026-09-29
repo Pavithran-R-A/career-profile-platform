@@ -39,19 +39,23 @@ export default function ShareControls({
     ? 'text-white/80 border-white/25 hover:bg-white/10'
     : 'text-[var(--muted-foreground)] border-[var(--border-strong)] hover:bg-[var(--surface-muted)]';
 
+  // 44px minimum interactive height (QA-017); padding carries the size so
+  // the visible type can stay modest.
+  const touch = 'min-h-[44px] flex items-center justify-center';
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         onClick={() => void copyLink()}
-        className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${base}`}>
+        className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${touch} ${base}`}>
         {copied ? 'Copied ✓' : 'Copy link'}
       </button>
       {canNativeShare && (
         <button
           type="button"
           onClick={() => void nativeShare()}
-          className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${base}`}>
+          className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${touch} ${base}`}>
           Share
         </button>
       )}
@@ -59,7 +63,7 @@ export default function ShareControls({
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${base}`}>
+        className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${touch} ${base}`}>
         Open profile
       </a>
       <span role="status" aria-live="polite" className="sr-only">

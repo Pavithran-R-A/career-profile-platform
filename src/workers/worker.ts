@@ -65,6 +65,10 @@ export default {
         response = handleRobots(request);
       } else if (isHtmlPagePath(url.pathname)) {
         response = await handleHtmlPage(request, env.ASSETS, envRecord);
+      } else if ((request.headers.get('accept') ?? '').includes('text/html')) {
+        // Unknown SPA routes: serve the shell through the same meta pipeline
+        // so they get a truthful not-found title + noindex (SEO defect fix).
+        response = await handleHtmlPage(request, env.ASSETS, envRecord);
       } else {
         response = await env.ASSETS.fetch(request);
       }
