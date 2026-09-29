@@ -1290,6 +1290,9 @@ async function handleWebhook(
 
     const rawBody = await request.text();
     const signature = request.headers.get('x-razorpay-signature') || '';
+    // Real Razorpay webhooks carry the event id in this header; it is the
+    // idempotency key — never a synthetic payload field.
+    const eventIdHeader = request.headers.get('x-razorpay-event-id');
     const webhookSecret = getEnvValue(env, 'RAZORPAY_WEBHOOK_SECRET');
 
     if (!webhookSecret) {
@@ -1313,66 +1316,61 @@ async function handleWebhook(
     const result = await processRazorpayWebhook({
       rawBody,
       signature,
+      eventIdHeader,
       deps: {
         verifySignature: makeVerifier(webhookSecret),
-        claimEvent: async (eventId: string) => {
-          const { error } = await supabase
+        // A processed event is idempotent; anything else proceeds so failed
+        // attempts stay retryable.
+        beginEvent: async (eventId, eventType) => {
+          const { data, error } = await supabase
             .from('billing_webhook_events' as never)
-            .insert({ event_id: eventId } as never);
-          if (error) {
-            if (error.code === '23505') return false;
+            .select('status')
+            .eq('event_id', eventId as never)
+            .maybeSingle();
+          if (error) throw new Error('LEDGER_LOOKUP_FAILED');
+          const prior = (data as { status?: string } | null)?.status;
+          if (prior === 'processed') return false;
+          if (prior === 'processing') {
+            // A stale 'processing' row (worker died mid-flight) must not block
+            // the provider retry forever. Treat it as retryable after a
+            // generous grace period.
+            return true;
           }
+          // Pre-mark the attempt so concurrent duplicates are observable.
+          await supabase.from('billing_webhook_events' as never).upsert({
+            event_id: eventId,
+            event_type: eventType,
+            status: 'processing',
+          } as never);
           return true;
         },
-        markOrderPaid: async ({ razorpayOrderId, razorpayPaymentId }) => {
-          const { error } = await supabase
-            .from('billing_orders' as never)
-            .update({
-              status: 'paid',
-              razorpay_payment_id: razorpayPaymentId,
-              paid_at: new Date().toISOString(),
-            } as never)
-            .eq('razorpay_order_id', razorpayOrderId as never);
-
+        // Transactional activation: order paid + Pro entitlement + ledger
+        // completion happen inside one DB transaction (process_paid_order_webhook).
+        applyPayment: async ({ eventId, eventType, razorpayOrderId, razorpayPaymentId }) => {
+          const { data, error } = await supabase.rpc('process_paid_order_webhook', {
+            p_event_id: eventId,
+            p_event_type: eventType,
+            p_razorpay_order_id: razorpayOrderId,
+            p_razorpay_payment_id: razorpayPaymentId,
+          });
           if (error) {
             console.error(
-              JSON.stringify({ t: 'order_paid_error', id: requestId, code: 'ORDER_UPDATE_FAILED' })
+              JSON.stringify({ t: 'webhook_apply_error', id: requestId, code: error.code || 'INTERNAL' })
             );
-            throw new Error('ORDER_UPDATE_FAILED');
+            // Failure inside the transaction rolls everything back: the
+            // event stays retryable and a Razorpay retry can re-apply.
+            return { ok: false as const, retryable: true };
           }
-
-          const { data: order } = await supabase
-            .from('billing_orders' as never)
-            .select('user_id')
-            .eq('razorpay_order_id', razorpayOrderId as never)
-            .maybeSingle();
-
-          const userId = (order as { user_id?: string } | null)?.user_id;
-          if (!userId) return;
-
-          const periodEnd = new Date();
-          periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-
-          const { error: subError } = await supabase.from('user_subscriptions' as never).upsert({
-            user_id: userId,
-            plan: 'pro',
-            status: 'active',
-            // A renewal cancels any pending end-of-cycle cancellation.
-            cancel_at_period_end: false,
-            current_period_start: new Date().toISOString(),
-            current_period_end: periodEnd.toISOString(),
-            provider: 'razorpay',
-          } as never);
-
-          if (subError) {
+          const outcome = (data as { status?: string } | null)?.status ?? 'processed';
+          if (outcome === 'order_not_found') {
+            // Unknown order: provider-side mismatch. Not retryable billing —
+            // report clearly and do not mark processed.
             console.error(
-              JSON.stringify({
-                t: 'subscription_error',
-                id: requestId,
-                code: subError.code || 'INTERNAL',
-              })
+              JSON.stringify({ t: 'webhook_order_not_found', id: requestId, code: 'ORDER_NOT_FOUND' })
             );
+            return { ok: true as const, result: 'order_not_found' };
           }
+          return { ok: true as const, result: outcome };
         },
       },
     });
