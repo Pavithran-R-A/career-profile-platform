@@ -5,6 +5,13 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENVIRONMENT = "production"
+# Public, non-secret runtime values. The publishable (anon) key is designed
+# to be public — it ships inside the client bundle — and RLS enforces all
+# authorization server-side. Supplying them as Worker vars lets server routes
+# (recruiter ask profile lookup, SSR meta) reach the anon-readable view.
+VITE_SUPABASE_URL = "https://yxrbytzhiilnzlamqpqz.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_MP5rlIreXdLslDRO52Vr2g_5cVnG076"
+SUPABASE_URL = "https://yxrbytzhiilnzlamqpqz.supabase.co"
 
 [previews.vars]
 ENVIRONMENT = "preview"
