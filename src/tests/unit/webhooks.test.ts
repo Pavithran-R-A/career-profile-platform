@@ -169,7 +169,7 @@ describe('razorpay webhook processing pipeline', () => {
     const res = await processRazorpayWebhook({
       rawBody: raw,
       signature,
-      eventIdHeader: 'evt_9Z1Ycfe9 Example' === '' ? null : 'evt_9Z1Ycfe9TzJQfm',
+      eventIdHeader: 'evt_9Z1Ycfe9TzJQfm',
       deps,
     });
 
@@ -201,7 +201,12 @@ describe('razorpay webhook processing pipeline', () => {
     const { signature } = signedRequestParts(raw);
     const { deps, log } = makeDeps();
 
-    const res = await processRazorpayWebhook({ rawBody: raw, signature, eventIdHeader: null, deps });
+    const res = await processRazorpayWebhook({
+      rawBody: raw,
+      signature,
+      eventIdHeader: null,
+      deps,
+    });
 
     expect(res.status).toBe(400);
     expect(log.applied).toHaveLength(0);
@@ -387,13 +392,21 @@ describe('idempotency and retry semantics', () => {
 describe('signature primitives', () => {
   it('verifyWebhookSignature accepts the correct HMAC over the raw body', () => {
     const raw = paymentCapturedBody();
-    expect(verifyWebhookSignature({ rawBody: raw, signature: hmacHex(raw, WEBHOOK_SECRET), webhookSecret: WEBHOOK_SECRET })).toBe(true);
+    expect(
+      verifyWebhookSignature({
+        rawBody: raw,
+        signature: hmacHex(raw, WEBHOOK_SECRET),
+        webhookSecret: WEBHOOK_SECRET,
+      })
+    ).toBe(true);
   });
 
   it('tampered body fails verification', () => {
     const raw = paymentCapturedBody();
     const sig = hmacHex(raw, WEBHOOK_SECRET);
-    expect(verifyWebhookSignature({ rawBody: `${raw} `, signature: sig, webhookSecret: WEBHOOK_SECRET })).toBe(false);
+    expect(
+      verifyWebhookSignature({ rawBody: `${raw} `, signature: sig, webhookSecret: WEBHOOK_SECRET })
+    ).toBe(false);
   });
 
   it('wrong secret fails verification', () => {
