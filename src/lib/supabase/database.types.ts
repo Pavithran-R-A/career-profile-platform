@@ -82,19 +82,34 @@ export type Database = {
       };
       billing_webhook_events: {
         Row: {
+          attempts: number;
           event_id: string;
           event_type: string | null;
+          last_error: string | null;
+          processed_at: string | null;
           received_at: string;
+          status: string;
+          updated_at: string;
         };
         Insert: {
+          attempts?: number;
           event_id: string;
           event_type?: string | null;
+          last_error?: string | null;
+          processed_at?: string | null;
           received_at?: string;
+          status?: string;
+          updated_at?: string;
         };
         Update: {
+          attempts?: number;
           event_id?: string;
           event_type?: string | null;
+          last_error?: string | null;
+          processed_at?: string | null;
           received_at?: string;
+          status?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -1133,6 +1148,15 @@ export type Database = {
     };
     Functions: {
       apply_resume_import: { Args: { payload: Json }; Returns: Json };
+      process_paid_order_webhook: {
+        Args: {
+          p_event_id: string;
+          p_event_type: string;
+          p_razorpay_order_id: string;
+          p_razorpay_payment_id: string;
+        };
+        Returns: Json;
+      };
       safe_int: { Args: { fallback: number; value: string }; Returns: number };
     };
     Enums: {
