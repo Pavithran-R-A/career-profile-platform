@@ -49,13 +49,9 @@ function SectionLabel({ label, accent }: { label: string; accent: string }) {
         style={{ color: accent, fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
         {label}
       </h2>
+      {/* Decorative rule only — no numeric glyphs (QA-010: unexplained
+          "07"/"06" labels removed; counts must carry real meaning). */}
       <span aria-hidden="true" className="flex-1 h-px bg-white/10" />
-      <span
-        aria-hidden="true"
-        className="text-[10px] text-white/30"
-        style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
-        {String(label.length).padStart(2, '0')}
-      </span>
     </div>
   );
 }

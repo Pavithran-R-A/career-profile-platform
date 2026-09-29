@@ -20,15 +20,19 @@ test.describe('recruiter ask on public profiles (desktop + mobile)', () => {
     expect(body.maxQuestionChars).toBe(400);
   });
 
-  test('ask endpoint is public, JSON-only, and rate-limitable', async ({ request }) => {
+  test('ask endpoint is public, JSON-only, and returns exact 404 for unknown profiles', async ({
+    request,
+  }) => {
     const res = await request.post('/api/recruiter/ask', {
       data: { username: 'definitely-not-a-user-9x7q', question: 'What did they build?' },
     });
-    // Anonymous call reaches the API: 404 profile-miss, 503 unconfigured, or
-    // 429 IP-rate-limited — never an HTML page, never a 401.
-    expect([404, 429, 503]).toContain(res.status());
+    // Handler order (P1-I): validate → published-profile lookup → 404 BEFORE
+    // any AI-config 503. Only the anti-abuse IP limiter may preempt with 429;
+    // in a fresh test run it must not.
+    expect(res.status()).toBe(404);
     const body = await res.json();
     expect(typeof body.error).toBe('string');
+    expect(body.error).not.toMatch(/not configured/i);
   });
 
   test('recruiter panel is keyboard operable when enabled', async ({ page }) => {
