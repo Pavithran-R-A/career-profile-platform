@@ -244,7 +244,9 @@ export default function ProfileEditor() {
   const [addExpCurrent, setAddExpCurrent] = useState(false);
   const EXP_COLLAPSE = 5;
 
-  const profileService = new ProfileService();
+  const profileServiceRef = useRef<ProfileService | null>(null);
+  if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
+  const profileService = profileServiceRef.current;
 
   useEffect(() => {
     if (!previewOpen) return;
