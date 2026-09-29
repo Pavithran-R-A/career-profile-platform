@@ -28,7 +28,7 @@ export interface WebhookDeps {
     eventId: string;
     eventType: string;
     razorpayOrderId: string;
-    razorpayPaymentId: string | null;
+    razorpayPaymentId: string;
   }): Promise<{ ok: true; result: string } | { ok: false; retryable: boolean }>;
 }
 
@@ -80,9 +80,7 @@ export function extractEvent(payload: unknown): RazorpayEventEntities {
       : {};
 
   const paymentId =
-    typeof paymentEntity.id === 'string' && paymentEntity.id.length > 0
-      ? paymentEntity.id
-      : null;
+    typeof paymentEntity.id === 'string' && paymentEntity.id.length > 0 ? paymentEntity.id : null;
   const paymentOrderId =
     typeof paymentEntity.order_id === 'string' && paymentEntity.order_id.length > 0
       ? paymentEntity.order_id
@@ -136,8 +134,10 @@ export async function processRazorpayWebhook(input: {
     return { status: 200, body: { ok: true, skipped: true } };
   }
 
-  if (!parsed.orderId) {
-    return { status: 400, body: { ok: false, error: 'Missing order id' } };
+  if (!parsed.orderId || !parsed.paymentId) {
+    // Documented paid-event payloads always carry both entities; anything
+    // else is a structural mismatch, not a billing action.
+    return { status: 400, body: { ok: false, error: 'Missing payment or order id' } };
   }
 
   // 4. Durable claim + transactional activation. A false beginEvent means the
