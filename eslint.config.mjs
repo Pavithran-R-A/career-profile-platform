@@ -3,7 +3,19 @@ import globals from 'globals';
 import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/database.types.ts', 'scripts/**/*.mjs'] },
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/database.types.ts',
+      'scripts/**/*.mjs',
+      // Generated test output (gitignored but not auto-excluded by flat config)
+      'playwright-report/**',
+      'test-results/**',
+      'e2e/.artifacts/**',
+      'coverage/**',
+    ],
+  },
   ...tseslint.configs.recommendedTypeChecked,
   prettier,
   {

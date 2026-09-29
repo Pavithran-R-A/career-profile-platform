@@ -101,6 +101,7 @@ export type ApiErrorCode =
   | 'AI_INVALID_RESPONSE'
   | 'EXTRACTION_FAILED'
   | 'RATE_LIMITED'
+  | 'TOO_MANY_REQUESTS'
   | 'PROFILE_NOT_FOUND'
   | 'NOT_PRO'
   | 'PERIOD_END_MISSING'
@@ -191,6 +192,7 @@ function corsHeaders(origin: string | null, env: Env): Record<string, string> {
 interface JsonExtras {
   code?: ApiErrorCode;
   requestId?: string;
+  headers?: Record<string, string>;
 }
 
 function json(
@@ -213,6 +215,7 @@ function json(
     headers: {
       'Content-Type': 'application/json',
       ...corsHeaders(origin ?? null, env ?? ({} as Env)),
+      ...(extras?.headers ?? {}),
     },
   });
 }
@@ -1126,12 +1129,17 @@ async function handleRecruiterAsk(
     });
   }
 
+  // Anti-abuse IP limiter: pre-auth 429s carry their own error code —
+  // 'RATE_LIMITED' is reserved for the profile owner's plan quota (post-auth,
+  // owner-facing), so callers can tell the two apart. E2E relies on this:
+  // a fresh run must never see a limiter trip.
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
   const rate = env.RECRUITER_RATE_LIMITER?.limit?.(`ip:${ip}`);
   if (rate && !rate.allowed) {
     return json({ error: 'Too many questions. Please try again later.' }, 429, origin, env, {
-      code: 'RATE_LIMITED',
+      code: 'TOO_MANY_REQUESTS',
       requestId,
+      headers: { 'Retry-After': '60' },
     });
   }
 

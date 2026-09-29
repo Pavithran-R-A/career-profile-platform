@@ -64,6 +64,10 @@ export default function RecruiterAsk({ username }: { username: string }) {
         if (err.code === 'AI_NOT_CONFIGURED' || err.code === 'SERVER_NOT_CONFIGURED') {
           setError('The assistant is not available on this deployment right now.');
         } else if (err.code === 'RATE_LIMITED') {
+          setError(
+            'The daily question limit for this profile has been reached. Try again tomorrow.'
+          );
+        } else if (err.code === 'TOO_MANY_REQUESTS') {
           const wait = err.retryAfterSeconds
             ? ` Try again in about ${err.retryAfterSeconds}s.`
             : ' Try again in a minute.';

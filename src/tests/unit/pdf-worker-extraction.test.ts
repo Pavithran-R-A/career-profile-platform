@@ -79,7 +79,9 @@ function makePdf(pages: string[], opts: { compress?: boolean } = {}): ArrayBuffe
 }
 
 describe('shared PDF extraction boundary (worker path)', () => {
-  it('extracts text from a plain (uncompressed) PDF', async () => {
+  // pdf.js cold-start dominates this suite under parallel jsdom load; the
+  // 5s default timeout flakes. 30s is still fast in isolation (~1s).
+  it('extracts text from a plain (uncompressed) PDF', { timeout: 30_000 }, async () => {
     const { text, pageCount } = await extractTextFromPDF(
       makePdf(['QA Engineer Resume\nBuilt reliable systems at Example Corp.'])
     );
