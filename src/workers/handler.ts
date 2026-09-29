@@ -772,10 +772,10 @@ async function handleAccountDelete(
       last_error: null,
     } as never);
 
-    // 4. Storage: remove owned objects while the user still exists. Resolve
-    // the user's profile id server-side (never client-supplied); on a retry
-    // where the profile is already gone, the sentinel id matches nothing and
-    // the (empty) path list is skipped — already-absent is tolerated.
+    // 4. Storage: remove owned objects while the user still exists. Enumerate
+    // the user's own Storage prefix ({userId}/) with pagination so orphaned
+    // objects (metadata row already gone) are also deleted. Cross-user
+    // isolation is structural: the prefix is derived from auth.userId only.
     const { data: profileRow } = await supabase
       .from('profiles' as never)
       .select('id')
@@ -783,15 +783,37 @@ async function handleAccountDelete(
       .maybeSingle();
     const profileId = (profileRow as { id?: string } | null)?.id ?? null;
 
-    let paths: string[] = [];
-    if (profileId) {
-      const { data: storageRows } = await supabase
-        .from('resume_sources' as never)
-        .select('storage_path')
-        .eq('profile_id', profileId as never);
-      paths = ((storageRows ?? []) as Array<{ storage_path?: unknown }>)
-        .map((r) => (typeof r.storage_path === 'string' ? r.storage_path : ''))
-        .filter((p) => p.length > 0 && p.startsWith(`${userId}/`));
+    const prefix = `${userId}/`;
+    const paths: string[] = [];
+    const PAGE_LIMIT = 100;
+    let offset = 0;
+    for (;;) {
+      const { data: listed, error: listError } = await supabase.storage
+        .from('resumes')
+        .list(userId, { limit: PAGE_LIMIT, offset, sortBy: { column: 'name', order: 'asc' } });
+      if (listError) {
+        console.error(JSON.stringify({ t: 'delete_storage_list_error', id: requestId, offset }));
+        await supabase
+          .from('account_deletion_requests' as never)
+          .update({
+            stage: 'requested',
+            updated_at: new Date().toISOString(),
+            last_error: 'storage_list_failed',
+          } as never)
+          .eq('user_id', userId as never);
+        return json({ error: DELETION_PARTIAL_MESSAGE }, 502, origin, env, {
+          code: 'DELETE_PARTIAL',
+          requestId,
+        });
+      }
+      const objects = (listed ?? []) as Array<{ name?: unknown }>;
+      for (const obj of objects) {
+        if (typeof obj.name === 'string' && obj.name.length > 0 && !obj.name.includes('/')) {
+          paths.push(`${prefix}${obj.name}`);
+        }
+      }
+      if (objects.length < PAGE_LIMIT) break;
+      offset += PAGE_LIMIT;
     }
 
     if (paths.length > 0) {
