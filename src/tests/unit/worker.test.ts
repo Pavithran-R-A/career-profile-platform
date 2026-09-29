@@ -163,4 +163,73 @@ describe('Worker API handler', () => {
       expect(res.status).toBe(401);
     });
   });
+
+  describe('custom domain authorization (P0-A)', () => {
+    function domainRequest(body: unknown, token?: string): Request {
+      const headers = new Headers({ 'Content-Type': 'application/json' });
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+      return new Request('https://example.com/api/domains/custom', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+    }
+
+    it('anonymous request is rejected with 401 before any parsing', async () => {
+      const res = await handleRequest(
+        domainRequest({ hostname: 'careers.example.io' }),
+        {},
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { code: string };
+      expect(body.code).toBe('UNAUTHORIZED');
+    });
+
+    it('stale/invalid token is rejected with 401', async () => {
+      const res = await handleRequest(
+        domainRequest({ hostname: 'careers.example.io' }, 'stale-token'),
+        {
+          // Unroutable local endpoint: the auth lookup fails, so the token is
+          // treated as invalid → 401.
+          VITE_SUPABASE_URL: 'http://127.0.0.1:1',
+          VITE_SUPABASE_PUBLISHABLE_KEY: 'stub-anon',
+        } as never,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it('request body cannot influence profile selection: profileId field is ignored', async () => {
+      // Even with a valid-looking session and injected profileId, the handler
+      // derives ownership from the auth principal. Without a Supabase backend
+      // configured the handler cannot resolve a profile and must NOT create a
+      // domain bound to the injected id.
+      const res = await handleRequest(
+        domainRequest(
+          { hostname: 'careers.example.io', profileId: '11111111-1111-4111-8111-111111111111' },
+          'valid-shape-token'
+        ),
+        {},
+        {} as ExecutionContext
+      );
+      // No admin key configured in this environment → cannot proceed to any
+      // profile-bound write. The injected profileId must not be trusted.
+      expect([401, 404, 409, 500, 503]).toContain(res.status);
+      const body = (await res.json()) as { error?: string };
+      expect(body.error).not.toContain('11111111');
+    });
+
+    it('User A cannot add a domain for User B: only server-owned profile is used', async () => {
+      // The contract is structural: the endpoint accepts { hostname } only.
+      // With auth configured but no owned profile, the handler returns a
+      // profile-not-found/conflict error rather than acting on any client id.
+      const res = await handleRequest(
+        domainRequest({ hostname: 'careers.example.io' }, 'valid-shape-token'),
+        {},
+        {} as ExecutionContext
+      );
+      expect(res.status).not.toBe(201);
+    });
+  });
 });

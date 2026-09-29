@@ -9,7 +9,7 @@ import {
 import {
   checkDomainQuota,
   validateAddDomain,
-  buildVerificationToken,
+  generateVerificationToken,
 } from '../../lib/domains/custom';
 import type { PlanEntitlements } from '../../lib/billing/plans';
 
@@ -121,10 +121,11 @@ describe('custom domain quota', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('buildVerificationToken is deterministic', () => {
-    const a = buildVerificationToken('careers.example.io', 'salt');
-    const b = buildVerificationToken('careers.example.io', 'salt');
-    expect(a).toBe(b);
-    expect(a).toMatch(/^cv-verify-/);
+  it('generateVerificationToken is random per call and URL-safe', () => {
+    const a = generateVerificationToken();
+    const b = generateVerificationToken();
+    expect(a).not.toBe(b);
+    expect(a).toMatch(/^cv-verify-[A-Za-z0-9_-]{43}$/);
+    expect(b).toMatch(/^cv-verify-[A-Za-z0-9_-]{43}$/);
   });
 });

@@ -9,7 +9,7 @@ import { checkUsage, windowKeyFor } from '../lib/billing/usage';
 import { createRazorpayOrder, isRazorpayConfigured } from '../lib/billing/razorpay';
 import { applyCancelAction, type CancelAction } from '../lib/billing/cancellation';
 import { processRazorpayWebhook, makeVerifier } from '../lib/billing/webhooks';
-import { validateAddDomain, buildVerificationToken } from '../lib/domains/custom';
+import { validateAddDomain, generateVerificationToken } from '../lib/domains/custom';
 import { quoteDotCvDomain, isDotCvEnabled, isDotCvPurchaseEnabled } from '../lib/domains/dotcv';
 import { parseDotCvInput } from '../lib/domains/validators';
 import { createCustomHostname, isCloudflareSaaSConfigured } from '../lib/domains/cloudflare';
@@ -231,19 +231,25 @@ async function verifyAuth(
     return null;
   }
 
-  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      apikey: publishableKey,
-    },
-  });
+  // Fail closed: any auth-server error (non-2xx or network failure) denies
+  // the request rather than throwing a 500 with half-verified state.
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: publishableKey,
+      },
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return null;
+    }
+
+    const user = (await response.json()) as { id: string };
+    return { userId: user.id, token };
+  } catch {
     return null;
   }
-
-  const user = (await response.json()) as { id: string };
-  return { userId: user.id, token };
 }
 
 // ─── Storage authorization ──────────────────────────────────────
@@ -1408,16 +1414,17 @@ async function handleAddCustomDomain(
       );
     }
 
-    const body = (await request.json()) as { hostname?: string; profileId?: string };
-    if (!body.hostname || !body.profileId) {
-      return json({ error: 'hostname and profileId are required' }, 400, origin, env, {
+    // SECURITY: the browser supplies ONLY { hostname }. Ownership of the
+    // profile is derived server-side from the authenticated principal — the
+    // admin client below bypasses RLS, so a client-supplied profileId would
+    // be a cross-user authorization bypass (IDOR).
+    const body = (await request.json()) as { hostname?: string };
+    if (!body.hostname) {
+      return json({ error: 'hostname is required' }, 400, origin, env, {
         code: 'BAD_REQUEST',
         requestId,
       });
     }
-
-    const subscription = await getSubscription(env, auth.userId);
-    const entitlements = resolveEntitlements(subscription);
 
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const adminKey = getAdminKey(env);
@@ -1430,10 +1437,37 @@ async function handleAddCustomDomain(
 
     const supabase = createServerClient(supabaseUrl, adminKey);
 
+    // Resolve exactly one profile owned by the authenticated user.
+    const { data: profileRows } = await supabase
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const ownedProfileIds = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((id) => id.length > 0);
+
+    if (ownedProfileIds.length === 0) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+    if (ownedProfileIds.length > 1) {
+      // Ambiguous ownership must never guess; refuse safely.
+      return json({ error: 'Multiple profiles found; contact support' }, 409, origin, env, {
+        code: 'CONFLICT',
+        requestId,
+      });
+    }
+    const ownedProfileId = ownedProfileIds[0];
+
+    const subscription = await getSubscription(env, auth.userId);
+    const entitlements = resolveEntitlements(subscription);
+
     const { count: existingCount } = await supabase
       .from('custom_domains' as never)
       .select('id', { count: 'exact', head: true })
-      .eq('profile_id', body.profileId as never)
+      .eq('profile_id', ownedProfileId as never)
       .neq('status', 'removed' as never);
 
     const validation = validateAddDomain(
@@ -1449,15 +1483,12 @@ async function handleAddCustomDomain(
       });
     }
 
-    const verificationToken = buildVerificationToken(
-      validation.hostname,
-      getEnvValue(env, 'RATE_LIMIT_KEY_SECRET') || 'cv'
-    );
+    const verificationToken = generateVerificationToken();
 
     const { data: domain, error } = await supabase
       .from('custom_domains' as never)
       .insert({
-        profile_id: body.profileId,
+        profile_id: ownedProfileId,
         hostname: validation.hostname,
         status: 'pending',
         verification_token: verificationToken,
