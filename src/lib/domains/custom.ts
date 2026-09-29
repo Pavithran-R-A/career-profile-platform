@@ -61,11 +61,17 @@ export function validateAddDomain(
   return { ok: true, error: null, hostname: validation.hostname };
 }
 
-export function buildVerificationToken(hostname: string, salt: string): string {
-  let hash = 0;
-  const input = `${salt}:${hostname}`;
-  for (let i = 0; i < input.length; i++) {
-    hash = (hash * 31 + input.charCodeAt(i)) | 0;
-  }
-  return `cv-verify-${Math.abs(hash).toString(36)}`;
+/**
+ * Cryptographically random per-domain verification token, generated once at
+ * insert time and stored server-side. Never derived from a predictable
+ * secret (an HMAC over a fallback like "cv" would be guessable), so a
+ * token's presence in DNS genuinely proves control of the hostname.
+ */
+export function generateVerificationToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  const encoded = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `cv-verify-${encoded}`;
 }
