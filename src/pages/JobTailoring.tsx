@@ -109,7 +109,6 @@ export default function JobTailoring() {
             job_requirements: parsed.requirements,
             variant_data: {
               summary: matching.summary,
-              overallScore: matching.overallScore,
               gaps: matching.gaps.map((g) => g.text).slice(0, 20),
               createdAt: new Date().toISOString(),
             },

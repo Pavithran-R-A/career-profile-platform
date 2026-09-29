@@ -1,13 +1,13 @@
 import { createServerClient } from '../lib/supabase/server';
-import { readProAnnualPricePaise, buildPublicPlans } from '../lib/billing/plans';
+import { readProAnnualPricePaise, buildPublicPlans, getPlan } from '../lib/billing/plans';
 import {
   normalizeSubscriptionRow,
   resolveEntitlements,
+  resolvePlan,
   freeSubscription,
 } from '../lib/billing/entitlements';
 import { checkUsage, windowKeyFor } from '../lib/billing/usage';
 import { createRazorpayOrder, isRazorpayConfigured } from '../lib/billing/razorpay';
-import { applyCancelAction, type CancelAction } from '../lib/billing/cancellation';
 import { processRazorpayWebhook, makeVerifier } from '../lib/billing/webhooks';
 import { validateAddDomain, generateVerificationToken } from '../lib/domains/custom';
 import { quoteDotCvDomain, isDotCvEnabled, isDotCvPurchaseEnabled } from '../lib/domains/dotcv';
@@ -18,7 +18,7 @@ import {
   buildProfileBrief,
   buildRecruiterMessages,
   nonEmptySections,
-  sanitizeRecruiterAnswer,
+  parseCitations,
   validateRecruiterQuestion,
   type RecruiterProfileData,
 } from '../lib/ai/recruiter';
@@ -1074,12 +1074,73 @@ async function handleRecruiterAsk(
     });
   }
 
-  try {
-    const raw = await provider.complete(buildRecruiterMessages(brief, question.question), 400);
-    const answer = sanitizeRecruiterAnswer(raw);
-    return json({ answer, grounded: true, sections: nonEmptySections(profile) }, 200, origin, env, {
+  // Subscription quota (distinct from the anti-abuse rate limiter above):
+  // the PROFILE OWNER's plan decides the daily AI budget, consumed
+  // atomically in the DB so concurrent requests cannot exceed the limit.
+  const adminKey = getAdminKey(env);
+  if (!adminKey) {
+    return json({ error: 'Recruiter AI is not configured' }, 503, origin, env, {
+      code: 'SERVER_NOT_CONFIGURED',
       requestId,
     });
+  }
+  const adminClient = createServerClient(supabaseUrl, adminKey);
+  const { data: ownerRow } = await adminClient
+    .from('profiles' as never)
+    .select('user_id')
+    .eq('username', username as never)
+    .maybeSingle();
+  const ownerId = (ownerRow as { user_id?: string } | null)?.user_id;
+  if (!ownerId) {
+    return json({ error: 'No published profile found for that username' }, 404, origin, env, {
+      code: 'PROFILE_NOT_FOUND',
+      requestId,
+    });
+  }
+  const ownerPlan = resolvePlan(await getSubscription(env, ownerId));
+  const quotaLimit = getPlan(ownerPlan).recruiterAiPerDay;
+  const { data: quotaData, error: quotaError } = await adminClient.rpc(
+    'consume_recruiter_quota' as never,
+    { p_user_id: ownerId, p_limit: quotaLimit } as never
+  );
+  if (quotaError) {
+    console.error(JSON.stringify({ t: 'recruiter_quota_error', id: requestId }));
+    return json({ error: 'Recruiter AI request failed' }, 500, origin, env, {
+      code: 'INTERNAL',
+      requestId,
+    });
+  }
+  const consumed = quotaData as unknown as number | null;
+  if (consumed === null || consumed === undefined) {
+    // Profile owner's plan quota for today is exhausted — not the visitor's
+    // fault, and not an anti-abuse trip.
+    return json(
+      {
+        error:
+          'The daily question limit for this profile has been reached. Please try again tomorrow.',
+      },
+      429,
+      origin,
+      env,
+      { code: 'RATE_LIMITED', requestId }
+    );
+  }
+
+  try {
+    const raw = await provider.complete(buildRecruiterMessages(brief, question.question), 400);
+    // Citation semantics: only sections the model actually cited (validated
+    // against this profile's real sections) are returned; 'grounded' is true
+    // only when at least one valid citation exists. No fabricated citations.
+    const available = nonEmptySections(profile);
+    const { answer, citationIds } = parseCitations(raw, available);
+    const grounded = citationIds.length > 0;
+    return json(
+      { answer, grounded, citationIds, sections: grounded ? citationIds : [] },
+      200,
+      origin,
+      env,
+      { requestId }
+    );
   } catch (err) {
     if (err instanceof AIExtractionError) {
       return aiErrorToResponse(err, origin, env, requestId);
@@ -1386,133 +1447,25 @@ async function handleAccountDelete(
  * Provider state stays authoritative — a stale row (period already ended) is
  * a CONFLICT, and the webhook path remains the only writer on renewal.
  */
-async function handleSubscriptionCancel(
-  request: Request,
+// Billing model is ONE-TIME ANNUAL PRO ACCESS (no auto-renewal mandate), so
+// there is nothing to cancel or resume. The legacy routes are kept as an
+// explicit 410 so stale clients receive a truthful, non-misleading answer.
+async function handleSubscriptionDeprecated(
   origin: string | null,
   env: Env,
-  requestId: string,
-  action: CancelAction
+  requestId: string
 ): Promise<Response> {
-  const auth = await verifyAuth(request, env);
-  if (!auth)
-    return json({ error: 'Unauthorized' }, 401, origin, env, {
-      code: 'UNAUTHORIZED',
-      requestId,
-    });
-
-  try {
-    if (!featureEnabled(env, 'BILLING_ENABLED')) {
-      return json({ error: 'Billing is not available in this environment.' }, 503, origin, env, {
-        code: 'FEATURE_DISABLED',
-        requestId,
-      });
-    }
-
-    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
-    const adminKey = getAdminKey(env);
-    if (!supabaseUrl || !adminKey) {
-      return json({ error: 'Server configuration error' }, 500, origin, env, {
-        code: 'SERVER_NOT_CONFIGURED',
-        requestId,
-      });
-    }
-
-    const supabase = createServerClient(supabaseUrl, adminKey);
-    const { data: row } = await supabase
-      .from('user_subscriptions' as never)
-      .select('*')
-      .eq('user_id', auth.userId as never)
-      .maybeSingle();
-
-    const record = (row ?? {}) as Record<string, unknown>;
-    const result = applyCancelAction(
-      {
-        plan: typeof record.plan === 'string' ? record.plan : null,
-        status: typeof record.status === 'string' ? record.status : null,
-        current_period_end:
-          typeof record.current_period_end === 'string' ? record.current_period_end : null,
-        cancel_at_period_end:
-          typeof record.cancel_at_period_end === 'boolean' ? record.cancel_at_period_end : null,
-      },
-      action
-    );
-
-    if (!result.ok || !result.row) {
-      const status =
-        result.code === 'NOT_PRO'
-          ? 409
-          : result.code === 'PERIOD_END_MISSING' || result.code === 'CONFLICT'
-            ? 409
-            : 400;
-      return json(
-        { error: CANCEL_ERROR_MESSAGES[result.code ?? 'CONFLICT'] },
-        status,
-        origin,
-        env,
-        { code: result.code === 'NOT_PRO' ? 'NOT_PRO' : 'CONFLICT', requestId }
-      );
-    }
-
-    const alreadyApplied =
-      typeof record.cancel_at_period_end === 'boolean' &&
-      record.cancel_at_period_end === result.row.cancel_at_period_end &&
-      record.status === result.row.status;
-
-    const { error: updateError } = await supabase
-      .from('user_subscriptions' as never)
-      .update({
-        status: result.row.status,
-        cancel_at_period_end: result.row.cancel_at_period_end,
-      } as never)
-      .eq('user_id', auth.userId as never);
-
-    if (updateError) {
-      console.error(
-        JSON.stringify({
-          t: 'cancel_update_error',
-          id: requestId,
-          code: updateError.code || 'INTERNAL',
-        })
-      );
-      return json({ error: 'Failed to update subscription' }, 500, origin, env, {
-        code: 'INTERNAL',
-        requestId,
-      });
-    }
-
-    // Entitlements stay Pro until current_period_end; report the honest view.
-    return json(
-      {
-        alreadyApplied,
-        subscription: {
-          plan: result.row.plan,
-          status: result.row.status,
-          cancelAtPeriodEnd: result.row.cancel_at_period_end,
-          currentPeriodEnd: result.row.current_period_end,
-          entitlementsUntil: result.row.cancel_at_period_end ? result.row.current_period_end : null,
-        },
-      },
-      200,
-      origin,
-      env,
-      { requestId }
-    );
-  } catch {
-    console.error(JSON.stringify({ t: 'cancel_error', id: requestId, code: 'INTERNAL' }));
-    return json({ error: 'Failed to update subscription' }, 500, origin, env, {
-      code: 'INTERNAL',
-      requestId,
-    });
-  }
+  return json(
+    {
+      error:
+        'Subscriptions were replaced by one-time annual Pro access. There is nothing to cancel or resume.',
+    },
+    410,
+    origin,
+    env,
+    { code: 'FEATURE_DISABLED', requestId }
+  );
 }
-
-const CANCEL_ERROR_MESSAGES: Record<string, string> = {
-  NOT_PRO: 'No paid subscription to cancel.',
-  PERIOD_END_MISSING: 'Subscription period information is missing; contact support.',
-  CONFLICT: 'Subscription state changed; refresh and try again.',
-  ALREADY_CANCELED: 'Already canceled.',
-  ALREADY_ACTIVE: 'Subscription is already active.',
-};
 
 async function getSubscription(env: Env, userId: string): Promise<SubscriptionState> {
   const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
@@ -1599,13 +1552,7 @@ async function handleGetBillingStatus(
       }
     }
 
-    const metrics = [
-      'resume_variants',
-      'github_repos',
-      'recruiter_ai',
-      'tailoring',
-      'custom_domains',
-    ] as const;
+    const metrics = ['resume_variants', 'github_repos', 'recruiter_ai', 'custom_domains'] as const;
     const usage: Record<
       string,
       { used: number; limit: number; remaining: number; allowed: boolean }
@@ -2168,11 +2115,11 @@ export async function handleRequest(
   }
 
   if (url.pathname === '/api/billing/subscription/cancel' && request.method === 'POST') {
-    return handleSubscriptionCancel(request, origin, env, id, 'cancel');
+    return handleSubscriptionDeprecated(origin, env, id);
   }
 
   if (url.pathname === '/api/billing/subscription/resume' && request.method === 'POST') {
-    return handleSubscriptionCancel(request, origin, env, id, 'resume');
+    return handleSubscriptionDeprecated(origin, env, id);
   }
 
   if (url.pathname === '/api/github/install/start' && request.method === 'POST') {

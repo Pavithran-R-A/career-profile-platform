@@ -164,7 +164,9 @@ export default function RecruiterAsk({ username }: { username: string }) {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--faint-foreground)]">
                   Based on
                 </p>
-                <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Profile sections used">
+                <ul
+                  className="mt-2 flex flex-wrap gap-1.5"
+                  aria-label="Profile sections cited for this answer">
                   {answer.sections.map((s) => (
                     <li key={s} className="chip text-xs">
                       {sectionLabel(s)}
@@ -172,8 +174,8 @@ export default function RecruiterAsk({ username }: { username: string }) {
                   ))}
                 </ul>
                 <p className="text-[11px] text-[var(--faint-foreground)] mt-2">
-                  Every statement above is drawn from these published sections. Anything not in the
-                  profile is not answered.
+                  The answer cites only these published sections. It may not cover every statement,
+                  and anything not in the profile is not answered.
                 </p>
               </div>
             )}
