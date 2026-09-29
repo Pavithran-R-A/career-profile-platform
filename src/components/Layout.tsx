@@ -281,7 +281,9 @@ export default function Layout() {
           </nav>
         )}
       </header>
-      <main id="main" className="flex-1">
+      {/* tabIndex={-1} makes the landmark programmatically focusable so the
+          skip link actually moves focus (QA-021); no ring for pointer users. */}
+      <main id="main" tabIndex={-1} className="flex-1 focus:outline-none">
         <Outlet />
       </main>
       <footer className="border-t border-[var(--border)] bg-[var(--surface)]">

@@ -325,6 +325,11 @@
     color: var(--muted-foreground);
     text-decoration: none;
     transition: color 120ms ease;
+    /* Mobile touch-target standard (QA-017): keep the visual type small but
+       make the clickable box at least 44px tall. */
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   .link-quiet:hover {
