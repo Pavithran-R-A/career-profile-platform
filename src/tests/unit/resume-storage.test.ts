@@ -124,8 +124,8 @@ describe('P1-B: resume upload compensation', () => {
       await expect(service.uploadResume(VALID_UUID, VALID_UUID, makeFile())).rejects.toThrow(
         /save this resume/
       );
-    expect(calls.remove).toHaveBeenCalledTimes(1);
-    const removedPath = (calls.remove.mock.calls[0] as unknown as [string[]])[0][0];
+      expect(calls.remove).toHaveBeenCalledTimes(1);
+      const removedPath = (calls.remove.mock.calls[0] as unknown as [string[]])[0][0];
       expect(removedPath.startsWith(`${VALID_UUID}/`)).toBe(true);
       expect(removedPath.endsWith('.pdf')).toBe(true);
     }

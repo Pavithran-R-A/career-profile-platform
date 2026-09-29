@@ -2,3 +2,5 @@ allowBuilds:
   esbuild: true
   workerd: true
   '@tailwindcss/oxide': true
+overrides:
+  'undici@>=7.28.0 <7.29.1': ^7.29.1

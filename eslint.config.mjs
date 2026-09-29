@@ -15,7 +15,13 @@ export default tseslint.config(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['eslint.config.mjs', 'playwright.config.ts', 'e2e/*.spec.ts'],
+          allowDefaultProject: [
+            'eslint.config.mjs',
+            'playwright.config.ts',
+            'vitest.integration.config.ts',
+            'e2e/*.spec.ts',
+          ],
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 12,
         },
         tsconfigRootDir: import.meta.dirname,
       },

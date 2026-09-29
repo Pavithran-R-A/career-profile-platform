@@ -30,17 +30,7 @@
   "preferences": {
     "accent_key": "blue",
     "template_key": "technical",
-    "section_order": [
-      "about",
-      "experience",
-      "skills",
-      "education",
-      "projects",
-      "links"
-    ],
-    "hidden_sections": [
-      "projects",
-      "links"
-    ]
+    "section_order": ["about", "experience", "skills", "education", "projects", "links"],
+    "hidden_sections": ["projects", "links"]
   }
 }
