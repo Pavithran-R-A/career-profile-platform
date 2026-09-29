@@ -18,9 +18,7 @@ const freeEnt: PlanEntitlements = {
   resumeVariants: 3,
   githubRepos: 5,
   recruiterAiPerDay: 10,
-  tailoringPerMonth: 3,
   customDomains: 0,
-  removeBranding: false,
 };
 
 const proEnt: PlanEntitlements = {
@@ -28,9 +26,7 @@ const proEnt: PlanEntitlements = {
   resumeVariants: 20,
   githubRepos: 20,
   recruiterAiPerDay: 100,
-  tailoringPerMonth: 30,
   customDomains: 1,
-  removeBranding: true,
 };
 
 describe('validators', () => {

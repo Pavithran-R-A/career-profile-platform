@@ -84,7 +84,7 @@ export async function askRecruiterQuestion(
   }
   return {
     answer: data.answer,
-    grounded: data.grounded !== false,
+    grounded: data.grounded === true,
     sections: Array.isArray(data.sections) ? data.sections : [],
   };
 }

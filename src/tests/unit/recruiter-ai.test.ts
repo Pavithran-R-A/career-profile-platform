@@ -142,7 +142,6 @@ const MOCK_JOB: ParsedJob = {
 };
 
 const MOCK_MATCHING: MatchingResult = {
-  overallScore: 72,
   matches: [
     {
       requirement: MOCK_JOB.requirements[0],
@@ -360,7 +359,6 @@ describe('AI context adversarial resistance', () => {
 
   it('matching result with no matches', () => {
     const emptyMatching: MatchingResult = {
-      overallScore: 0,
       matches: [],
       gaps: [],
       summary: {

@@ -1154,6 +1154,22 @@ export type Database = {
     }
     Functions: {
       apply_resume_import: { Args: { payload: Json }; Returns: Json }
+      consume_recruiter_quota: {
+        Args: { p_limit: number; p_user_id: string }
+        Returns: number
+      }
+      create_profile_variant: {
+        Args: {
+          p_job_requirements: Json
+          p_limit: number
+          p_name: string
+          p_profile_id: string
+          p_target_company: string
+          p_target_role: string
+          p_variant_data: Json
+        }
+        Returns: string
+      }
       process_paid_order_webhook: {
         Args: {
           p_event_id: string

@@ -21,6 +21,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/tests/setup.ts',
     include: ['src/tests/**/*.test.tsx', 'src/tests/**/*.test.ts'],
+    // Integration tests (live RLS against the linked project) run ONLY via
+    // `pnpm test:integration` (vitest.integration.config.ts).
+    exclude: ['src/tests/integration/**'],
     globals: true,
   },
 });
