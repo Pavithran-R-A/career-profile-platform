@@ -73,7 +73,9 @@ export interface Env {
   DOMAINS_ENABLED?: string;
   RECRUITER_AI_ENABLED?: string;
   RECRUITER_RATE_LIMITER?: {
-    limit: (key: string) => { allowed: boolean; hits: number };
+    // Cloudflare rate-limiting binding contract: limit() takes { key } and
+    // resolves to { success: boolean } (true = allowed).
+    limit: (options: { key: string }) => Promise<{ success: boolean }>;
   };
 }
 
@@ -1127,20 +1129,29 @@ async function handleRecruiterAsk(
       code: 'BAD_REQUEST',
       requestId,
     });
-  }
-
-  // Anti-abuse IP limiter: pre-auth 429s carry their own error code —
+  } // Anti-abuse IP limiter: pre-auth 429s carry their own error code —
   // 'RATE_LIMITED' is reserved for the profile owner's plan quota (post-auth,
   // owner-facing), so callers can tell the two apart. E2E relies on this:
   // a fresh run must never see a limiter trip.
+  //
+  // Binding contract: limit({ key }) resolves to { success: true } when the
+  // call is allowed. (The earlier sync non-awaited `allowed` check was
+  // inverted-broken and 429'd EVERY request wherever the binding existed —
+  // caught by the e2e exact-404 contract.)
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
-  const rate = env.RECRUITER_RATE_LIMITER?.limit?.(`ip:${ip}`);
-  if (rate && !rate.allowed) {
-    return json({ error: 'Too many questions. Please try again later.' }, 429, origin, env, {
-      code: 'TOO_MANY_REQUESTS',
-      requestId,
-      headers: { 'Retry-After': '60' },
-    });
+  if (env.RECRUITER_RATE_LIMITER) {
+    try {
+      const rate = await env.RECRUITER_RATE_LIMITER.limit({ key: `ip:${ip}` });
+      if (!rate.success) {
+        return json({ error: 'Too many questions. Please try again later.' }, 429, origin, env, {
+          code: 'TOO_MANY_REQUESTS',
+          requestId,
+          headers: { 'Retry-After': '60' },
+        });
+      }
+    } catch {
+      // Limiter errors must not take the recruiter feature down.
+    }
   }
 
   const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
