@@ -2,13 +2,22 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
+
+env:
+  # Non-secret placeholders so `vite build` and the E2E preview render the
+  # same safe error states locally as in CI. No live Supabase project is
+  # contacted; live-RLS checks belong to an explicit integration workflow.
+  VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+  VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-publishable-key
+  # featureEnabled() defaults features OFF outside production.
+  VITE_ENVIRONMENT: preview
 
 jobs:
   quality:
-    name: Lint, Typecheck, Test, Build
+    name: Format, Lint, Typecheck, Unit, Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,8 +42,49 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      - name: Unit tests
+        # Bounded worker count keeps ordering-sensitive suites deterministic.
+        run: pnpm test -- --maxWorkers=2
 
       - name: Build
         run: pnpm build
+
+      - name: Bundle budget
+        run: pnpm bundle:scan --budget
+
+  e2e:
+    name: E2E (Playwright, desktop + mobile)
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build (served by vite preview)
+        run: pnpm build
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E
+        run: pnpm test:e2e
+
+      - name: Upload traces and report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            e2e/.artifacts
+            playwright-report
+          retention-days: 7
