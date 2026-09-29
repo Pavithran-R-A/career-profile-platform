@@ -85,6 +85,9 @@ export type ApiErrorCode =
   | 'INVALID_STORAGE_PATH'
   | 'DOWNLOAD_FAILED'
   | 'PDF_NO_TEXT'
+  | 'PDF_TOO_MANY_PAGES'
+  | 'PDF_TEXT_TOO_LONG'
+  | 'PDF_MALFORMED'
   | 'AI_NOT_CONFIGURED'
   | 'AI_PROVIDER_ERROR'
   | 'AI_EMPTY_RESPONSE'
@@ -393,36 +396,30 @@ async function handleResumeExtract(
     }
 
     const buffer = await fileData.arrayBuffer();
-    const uint8Array = new Uint8Array(buffer);
 
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    const fullText = decoder.decode(uint8Array);
-
-    const textChunks: string[] = [];
-    const streamMatches = fullText.match(/stream\r?\n([\s\S]*?)\r?\nendstream/g);
-    if (streamMatches) {
-      for (const match of streamMatches) {
-        const streamContent = match.replace(/^stream\r?\n/, '').replace(/\r?\nendstream$/, '');
-        const cleaned = streamContent
-          .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (cleaned.length > 10) {
-          textChunks.push(cleaned);
-        }
+    // Same trusted extraction boundary as browser upload: unpdf decompresses
+    // real PDF content streams (magic bytes, 6 MiB / 20 pages / max-chars
+    // bounds and safe errors are enforced inside).
+    let extractedText: string;
+    try {
+      const { extractTextFromPDF } = await import('../lib/resume/pdf');
+      const { text } = await extractTextFromPDF(buffer);
+      extractedText = text;
+    } catch (err) {
+      if (err instanceof Error && err.name === 'PDFExtractionError') {
+        const kind = (err as { kind?: string }).kind;
+        const status = kind === 'too_many_pages' ? 413 : 422;
+        const code =
+          kind === 'too_many_pages'
+            ? 'PDF_TOO_MANY_PAGES'
+            : kind === 'no_text'
+              ? 'PDF_NO_TEXT'
+              : kind === 'too_long'
+                ? 'PDF_TEXT_TOO_LONG'
+                : 'PDF_MALFORMED';
+        return json({ error: err.message }, status, origin, env, { code, requestId });
       }
-    }
-
-    const extractedText = textChunks.join('\n\n');
-
-    if (extractedText.trim().length < 50) {
-      return json(
-        { error: 'This PDF appears to be scanned or contains too little readable text.' },
-        422,
-        origin,
-        env,
-        { code: 'PDF_NO_TEXT', requestId }
-      );
+      throw err;
     }
 
     const provider = new BharatCodeProvider({
