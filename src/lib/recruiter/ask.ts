@@ -20,9 +20,17 @@ export const DEFAULT_CONFIG: RecruiterConfig = {
 };
 
 export async function fetchRecruiterConfig(): Promise<RecruiterConfig> {
-  const res = await fetch('/api/recruiter/config');
+  // Network failure (offline, blocked request, URL-less environment) degrades
+  // to the disabled default instead of an unhandled rejection — the panel is
+  // hidden by default anyway.
+  let res: Response;
+  try {
+    res = await fetch('/api/recruiter/config');
+  } catch {
+    return DEFAULT_CONFIG;
+  }
   if (!res.ok) return DEFAULT_CONFIG;
-  const body = (await res.json()) as Partial<RecruiterConfig>;
+  const body = (await res.json().catch(() => ({}))) as Partial<RecruiterConfig>;
   return {
     enabled: body.enabled === true,
     aiConfigured: body.aiConfigured === true,
@@ -34,6 +42,7 @@ export type AskFailureCode =
   | 'BAD_REQUEST'
   | 'PROFILE_NOT_FOUND'
   | 'RATE_LIMITED'
+  | 'TOO_MANY_REQUESTS'
   | 'AI_NOT_CONFIGURED'
   | 'SERVER_NOT_CONFIGURED'
   | 'NETWORK'
@@ -84,7 +93,7 @@ export async function askRecruiterQuestion(
   }
   return {
     answer: data.answer,
-    grounded: data.grounded !== false,
+    grounded: data.grounded === true,
     sections: Array.isArray(data.sections) ? data.sections : [],
   };
 }

@@ -42,13 +42,13 @@ describe('entitlements', () => {
     const state = { plan: 'pro' as const, status: 'active' as const, currentPeriodEnd: future };
     const ent = resolveEntitlements(state);
     expect(ent.resumeVariants).toBe(20);
-    expect(ent.removeBranding).toBe(true);
+    expect(ent.customDomains).toBe(1);
   });
 
   it('resolveEntitlements returns free limits for free', () => {
     const ent = resolveEntitlements(freeSubscription());
     expect(ent.resumeVariants).toBe(3);
-    expect(ent.removeBranding).toBe(false);
+    expect(ent.customDomains).toBe(0);
   });
 });
 
@@ -115,10 +115,6 @@ describe('usage', () => {
 
   it('windowKeyFor recruiter_ai uses day', () => {
     expect(windowKeyFor('recruiter_ai', new Date('2026-09-23T12:00:00Z'))).toBe('2026-09-23');
-  });
-
-  it('windowKeyFor tailoring uses month', () => {
-    expect(windowKeyFor('tailoring', new Date('2026-09-23T12:00:00Z'))).toBe('2026-09');
   });
 
   it('windowKeyFor resume_variants uses total', () => {

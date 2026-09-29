@@ -1,11 +1,16 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
+import { getSupabaseClient } from '../../lib/supabase/client';
+import { toSafeAuthMessage } from '../../lib/auth/errors';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
+
+type SessionState = 'checking' | 'recovery' | 'none';
 
 export default function ResetPassword() {
   useNoindexMeta('Reset password — Career Profile');
 
+  const [sessionState, setSessionState] = useState<SessionState>('checking');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -14,6 +19,28 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const auth = useAuth();
   const navigate = useNavigate();
+
+  // Guard (QA-003): the reset form requires an authenticated session — which
+  // normally exists only after the recovery link's callback. Without one, the
+  // user sees the invalid-link state, never a form that would leak
+  // "Auth session missing!" on submit.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const supabase = getSupabaseClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!cancelled) setSessionState(session?.user ? 'recovery' : 'none');
+      } catch {
+        if (!cancelled) setSessionState('none');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -34,7 +61,7 @@ export default function ResetPassword() {
     setLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      setError(toSafeAuthMessage(authError.message));
       return;
     }
 
@@ -60,6 +87,32 @@ export default function ResetPassword() {
           <p className="text-gray-600 mb-6">Your password has been successfully updated.</p>
           <Link to="/dashboard" className="text-gray-900 font-medium hover:underline">
             Go to dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionState === 'checking') {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4">
+        <p className="text-gray-500" role="status">
+          Checking your reset link…
+        </p>
+      </div>
+    );
+  }
+
+  if (sessionState === 'none') {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-4">
+        <div className="w-full max-w-md text-center">
+          <h1 className="text-2xl font-semibold mb-4">Reset your password</h1>
+          <p className="text-gray-600 mb-6">This password-reset link is invalid or has expired.</p>
+          <Link
+            to="/forgot-password"
+            className="inline-block bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800">
+            Request a new reset link
           </Link>
         </div>
       </div>

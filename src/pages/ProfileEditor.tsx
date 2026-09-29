@@ -233,6 +233,10 @@ export default function ProfileEditor() {
   const [activeSection, setActiveSection] = useState<EditSection>('basics');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // Inline achievement editor (P1-G): the Edit affordance opens a real
+  // prefilled form instead of a no-op toggle. Declared with the other hooks
+  // (above any early return) to preserve hook order across renders.
+  const [achievementEditId, setAchievementEditId] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingKey | null>(null);
   const [preferences, setPreferences] = useState<ProfilePreferences | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -240,7 +244,15 @@ export default function ProfileEditor() {
   const [addExpCurrent, setAddExpCurrent] = useState(false);
   const EXP_COLLAPSE = 5;
 
-  const profileService = new ProfileService();
+  const profileServiceRef = useRef<ProfileService | null>(null);
+  if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
+  const profileService = profileServiceRef.current;
+
+  // Initialize BEFORE any early return: the load effect's async callback
+  // closes over this binding, and a first render that takes the loading
+  // early-return would otherwise leave it in its temporal dead zone —
+  // silently killing the achievements query (ReferenceError on access).
+  const supabase = getSupabaseClient();
 
   useEffect(() => {
     if (!previewOpen) return;
@@ -328,8 +340,6 @@ export default function ProfileEditor() {
   if (auth.status === 'unauthenticated' || !profile) {
     return null;
   }
-
-  const supabase = getSupabaseClient();
 
   // ── Generic row operations (owner RLS policies cover update/delete) ──
 
@@ -777,6 +787,43 @@ export default function ProfileEditor() {
       setAchievements(rows);
     } catch {
       setError("We couldn't reorder this achievement. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAchievementSave = async (e: FormEvent<HTMLFormElement>, id: string) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const fd = new FormData(e.currentTarget);
+    const sourceUrl = ((fd.get('sourceUrl') as string) || '').trim();
+    if (sourceUrl && !isHttpUrl(sourceUrl)) {
+      setError('The source must be a full http:// or https:// address.');
+      setSaving(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('profile_achievements')
+        .update({
+          title: ((fd.get('title') as string) || '').trim(),
+          description: (fd.get('description') as string) || null,
+          metric_text: (fd.get('metricText') as string) || null,
+          timeframe: (fd.get('timeframe') as string) || null,
+          source_url: sourceUrl || null,
+          is_featured: fd.get('featured') === 'on',
+          is_public: fd.get('isPublic') === 'on',
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      setAchievements(achievements.map((a) => (a.id === id ? (data as AchievementRow) : a)));
+      setAchievementEditId(null);
+      flashSuccess('Achievement updated.');
+    } catch {
+      setError("We couldn't update this achievement. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -1786,56 +1833,157 @@ export default function ProfileEditor() {
                 <div className="space-y-3 mb-6">
                   {achievements.map((a, idx) => (
                     <article key={a.id} className="card card-pad">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h3 className="text-[15px] font-semibold text-[var(--ink)]">{a.title}</h3>
-                          {a.metric_text && (
-                            <p
-                              className="text-sm font-medium mt-0.5"
-                              style={{ color: 'var(--accent-text)' }}>
-                              {a.metric_text}
-                            </p>
-                          )}
-                          {a.description && (
-                            <p className="text-sm text-[var(--muted-foreground)] mt-1.5 leading-relaxed">
-                              {a.description}
-                            </p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-2 mt-2.5 text-[11px]">
-                            {a.timeframe && (
-                              <span className="status-chip !text-[10px]">{a.timeframe}</span>
-                            )}
-                            {a.is_featured && (
-                              <span className="status-chip status-chip-live !text-[10px]">
-                                Featured
-                              </span>
-                            )}
-                            <span className="text-[var(--faint-foreground)]">
-                              {a.is_public
-                                ? 'Public on your portfolio'
-                                : 'Private (never shown publicly)'}
-                            </span>
-                            {a.source_url && (
-                              <a
-                                href={sanitizeUrl(a.source_url)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[var(--muted-foreground)] hover:text-[var(--accent)] underline underline-offset-2">
-                                Source
-                              </a>
-                            )}
+                      {achievementEditId === a.id ? (
+                        <form
+                          onSubmit={(e) => void handleAchievementSave(e, a.id)}
+                          className="space-y-4">
+                          <h3 className="text-sm font-semibold text-[var(--ink)]">
+                            Edit achievement
+                          </h3>
+                          <Field
+                            label="Title"
+                            htmlFor={`ach-edit-title-${a.id}`}
+                            hint="What did you accomplish?">
+                            <input
+                              id={`ach-edit-title-${a.id}`}
+                              name="title"
+                              type="text"
+                              required
+                              maxLength={200}
+                              defaultValue={a.title}
+                              className={INPUT}
+                            />
+                          </Field>
+                          <Field label="Result (optional)" htmlFor={`ach-edit-metric-${a.id}`}>
+                            <input
+                              id={`ach-edit-metric-${a.id}`}
+                              name="metricText"
+                              type="text"
+                              maxLength={300}
+                              defaultValue={a.metric_text ?? ''}
+                              className={INPUT}
+                            />
+                          </Field>
+                          <Field label="How (optional)" htmlFor={`ach-edit-desc-${a.id}`}>
+                            <textarea
+                              id={`ach-edit-desc-${a.id}`}
+                              name="description"
+                              rows={3}
+                              maxLength={2000}
+                              defaultValue={a.description ?? ''}
+                              className={INPUT}
+                            />
+                          </Field>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <Field label="Timeframe (optional)" htmlFor={`ach-edit-time-${a.id}`}>
+                              <input
+                                id={`ach-edit-time-${a.id}`}
+                                name="timeframe"
+                                type="text"
+                                maxLength={60}
+                                defaultValue={a.timeframe ?? ''}
+                                className={INPUT}
+                              />
+                            </Field>
+                            <Field label="Source URL (optional)" htmlFor={`ach-edit-src-${a.id}`}>
+                              <input
+                                id={`ach-edit-src-${a.id}`}
+                                name="sourceUrl"
+                                type="url"
+                                maxLength={500}
+                                defaultValue={a.source_url ?? ''}
+                                placeholder="https://"
+                                className={INPUT}
+                              />
+                            </Field>
                           </div>
+                          <div className="flex flex-wrap gap-5">
+                            <label className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                              <input
+                                type="checkbox"
+                                name="featured"
+                                defaultChecked={a.is_featured}
+                                className="h-4 w-4"
+                              />
+                              Featured (shows first, in "Featured work")
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
+                              <input
+                                type="checkbox"
+                                name="isPublic"
+                                defaultChecked={a.is_public}
+                                className="h-4 w-4"
+                              />
+                              Public on my portfolio
+                            </label>
+                          </div>
+                          <div className="flex gap-2">
+                            <button type="submit" disabled={saving} className="btn btn-primary">
+                              {saving ? 'Saving…' : 'Save changes'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAchievementEditId(null)}
+                              disabled={saving}
+                              className="btn btn-secondary">
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="text-[15px] font-semibold text-[var(--ink)]">
+                              {a.title}
+                            </h3>
+                            {a.metric_text && (
+                              <p
+                                className="text-sm font-medium mt-0.5"
+                                style={{ color: 'var(--accent-text)' }}>
+                                {a.metric_text}
+                              </p>
+                            )}
+                            {a.description && (
+                              <p className="text-sm text-[var(--muted-foreground)] mt-1.5 leading-relaxed">
+                                {a.description}
+                              </p>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2 mt-2.5 text-[11px]">
+                              {a.timeframe && (
+                                <span className="status-chip !text-[10px]">{a.timeframe}</span>
+                              )}
+                              {a.is_featured && (
+                                <span className="status-chip status-chip-live !text-[10px]">
+                                  Featured
+                                </span>
+                              )}
+                              <span className="text-[var(--faint-foreground)]">
+                                {a.is_public
+                                  ? 'Public on your portfolio'
+                                  : 'Private (never shown publicly)'}
+                              </span>
+                              {a.source_url && (
+                                <a
+                                  href={sanitizeUrl(a.source_url)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[var(--muted-foreground)] hover:text-[var(--accent)] underline underline-offset-2">
+                                  Source
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                          <CardActions
+                            onEdit={() => setAchievementEditId(a.id)}
+                            onDelete={() => void handleAchievementDelete(a.id)}
+                            onMoveUp={() => void handleAchievementMove(idx, -1)}
+                            onMoveDown={() => void handleAchievementMove(idx, 1)}
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < achievements.length - 1}
+                            deleteLabel={`Delete achievement ${a.title}`}
+                          />
                         </div>
-                        <CardActions
-                          onEdit={() => toggleEdit(`achievements:${a.id}`)}
-                          onDelete={() => void handleAchievementDelete(a.id)}
-                          onMoveUp={() => void handleAchievementMove(idx, -1)}
-                          onMoveDown={() => void handleAchievementMove(idx, 1)}
-                          canMoveUp={idx > 0}
-                          canMoveDown={idx < achievements.length - 1}
-                          deleteLabel={`Delete achievement ${a.title}`}
-                        />
-                      </div>
+                      )}
                     </article>
                   ))}
                 </div>

@@ -1,24 +1,17 @@
-// Account deletion semantics (pure functions; the worker performs I/O).
+// Verified-claims freshness validation for destructive account actions.
 //
-// Deletion contract:
-//   1. The request must carry a *recent* Supabase session (re-auth): we accept
-//      an access token whose issued-at (iat) is within RECENT_AUTH_WINDOW_S.
-//      Supabase embeds `iat` in the /auth/v1/user response for the token.
-//   2. A durable pending-deletion marker row is upserted FIRST so an
-//      interrupted attempt is observable and every retry is explicit.
-//   3. The user's Storage objects (resume PDFs) are removed — already-absent
-//      objects are tolerated (storage.remove does not fail on missing keys).
-//   4. Owned non-cascading rows are deleted; 0 rows affected (already gone
-//      from an earlier attempt) is success, not an error.
-//   5. `DELETE /auth/v1/admin/users/{id}` runs with the server-only key.
-//      404 (user already deleted by a prior attempt) is SUCCESS.
+// Security contract: the decision uses claims VERIFIED by Supabase
+// (`auth.getClaims(accessToken)` — local WebCrypto verification for
+// asymmetric signing keys, Auth-server verification otherwise). The old
+// approach read an unverified decoded JWT `iat` and is gone: a forged or
+// tampered token can never influence this gate.
 //
-// These steps are inherently NOT one transaction. The design is therefore
-// RECOVERABLE, not atomic: every step is idempotent, the marker makes partial
-// progress explicit, and a retry after any failure re-runs the whole plan and
-// safely continues. A failed auth delete means SOME cleanup may already have
-// completed — the customer wording says exactly that, and the marker row
-// remains so observability/retries are truthful.
+// A normal `auth.getUser()` User object has no `iat` and is not used for
+// this decision; only verified claims are.
+//
+// The rest of the deletion semantics below are unchanged: the request is
+// RECOVERABLE, not atomic — every step is idempotent, the marker makes
+// partial progress explicit, and a retry after any failure re-runs the plan.
 //
 // Cross-user isolation: every cleanup is keyed by the verified auth userId
 // from the fresh session; client-supplied ids are never accepted. Storage
@@ -29,13 +22,46 @@
 
 export const RECENT_AUTH_WINDOW_S = 10 * 60; // 10 minutes
 
-export function isRecentAuth(iat: unknown, now = Math.floor(Date.now() / 1000)): boolean {
-  return (
-    typeof iat === 'number' &&
-    Number.isFinite(iat) &&
-    now - iat <= RECENT_AUTH_WINDOW_S &&
-    now >= iat
-  );
+export interface AuthFreshness {
+  fresh: boolean;
+  reason: 'ok' | 'missing_claims' | 'malformed_claims' | 'sub_mismatch' | 'future_iat' | 'stale';
+}
+
+/**
+ * Validate a verified claim set against the authenticated user id and the
+ * recent-auth window. Pure: the caller obtains claims via
+ * supabase.auth.getClaims(accessToken) and passes them here.
+ */
+export function validateAuthFreshness(
+  claims: unknown,
+  expectedSub: string,
+  nowS: number = Math.floor(Date.now() / 1000)
+): AuthFreshness {
+  if (!claims || typeof claims !== 'object') {
+    return { fresh: false, reason: 'missing_claims' };
+  }
+
+  const record = claims as Record<string, unknown>;
+  const sub = typeof record.sub === 'string' ? record.sub : null;
+  const iat = typeof record.iat === 'string' ? Number(record.iat) : record.iat;
+
+  if (!sub || typeof iat !== 'number' || !Number.isFinite(iat)) {
+    return { fresh: false, reason: 'malformed_claims' };
+  }
+
+  if (sub !== expectedSub) {
+    return { fresh: false, reason: 'sub_mismatch' };
+  }
+
+  if (iat > nowS) {
+    return { fresh: false, reason: 'future_iat' };
+  }
+
+  if (nowS - iat > RECENT_AUTH_WINDOW_S) {
+    return { fresh: false, reason: 'stale' };
+  }
+
+  return { fresh: true, reason: 'ok' };
 }
 
 export type DeletionStage =

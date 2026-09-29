@@ -14,9 +14,7 @@ describe('PLANS', () => {
       resumeVariants: 3,
       githubRepos: 5,
       recruiterAiPerDay: 10,
-      tailoringPerMonth: 3,
       customDomains: 0,
-      removeBranding: false,
     });
   });
 
@@ -26,9 +24,7 @@ describe('PLANS', () => {
       resumeVariants: 20,
       githubRepos: 20,
       recruiterAiPerDay: 100,
-      tailoringPerMonth: 30,
       customDomains: 1,
-      removeBranding: true,
     });
   });
 
@@ -36,7 +32,6 @@ describe('PLANS', () => {
     expect(PLANS.pro.resumeVariants).toBeGreaterThan(PLANS.free.resumeVariants);
     expect(PLANS.pro.githubRepos).toBeGreaterThan(PLANS.free.githubRepos);
     expect(PLANS.pro.recruiterAiPerDay).toBeGreaterThan(PLANS.free.recruiterAiPerDay);
-    expect(PLANS.pro.tailoringPerMonth).toBeGreaterThan(PLANS.free.tailoringPerMonth);
     expect(PLANS.pro.customDomains).toBeGreaterThan(PLANS.free.customDomains);
   });
 });

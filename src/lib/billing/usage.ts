@@ -1,7 +1,6 @@
 import type { PlanEntitlements } from './plans';
 
-export type UsageMetric =
-  'resume_variants' | 'github_repos' | 'recruiter_ai' | 'tailoring' | 'custom_domains';
+export type UsageMetric = 'resume_variants' | 'github_repos' | 'recruiter_ai' | 'custom_domains';
 
 export type UsageWindow = 'total' | 'day' | 'month';
 
@@ -16,7 +15,6 @@ export const METRIC_WINDOWS: Record<UsageMetric, UsageWindow> = {
   resume_variants: 'total',
   github_repos: 'total',
   recruiter_ai: 'day',
-  tailoring: 'month',
   custom_domains: 'total',
 };
 
@@ -28,8 +26,6 @@ export function limitForMetric(metric: UsageMetric, entitlements: PlanEntitlemen
       return entitlements.githubRepos;
     case 'recruiter_ai':
       return entitlements.recruiterAiPerDay;
-    case 'tailoring':
-      return entitlements.tailoringPerMonth;
     case 'custom_domains':
       return entitlements.customDomains;
   }

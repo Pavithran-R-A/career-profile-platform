@@ -82,19 +82,34 @@ export type Database = {
       };
       billing_webhook_events: {
         Row: {
+          attempts: number;
           event_id: string;
           event_type: string | null;
+          last_error: string | null;
+          processed_at: string | null;
           received_at: string;
+          status: string;
+          updated_at: string;
         };
         Insert: {
+          attempts?: number;
           event_id: string;
           event_type?: string | null;
+          last_error?: string | null;
+          processed_at?: string | null;
           received_at?: string;
+          status?: string;
+          updated_at?: string;
         };
         Update: {
+          attempts?: number;
           event_id?: string;
           event_type?: string | null;
+          last_error?: string | null;
+          processed_at?: string | null;
           received_at?: string;
+          status?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -1133,6 +1148,31 @@ export type Database = {
     };
     Functions: {
       apply_resume_import: { Args: { payload: Json }; Returns: Json };
+      consume_recruiter_quota: {
+        Args: { p_limit: number; p_user_id: string };
+        Returns: number;
+      };
+      create_profile_variant: {
+        Args: {
+          p_job_requirements: Json;
+          p_limit: number;
+          p_name: string;
+          p_profile_id: string;
+          p_target_company: string;
+          p_target_role: string;
+          p_variant_data: Json;
+        };
+        Returns: string;
+      };
+      process_paid_order_webhook: {
+        Args: {
+          p_event_id: string;
+          p_event_type: string;
+          p_razorpay_order_id: string;
+          p_razorpay_payment_id: string;
+        };
+        Returns: Json;
+      };
       safe_int: { Args: { fallback: number; value: string }; Returns: number };
     };
     Enums: {

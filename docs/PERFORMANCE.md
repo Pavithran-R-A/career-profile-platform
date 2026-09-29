@@ -51,6 +51,9 @@ the result here after significant layout or bundle changes.
 - Motion uses transform/opacity only, with `prefers-reduced-motion` guards.
 - The worker adds `X-Request-Id` + structured JSON logs for cheap
   server-side debugging without client overhead.
+- Crawler routes get server-rendered metadata only (title/canonical/OG/JSON-LD
+  injected into the static shell) — the body is client-rendered, so no SSR
+  compute cost per request.
 
 ## How to measure
 

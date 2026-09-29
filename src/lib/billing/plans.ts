@@ -5,9 +5,7 @@ export interface PlanEntitlements {
   resumeVariants: number;
   githubRepos: number;
   recruiterAiPerDay: number;
-  tailoringPerMonth: number;
   customDomains: number;
-  removeBranding: boolean;
 }
 
 export const PLANS: Record<PlanId, PlanEntitlements> = {
@@ -16,18 +14,14 @@ export const PLANS: Record<PlanId, PlanEntitlements> = {
     resumeVariants: 3,
     githubRepos: 5,
     recruiterAiPerDay: 10,
-    tailoringPerMonth: 3,
     customDomains: 0,
-    removeBranding: false,
   },
   pro: {
     planId: 'pro',
     resumeVariants: 20,
     githubRepos: 20,
     recruiterAiPerDay: 100,
-    tailoringPerMonth: 30,
     customDomains: 1,
-    removeBranding: true,
   },
 };
 

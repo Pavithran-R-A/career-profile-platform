@@ -79,6 +79,11 @@ vi.mock('../../lib/profiles/service', () => ({
 vi.mock('../../lib/supabase/client', () => ({
   getSupabaseClient: () => ({
     from: () => ({
+      select: () => ({
+        eq: () => ({
+          order: () => Promise.resolve({ data: [], error: null }),
+        }),
+      }),
       insert: () => ({
         select: () => ({ single: () => Promise.resolve({ data: {}, error: null }) }),
       }),

@@ -88,6 +88,20 @@ export class ResumeService {
       .single();
 
     if (insertError) {
+      // Compensation: never leave a private object with no metadata row —
+      // account deletion would not be able to discover it.
+      const { error: cleanupError } = await this.supabase.storage
+        .from('resumes')
+        .remove([storagePath]);
+      if (cleanupError) {
+        // Safe operational log only; the customer message stays generic.
+        console.error(
+          JSON.stringify({
+            t: 'resume_upload_compensation_failed',
+            storage_path_prefix: `${userId}/`,
+          })
+        );
+      }
       throw new Error(toCustomerMessage(insertError, 'save'));
     }
 
@@ -144,7 +158,10 @@ export class ResumeService {
       .remove([resume.storage_path]);
 
     if (storageError) {
-      console.error('Failed to delete storage file:', storageError);
+      // Order matters: if the object could not be removed, the metadata row
+      // must survive so a retry can still find and delete the private file.
+      console.error(JSON.stringify({ t: 'resume_delete_storage_failed', resume_id: resumeId }));
+      throw new Error(toCustomerMessage(storageError, 'delete'));
     }
 
     const { error: dbError } = await this.supabase
@@ -153,6 +170,9 @@ export class ResumeService {
       .eq('id', resumeId);
 
     if (dbError) {
+      // Storage is already clean; only the stale metadata row remains. Say
+      // so in the safe log and surface retryable customer guidance.
+      console.error(JSON.stringify({ t: 'resume_delete_metadata_failed', resume_id: resumeId }));
       throw new Error(toCustomerMessage(dbError, 'delete'));
     }
   }

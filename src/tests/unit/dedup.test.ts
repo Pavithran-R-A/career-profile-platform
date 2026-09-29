@@ -1,125 +1,86 @@
 import { describe, it, expect } from 'vitest';
+import { dedupeEvidence } from '../../lib/github/evidence';
+import type { ProfileEvidence } from '../../lib/github/types';
 
-interface DedupSkill {
-  name: string;
-  evidenceCount: number;
+// Tests the SHIPPED dedupe helper (src/lib/github/evidence.ts — the same
+// function the evidence pipeline runs before persisting). No dedupe logic is
+// copied here.
+
+function evidence(overrides: Partial<ProfileEvidence> & { id: string }): ProfileEvidence {
+  return {
+    profile_id: '550e8400-e29b-41d4-a716-446655440000',
+    github_repository_id: null,
+    evidence_type: 'commit',
+    subject: 'fix: something',
+    summary: 'A summary',
+    source_path: null,
+    source_url: null,
+    source_commit_sha: null,
+    metadata: {},
+    is_public: false,
+    observed_at: '2026-09-01T00:00:00Z',
+    created_at: '2026-09-01T00:00:00Z',
+    updated_at: '2026-09-01T00:00:00Z',
+    ...overrides,
+  } as ProfileEvidence;
 }
 
-interface DedupLink {
-  label: string;
-  url: string;
-}
-
-function dedupSkills(skills: DedupSkill[]): DedupSkill[] {
-  const seen = new Map<string, DedupSkill>();
-  for (const skill of skills) {
-    const key = skill.name.trim().toLowerCase();
-    const existing = seen.get(key);
-    if (existing) {
-      existing.evidenceCount += skill.evidenceCount;
-    } else {
-      seen.set(key, { ...skill, name: skill.name.trim() });
-    }
-  }
-  return Array.from(seen.values());
-}
-
-function dedupLinks(links: DedupLink[]): DedupLink[] {
-  const seen = new Set<string>();
-  const result: DedupLink[] = [];
-  for (const link of links) {
-    const key = link.url.trim().toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(link);
-    }
-  }
-  return result;
-}
-
-describe('Skill deduplication', () => {
-  it('deduplicates skills by name (case-insensitive)', () => {
-    const skills: DedupSkill[] = [
-      { name: 'TypeScript', evidenceCount: 2 },
-      { name: 'typescript', evidenceCount: 1 },
-      { name: 'TYPESCRIPT', evidenceCount: 3 },
+describe('dedupeEvidence (production)', () => {
+  it('deduplicates identical evidence_type + source_url', () => {
+    const items = [
+      evidence({ id: 'a', evidence_type: 'commit', source_url: 'https://github.com/o/r/commit/1' }),
+      evidence({ id: 'b', evidence_type: 'commit', source_url: 'https://github.com/o/r/commit/1' }),
     ];
-    const result = dedupSkills(skills);
+    const result = dedupeEvidence(items);
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe('TypeScript');
-    expect(result[0].evidenceCount).toBe(6);
+    expect(result[0]?.id).toBe('a');
   });
 
-  it('preserves distinct skills', () => {
-    const skills: DedupSkill[] = [
-      { name: 'TypeScript', evidenceCount: 1 },
-      { name: 'Python', evidenceCount: 2 },
+  it('keeps distinct evidence even from the same repository', () => {
+    const items = [
+      evidence({ id: 'a', source_url: 'https://github.com/o/r/commit/1' }),
+      evidence({ id: 'b', source_url: 'https://github.com/o/r/commit/2' }),
     ];
-    const result = dedupSkills(skills);
-    expect(result).toHaveLength(2);
+    expect(dedupeEvidence(items)).toHaveLength(2);
   });
 
-  it('trims whitespace from skill names', () => {
-    const skills: DedupSkill[] = [{ name: '  React  ', evidenceCount: 1 }];
-    const result = dedupSkills(skills);
-    expect(result[0].name).toBe('React');
+  it('treats different evidence types as distinct even with the same URL', () => {
+    const items = [
+      evidence({ id: 'a', evidence_type: 'commit', source_url: 'https://github.com/o/r/x' }),
+      evidence({ id: 'b', evidence_type: 'pull_request', source_url: 'https://github.com/o/r/x' }),
+    ];
+    expect(dedupeEvidence(items)).toHaveLength(2);
   });
 
-  it('handles empty array', () => {
-    expect(dedupSkills([])).toEqual([]);
-  });
-
-  it('handles single skill', () => {
-    const result = dedupSkills([{ name: 'Go', evidenceCount: 5 }]);
+  it('falls back to commit sha when there is no URL', () => {
+    const items = [
+      evidence({ id: 'a', source_url: null, source_commit_sha: 'abc123' }),
+      evidence({ id: 'b', source_url: null, source_commit_sha: 'abc123' }),
+    ];
+    const result = dedupeEvidence(items);
     expect(result).toHaveLength(1);
-    expect(result[0].evidenceCount).toBe(5);
+    expect(result[0]?.id).toBe('a');
   });
-});
 
-describe('Link deduplication', () => {
-  it('deduplicates links by URL', () => {
-    const links: DedupLink[] = [
-      { label: 'GitHub', url: 'https://github.com/alice' },
-      { label: 'My GitHub', url: 'https://github.com/alice' },
+  it('falls back to subject when neither URL nor sha exists', () => {
+    const items = [
+      evidence({ id: 'a', source_url: null, source_commit_sha: null, subject: 'release v1' }),
+      evidence({ id: 'b', source_url: null, source_commit_sha: null, subject: 'release v1' }),
     ];
-    const result = dedupLinks(links);
-    expect(result).toHaveLength(1);
-    expect(result[0].label).toBe('GitHub');
+    expect(dedupeEvidence(items)).toHaveLength(1);
   });
 
-  it('deduplicates links by URL case-insensitively', () => {
-    const links: DedupLink[] = [
-      { label: 'GitHub', url: 'https://GitHub.com/Alice' },
-      { label: 'GitHub2', url: 'https://github.com/alice' },
+  it('handles an empty list', () => {
+    expect(dedupeEvidence([])).toEqual([]);
+  });
+
+  it('preserves input order for the survivors', () => {
+    const items = [
+      evidence({ id: 'first', source_url: 'https://x/1' }),
+      evidence({ id: 'dup', source_url: 'https://x/1' }),
+      evidence({ id: 'last', source_url: 'https://x/2' }),
     ];
-    const result = dedupLinks(links);
-    expect(result).toHaveLength(1);
-  });
-
-  it('preserves distinct links', () => {
-    const links: DedupLink[] = [
-      { label: 'GitHub', url: 'https://github.com/alice' },
-      { label: 'LinkedIn', url: 'https://linkedin.com/in/alice' },
-    ];
-    const result = dedupLinks(links);
-    expect(result).toHaveLength(2);
-  });
-
-  it('handles empty array', () => {
-    expect(dedupLinks([])).toEqual([]);
-  });
-
-  it('handles single link', () => {
-    const result = dedupLinks([{ label: 'Blog', url: 'https://alice.dev' }]);
-    expect(result).toHaveLength(1);
-  });
-
-  it('keeps first occurrence when URLs match', () => {
-    const links: DedupLink[] = [
-      { label: 'First', url: 'https://example.com' },
-      { label: 'Second', url: 'https://example.com' },
-    ];
-    const result = dedupLinks(links);
-    expect(result[0].label).toBe('First');
+    const result = dedupeEvidence(items);
+    expect(result.map((r) => r.id)).toEqual(['first', 'last']);
   });
 });

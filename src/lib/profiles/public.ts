@@ -110,7 +110,7 @@ export type PublicPreferences = z.infer<typeof PublicPreferencesSchema>;
  * view: basics + presentation relations + saved preferences. Never contains
  * `user_id` or any other internal column. Drafts are excluded by the view.
  */
-const PublicPortfolioSchema = z.object({
+export const PublicPortfolioSchema = z.object({
   id: uuid,
   username: z.string(),
   display_name: z.string().nullable(),

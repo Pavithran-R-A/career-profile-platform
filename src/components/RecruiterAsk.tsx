@@ -64,6 +64,10 @@ export default function RecruiterAsk({ username }: { username: string }) {
         if (err.code === 'AI_NOT_CONFIGURED' || err.code === 'SERVER_NOT_CONFIGURED') {
           setError('The assistant is not available on this deployment right now.');
         } else if (err.code === 'RATE_LIMITED') {
+          setError(
+            'The daily question limit for this profile has been reached. Try again tomorrow.'
+          );
+        } else if (err.code === 'TOO_MANY_REQUESTS') {
           const wait = err.retryAfterSeconds
             ? ` Try again in about ${err.retryAfterSeconds}s.`
             : ' Try again in a minute.';
@@ -164,7 +168,9 @@ export default function RecruiterAsk({ username }: { username: string }) {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--faint-foreground)]">
                   Based on
                 </p>
-                <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Profile sections used">
+                <ul
+                  className="mt-2 flex flex-wrap gap-1.5"
+                  aria-label="Profile sections cited for this answer">
                   {answer.sections.map((s) => (
                     <li key={s} className="chip text-xs">
                       {sectionLabel(s)}
@@ -172,8 +178,8 @@ export default function RecruiterAsk({ username }: { username: string }) {
                   ))}
                 </ul>
                 <p className="text-[11px] text-[var(--faint-foreground)] mt-2">
-                  Every statement above is drawn from these published sections. Anything not in the
-                  profile is not answered.
+                  The answer cites only these published sections. It may not cover every statement,
+                  and anything not in the profile is not answered.
                 </p>
               </div>
             )}

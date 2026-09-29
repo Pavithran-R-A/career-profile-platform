@@ -20,15 +20,30 @@ test.describe('recruiter ask on public profiles (desktop + mobile)', () => {
     expect(body.maxQuestionChars).toBe(400);
   });
 
-  test('ask endpoint is public, JSON-only, and rate-limitable', async ({ request }) => {
+  test('ask endpoint is public, JSON-only, and never rate-limits fresh traffic', async ({
+    request,
+  }) => {
     const res = await request.post('/api/recruiter/ask', {
       data: { username: 'definitely-not-a-user-9x7q', question: 'What did they build?' },
     });
-    // Anonymous call reaches the API: 404 profile-miss, 503 unconfigured, or
-    // 429 IP-rate-limited — never an HTML page, never a 401.
-    expect([404, 429, 503]).toContain(res.status());
+    // Handler order (P1-I): validate → published-profile lookup → 404 BEFORE
+    // any AI-config 503 — but only where a backend is configured (the deployed
+    // preview has one; the hermetic CI/preview build does not, so 503
+    // SERVER_NOT_CONFIGURED is truthful there). The binding contract is what
+    // this guards: a fresh run must NEVER see the anti-abuse limiter preempt
+    // with 429 (regression once 429'd every request everywhere).
+    expect(res.status()).not.toBe(429);
+    expect([404, 503]).toContain(res.status());
     const body = await res.json();
     expect(typeof body.error).toBe('string');
+    expect(typeof body.code).toBe('string');
+    if (res.status() === 404) {
+      // With a backend, the profile lookup wins over any AI-config 503.
+      expect(body.code).toBe('PROFILE_NOT_FOUND');
+      expect(body.error).not.toMatch(/not configured/i);
+    } else {
+      expect(body.code).toBe('SERVER_NOT_CONFIGURED');
+    }
   });
 
   test('recruiter panel is keyboard operable when enabled', async ({ page }) => {

@@ -59,7 +59,18 @@ GITHUB_APP_PRIVATE_KEY=<PEM content, escaped>
 GITHUB_APP_CLIENT_ID=<string>
 GITHUB_APP_CLIENT_SECRET=<string>
 GITHUB_APP_WEBHOOK_SECRET=<string>
+GITHUB_STATE_SECRET=<random string for signed install state>
+GITHUB_APP_SLUG=<your app's URL slug, e.g. career-profile-app>
 ```
+
+`GITHUB_APP_SLUG` is public-safe (it is just the app's URL name) and drives
+the dashboard's Install button and the `not configured` state: when the
+slug or the signing identity is absent, the dashboard truthfully says
+"GitHub integration is not configured" instead of showing a dead button.
+The install callback verifies the `installation_id` against the OAuth-
+authorized GitHub account before persisting — GitHub warns that a setup
+URL's installation id can be spoofed, so it is never trusted from the
+query alone.
 
 ### For local development
 
