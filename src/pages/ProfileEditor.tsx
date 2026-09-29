@@ -233,6 +233,10 @@ export default function ProfileEditor() {
   const [activeSection, setActiveSection] = useState<EditSection>('basics');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // Inline achievement editor (P1-G): the Edit affordance opens a real
+  // prefilled form instead of a no-op toggle. Declared with the other hooks
+  // (above any early return) to preserve hook order across renders.
+  const [achievementEditId, setAchievementEditId] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingKey | null>(null);
   const [preferences, setPreferences] = useState<ProfilePreferences | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -781,10 +785,6 @@ export default function ProfileEditor() {
       setSaving(false);
     }
   };
-
-  // Inline achievement editor (P1-G): the Edit affordance now opens a real
-  // prefilled form instead of a no-op toggle.
-  const [achievementEditId, setAchievementEditId] = useState<string | null>(null);
 
   const handleAchievementSave = async (e: FormEvent<HTMLFormElement>, id: string) => {
     e.preventDefault();
