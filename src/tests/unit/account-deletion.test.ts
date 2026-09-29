@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  isRecentAuth,
+  validateAuthFreshness,
   RECENT_AUTH_WINDOW_S,
   buildDeletionPlan,
   EXPLICIT_TABLES,
@@ -16,24 +16,72 @@ import {
   type DeletionRequestRow,
 } from '../../lib/account/deletion';
 
-describe('isRecentAuth (re-auth gate)', () => {
-  const now = 1_800_000_000;
+const NOW = 1_800_000_000;
 
-  it('accepts tokens issued within the window', () => {
-    expect(isRecentAuth(now - 30, now)).toBe(true);
-    expect(isRecentAuth(now - RECENT_AUTH_WINDOW_S, now)).toBe(true);
+function claimsFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { sub: 'user-A', iat: NOW - 30, exp: NOW + 3000, role: 'authenticated', ...overrides };
+}
+
+describe('validateAuthFreshness (verified-claims re-auth gate)', () => {
+  it('accepts a valid fresh verified claim set', () => {
+    const r = validateAuthFreshness(claimsFixture(), 'user-A', NOW);
+    expect(r.fresh).toBe(true);
+    expect(r.reason).toBe('ok');
   });
 
-  it('rejects stale tokens (long-lived sessions must re-authenticate)', () => {
-    expect(isRecentAuth(now - RECENT_AUTH_WINDOW_S - 1, now)).toBe(false);
-    expect(isRecentAuth(now - 3600, now)).toBe(false);
+  it('accepts a token at exactly the window boundary', () => {
+    const r = validateAuthFreshness(
+      claimsFixture({ iat: NOW - RECENT_AUTH_WINDOW_S }),
+      'user-A',
+      NOW
+    );
+    expect(r.fresh).toBe(true);
   });
 
-  it('rejects malformed or future iat values', () => {
-    expect(isRecentAuth(undefined, now)).toBe(false);
-    expect(isRecentAuth('1750000000', now)).toBe(false);
-    expect(isRecentAuth(Number.NaN, now)).toBe(false);
-    expect(isRecentAuth(now + 60, now)).toBe(false);
+  it('rejects stale claims (long-lived sessions must re-authenticate)', () => {
+    const r = validateAuthFreshness(
+      claimsFixture({ iat: NOW - RECENT_AUTH_WINDOW_S - 1 }),
+      'user-A',
+      NOW
+    );
+    expect(r.fresh).toBe(false);
+    expect(r.reason).toBe('stale');
+  });
+
+  it('rejects future iat', () => {
+    const r = validateAuthFreshness(claimsFixture({ iat: NOW + 60 }), 'user-A', NOW);
+    expect(r.fresh).toBe(false);
+    expect(r.reason).toBe('future_iat');
+  });
+
+  it('rejects a sub mismatch (User A cannot act for User B)', () => {
+    const r = validateAuthFreshness(claimsFixture({ sub: 'user-B' }), 'user-A', NOW);
+    expect(r.fresh).toBe(false);
+    expect(r.reason).toBe('sub_mismatch');
+  });
+
+  it('rejects missing/malformed claim sets', () => {
+    expect(validateAuthFreshness(null, 'user-A', NOW).reason).toBe('missing_claims');
+    expect(validateAuthFreshness({}, 'user-A', NOW).reason).toBe('malformed_claims');
+    expect(validateAuthFreshness({ sub: 'user-A' }, 'user-A', NOW).reason).toBe('malformed_claims');
+    expect(validateAuthFreshness({ sub: 'user-A', iat: Number.NaN }, 'user-A', NOW).reason).toBe(
+      'malformed_claims'
+    );
+    expect(
+      validateAuthFreshness({ sub: 'user-A', iat: 'not-a-number' }, 'user-A', NOW).reason
+    ).toBe('malformed_claims');
+  });
+
+  it('string-number iat is coerced and validated', () => {
+    const r = validateAuthFreshness({ sub: 'user-A', iat: String(NOW - 10) }, 'user-A', NOW);
+    expect(r.fresh).toBe(true);
+  });
+
+  it('a getUser() User object without iat is NOT sufficient (no false freshness)', () => {
+    const userObject = { id: 'user-A', email: 'a@example.com', aud: 'authenticated' };
+    const r = validateAuthFreshness(userObject, 'user-A', NOW);
+    expect(r.fresh).toBe(false);
+    expect(r.reason).toBe('malformed_claims');
   });
 });
 

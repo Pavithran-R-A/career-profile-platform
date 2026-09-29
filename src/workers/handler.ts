@@ -25,7 +25,7 @@ import {
 import { normalizeUsername, validateUsername } from '../lib/validators/username';
 import { isHttpUrl } from '../lib/validators/url';
 import {
-  isRecentAuth,
+  validateAuthFreshness,
   newDeletionRequest,
   recordAttempt,
   responseForAuthDeleteFailure,
@@ -696,7 +696,11 @@ async function handleAccountDelete(
   }
 
   try {
-    // 2. Freshness check via the auth server (also re-validates the token).
+    // 2. Freshness gate via VERIFIED claims. A publishable-key auth client
+    // re-validates the access token against the Auth server, and
+    // getClaims() returns signature-verified JWT claims (local WebCrypto
+    // for asymmetric signing keys, server verification otherwise). The
+    // unverified decoded token is never used for this decision.
     const publishableKey =
       getEnvValue(env, 'SUPABASE_PUBLISHABLE_KEY') ||
       getEnvValue(env, 'VITE_SUPABASE_PUBLISHABLE_KEY');
@@ -707,17 +711,21 @@ async function handleAccountDelete(
       });
     }
 
-    const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${auth.token}`, apikey: publishableKey },
+    const { createClient } = await import('@supabase/supabase-js');
+    const authClient = createClient(supabaseUrl, publishableKey, {
+      global: { headers: { Authorization: `Bearer ${auth.token}` } },
     });
-    if (!userRes.ok) {
+
+    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(auth.token);
+    if (claimsError || !claimsData?.claims) {
       return json({ error: 'Unauthorized' }, 401, origin, env, {
         code: 'UNAUTHORIZED',
         requestId,
       });
     }
-    const user = (await userRes.json()) as { id?: string; iat?: number };
-    if (!user.id || user.id !== auth.userId || !isRecentAuth(user.iat)) {
+
+    const freshness = validateAuthFreshness(claimsData.claims, auth.userId);
+    if (!freshness.fresh) {
       return json(
         { error: 'Please sign in again before deleting your account.' },
         401,
@@ -1355,7 +1363,11 @@ async function handleWebhook(
           });
           if (error) {
             console.error(
-              JSON.stringify({ t: 'webhook_apply_error', id: requestId, code: error.code || 'INTERNAL' })
+              JSON.stringify({
+                t: 'webhook_apply_error',
+                id: requestId,
+                code: error.code || 'INTERNAL',
+              })
             );
             // Failure inside the transaction rolls everything back: the
             // event stays retryable and a Razorpay retry can re-apply.
@@ -1366,7 +1378,11 @@ async function handleWebhook(
             // Unknown order: provider-side mismatch. Not retryable billing —
             // report clearly and do not mark processed.
             console.error(
-              JSON.stringify({ t: 'webhook_order_not_found', id: requestId, code: 'ORDER_NOT_FOUND' })
+              JSON.stringify({
+                t: 'webhook_order_not_found',
+                id: requestId,
+                code: 'ORDER_NOT_FOUND',
+              })
             );
             return { ok: true as const, result: 'order_not_found' };
           }
