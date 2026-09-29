@@ -39,13 +39,17 @@ ats_downloaded`, plus `profile_updated`. No PII in events; allowlisted names;
 
 ## Plans (server-authoritative pricing)
 
-|                              | Free | Pro (annual) |
-| ---------------------------- | ---- | ------------ |
-| ATS resume variants          | 3    | 20           |
-| Recruiter AI questions / day | 10   | 100          |
-| Job tailoring / month        | 3    | 30           |
-| Custom domains               | 0    | 1            |
-| Remove platform branding     | no   | yes          |
+|                              | Free | Pro (one-time annual) |
+| ---------------------------- | ---- | --------------------- |
+| ATS resume variants          | 3    | 20                    |
+| Recruiter AI questions / day | 10   | 100                   |
+| Deterministic job tailoring  | Unlimited | Unlimited        |
+| GitHub repos (selected)      | 5    | 20                    |
+| Custom domains               | 0    | 1                     |
+
+All paid-feature quotas are enforced server-side (usage RPC / worker
+endpoints), not just in the UI. There is no branding-removal entitlement;
+the platform mark is part of every public portfolio.
 
 Price authority is the worker (`PRO_ANNUAL_PRICE_PAISE`, default ₹1,999/yr);
 the client never sets amounts.
@@ -63,10 +67,11 @@ the client never sets amounts.
   code paths exist but are unconfigured; the UI shows truthful disabled states.
 - No teams/organizations, no third-party API access (public pages only).
   Account deletion exists: `/dashboard/account/delete` (typed confirmation,
-  fresh re-auth within 10 minutes, storage-first cleanup, server-only auth
-  admin delete, sign-out + redirect). Billing: end-of-cycle cancel/resume is
-  wired (`/api/billing/subscription/{cancel,resume}` + Billing UI); live
-  payments still await production credentials.
+  fresh re-auth via verified JWT claims within 10 minutes, storage-first
+  cleanup including orphaned objects, server-only auth admin delete,
+  sign-out + redirect). Billing: Pro is ONE-TIME ANNUAL ACCESS (no automatic
+  renewal, no cancel/resume — legacy endpoints answer 410); live payments
+  still await production credentials.
 
 ## What we need from beta users
 

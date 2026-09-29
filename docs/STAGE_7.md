@@ -27,16 +27,26 @@ Stage 7 introduces paid plans (Free / Pro), server-side billing with Razorpay, u
 
 ### Canonical Limits
 
-| Metric                | Free | Pro |
-| --------------------- | ---- | --- |
-| Resume variants       | 3    | 20  |
-| GitHub repos          | 5    | 20  |
-| Recruiter AI / day    | 10   | 100 |
-| Job tailoring / month | 3    | 30  |
-| Custom domains        | 0    | 1   |
-| Remove branding       | no   | yes |
+| Metric                       | Free      | Pro  |
+| ---------------------------- | --------- | ---- |
+| Resume variants (RPC)        | 3         | 20   |
+| GitHub repos (selected)      | 5         | 20   |
+| Recruiter AI / day (RPC)     | 10        | 100  |
+| Deterministic job tailoring  | Unlimited | Unlimited |
+| Custom domains               | 0         | 1    |
 
-### Billing Flow
+Every metered quota is enforced server-side: variant creation through the
+`create_profile_variant` RPC (the direct client INSERT policy was removed),
+recruiter AI through `consume_recruiter_quota`, repo selection and custom
+domains in the worker endpoints. There is no branding-removal entitlement.
+
+### Billing Flow (ONE-TIME ANNUAL PRO ACCESS)
+
+There is no subscription and no automatic renewal: a payment grants one
+year of Pro. Paying again while active extends from
+`max(now, current_period_end)` + 1 year — existing access is never
+shortened. Legacy `cancel`/`resume` routes answer 410 and the
+`cancel_at_period_end` column is retained as unused schema.
 
 ```
 Client (/dashboard/billing)
@@ -172,19 +182,17 @@ RATE_LIMIT_KEY_SECRET=
 - [x] .cv purchase gated behind explicit enable flags + live quote
 - [x] No live payments/domains in this pass
 
-## Cancellation / Resume (End-of-Cycle)
+## Legacy Cancellation Routes (RETIRED — 410)
 
-- `POST /api/billing/subscription/cancel` — sets `cancel_at_period_end = true`;
-  Pro (and every entitlement) stays active until `current_period_end`.
-- `POST /api/billing/subscription/resume` — clears the flag; renewal proceeds.
-- Both are idempotent (re-applying the same action returns the current state),
-  auth-gated, and feature-gated behind `BILLING_ENABLED`.
-- Provider state remains authoritative: a renewal webhook upserts the
-  subscription and clears the flag; a period that already ended yields a
-  `CONFLICT` for client cancel attempts (expiry handles it instead).
-- `cancel_at_period_end` is exposed via `/api/billing/status` (`cancelAtPeriodEnd`)
-  and reflected truthfully in the Billing UI with a confirm step.
-- Migration: `supabase/migrations/20260928020000_subscription_cancellation.sql`.
+The billing model is ONE-TIME ANNUAL PRO ACCESS: there is nothing to cancel
+or resume and no automatic renewal.
+
+- `POST /api/billing/subscription/cancel` and `/resume` respond **410 Gone**
+  with a truthful explanation; no UI links to them.
+- The `cancel_at_period_end` column still exists (removing it would require
+  a destructive migration) but is legacy/unused by active code.
+- Migration: `supabase/migrations/20260928020000_subscription_cancellation.sql`
+  (schema only); enforcement retirement: `20260929150000_entitlement_enforcement_rpcs.sql`.
 
 ## Future Enhancements
 

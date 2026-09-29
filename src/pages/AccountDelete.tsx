@@ -9,10 +9,12 @@ type Phase = 'confirm' | 'reauth' | 'deleting' | 'done';
 /**
  * Permanent account deletion.
  *
- * Flow: plain-language warning → mandatory fresh sign-in (re-auth; the server
- * rejects tokens older than 10 minutes) → POST /api/account/delete with the
- * fresh token → sign out locally → land on the home page. If deletion fails
- * the user is still signed in and can retry; nothing is half-deleted.
+ * Flow: plain-language warning → mandatory fresh sign-in (verified JWT
+ * claims; the server rejects tokens older than 10 minutes) → POST
+ * /api/account/delete with the fresh token → sign out locally → land on the
+ * home page. Deletion is permanent and spans multiple services; a failed
+ * attempt may have partially completed, and retrying safely continues from
+ * where the previous attempt stopped.
  */
 export default function AccountDelete() {
   useNoindexMeta('Delete account — Career Profile');

@@ -65,8 +65,9 @@
 - [x] Billing UI (`/pricing`, `/dashboard/billing`)
 - [x] Custom domains (Cloudflare for SaaS) + `/dashboard/domains`
 - [x] .CV domain provider adapter (disabled by default, live quote only)
-- [x] Subscription cancellation (end-of-cycle) / resume flow: server rows stay
-      authoritative, entitlements persist until period end, renewal clears the flag
+- [x] ONE-TIME ANNUAL Pro access via Razorpay Orders: payment extends
+      access from max(now, current_period_end) + 1 year; no auto-renewal,
+      no cancel/resume (legacy routes answer 410)
 - [ ] Live payments and live domain purchases (pending production credentials)
 
 ## Stage 8 - Real-User Validation
