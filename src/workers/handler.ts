@@ -905,6 +905,108 @@ async function handleResumeExtract(
   }
 }
 
+// ─── Resume variant persistence (server-owned; quota enforced) ──
+
+async function handleCreateVariant(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  try {
+    const body = (await request.json()) as {
+      name?: string;
+      targetRole?: string | null;
+      targetCompany?: string | null;
+      jobRequirements?: unknown;
+      variantData?: unknown;
+    };
+    if (typeof body.name !== 'string' || body.name.trim().length === 0) {
+      return json({ error: 'name is required' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    if (!Array.isArray(body.jobRequirements)) {
+      return json({ error: 'jobRequirements must be an array' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    // Ownership from the principal; plan decides the variant limit.
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const subscription = await getSubscription(env, auth.userId);
+    const entitlements = resolveEntitlements(subscription);
+
+    const { data: newId, error } = await admin.rpc(
+      'create_profile_variant' as never,
+      {
+        p_profile_id: owned[0],
+        p_name: body.name.trim().slice(0, 200),
+        p_target_role: body.targetRole ?? null,
+        p_target_company: body.targetCompany ?? null,
+        p_job_requirements: body.jobRequirements,
+        p_variant_data:
+          body.variantData && typeof body.variantData === 'object' ? body.variantData : {},
+        p_limit: entitlements.resumeVariants,
+      } as never
+    );
+
+    if (error) {
+      console.error(JSON.stringify({ t: 'variant_rpc_error', id: requestId }));
+      return json({ error: 'Failed to save variant' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+    if (newId === null || newId === undefined) {
+      // RPC returns NULL when the plan limit is reached.
+      return json(
+        { error: `Plan limit: at most ${entitlements.resumeVariants} saved resume variants` },
+        429,
+        origin,
+        env,
+        { code: 'RATE_LIMITED', requestId }
+      );
+    }
+    return json({ id: newId }, 200, origin, env, { requestId });
+  } catch {
+    console.error(JSON.stringify({ t: 'variant_error', id: requestId, code: 'INTERNAL' }));
+    return json({ error: 'Failed to save variant' }, 500, origin, env, {
+      code: 'INTERNAL',
+      requestId,
+    });
+  }
+}
+
 // ─── Recruiter AI (public, strictly profile-grounded) ──────────
 
 const RECRUITER_ASK_SCHEMA = z.object({
@@ -2185,6 +2287,10 @@ export async function handleRequest(
 
   if (url.pathname === '/api/recruiter/ask' && request.method === 'POST') {
     return handleRecruiterAsk(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/tailoring/variant' && request.method === 'POST') {
+    return handleCreateVariant(request, origin, env, id);
   }
 
   if (url.pathname === '/api/account/delete' && request.method === 'POST') {
