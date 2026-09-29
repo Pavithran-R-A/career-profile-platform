@@ -63,6 +63,12 @@ export interface Env {
   DOTCV_API_BASE_URL?: string;
   DOTCV_API_KEY?: string;
   RATE_LIMIT_KEY_SECRET?: string;
+  GITHUB_APP_ID?: string;
+  GITHUB_APP_PRIVATE_KEY?: string;
+  GITHUB_APP_CLIENT_ID?: string;
+  GITHUB_APP_CLIENT_SECRET?: string;
+  GITHUB_STATE_SECRET?: string;
+  GITHUB_APP_SLUG?: string;
   BILLING_ENABLED?: string;
   DOMAINS_ENABLED?: string;
   RECRUITER_AI_ENABLED?: string;
@@ -253,6 +259,453 @@ async function verifyAuth(
   } catch {
     return null;
   }
+}
+
+// ─── GitHub integration (server-side wiring) ──────────────────
+
+/**
+ * Threads worker env bindings into process.env for the GitHub modules that
+ * read configuration through process.env (jwt.ts, config.ts). Restored
+ * after each call; safe because request handling is single-threaded per
+ * isolate event-loop turn.
+ */
+function withGitHubEnv<T>(env: Env, fn: () => Promise<T>): Promise<T> {
+  const keys = [
+    'GITHUB_APP_ID',
+    'GITHUB_APP_PRIVATE_KEY',
+    'GITHUB_APP_CLIENT_ID',
+    'GITHUB_APP_CLIENT_SECRET',
+    'GITHUB_STATE_SECRET',
+    'GITHUB_APP_SLUG',
+  ] as const;
+  const saved = new Map<string, string | undefined>();
+  for (const key of keys) {
+    saved.set(key, process.env[key]);
+    const value = getEnvValue(env, key);
+    if (value) process.env[key] = value;
+    else delete process.env[key];
+  }
+  return fn().finally(() => {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+}
+
+async function handleGitHubInstallStart(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const { githubInstallInfo, createSignedState } = await import('../lib/github/server');
+    const info = githubInstallInfo(env as never);
+    if (!info.configured || !info.installUrl) {
+      return json({ error: 'GitHub integration is not configured' }, 503, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const state = createSignedState(auth.userId, env as never);
+    return json({ installUrl: info.installUrl, state }, 200, origin, env, { requestId });
+  });
+}
+
+async function handleGitHubCallback(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const mod = await import('../lib/github/server');
+    const body = (await request.json().catch(() => ({}))) as {
+      code?: string;
+      installationId?: string | number;
+      state?: string;
+    };
+    if (!body.state || typeof body.code !== 'string' || body.code.length === 0) {
+      return json({ error: 'Missing authorization code or state' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    const stateCheck = mod.verifySignedState(body.state, env as never, auth.userId);
+    if (!stateCheck.ok) {
+      return json({ error: 'Invalid or expired installation state' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    // 1. Exchange the OAuth code for the authorized GitHub identity.
+    const ghUser = await mod.exchangeCodeForUser(body.code, env as never);
+    if (!ghUser) {
+      return json({ error: 'GitHub authorization failed' }, 502, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    // 2. Resolve the caller's single owned profile via the admin client —
+    // ownership derived from the principal, never from the request body.
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length === 0) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+    if (owned.length > 1) {
+      return json({ error: 'Multiple profiles found; contact support' }, 409, origin, env, {
+        code: 'CONFLICT',
+        requestId,
+      });
+    }
+    const profileId = owned[0];
+
+    // 3. NEVER trust installation_id from the query/setup payload: verify it
+    // via the App JWT and prove it belongs to the authorized GitHub user.
+    const installationId = Number(body.installationId);
+    if (!Number.isInteger(installationId) || installationId <= 0) {
+      return json({ error: 'Missing installation id' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    const verified = await mod.verifyInstallationForAccount(
+      installationId,
+      ghUser.id,
+      env as never
+    );
+    if (!verified) {
+      return json(
+        { error: 'Installation does not belong to the authorized GitHub account' },
+        403,
+        origin,
+        env,
+        { code: 'FORBIDDEN', requestId }
+      );
+    }
+
+    // 4. Persist the verified installation (DB is the source of truth).
+    const { error: upsertError } = await admin.from('github_connections' as never).upsert(
+      {
+        profile_id: profileId,
+        installation_id: installationId,
+        github_account_id: verified.accountId,
+        github_account_login: verified.accountLogin,
+        github_account_type: verified.accountType,
+        status: 'active',
+      } as never,
+      { onConflict: 'profile_id' }
+    );
+    if (upsertError) {
+      return json({ error: 'Failed to save connection' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+
+    return json(
+      {
+        connected: true,
+        account: { login: verified.accountLogin, type: verified.accountType },
+      },
+      200,
+      origin,
+      env,
+      { requestId }
+    );
+  });
+}
+
+async function handleGitHubSync(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const { syncConnectionRepositories } = await import('../lib/github/server');
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    // Resolve the caller's single owned profile, then its connection —
+    // ownership derived from the authenticated principal only.
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+    const { data: connRows } = await admin
+      .from('github_connections' as never)
+      .select('id, installation_id')
+      .eq('profile_id', owned[0] as never)
+      .limit(1);
+    const connection = ((connRows ?? []) as Array<{ id: string; installation_id: number }>)[0];
+    if (!connection) {
+      return json({ error: 'GitHub is not connected' }, 404, origin, env, {
+        code: 'NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const outcome = await syncConnectionRepositories({
+      connectionId: connection.id,
+      installationId: Number(connection.installation_id),
+      supabase: admin as never,
+    });
+    if (!outcome.ok) {
+      return json({ error: 'GitHub sync failed' }, 502, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    return json(outcome, 200, origin, env, { requestId });
+  });
+}
+
+async function handleGitHubDisconnect(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+
+    // Cascades github_repositories; profile_evidence rows keep via set null.
+    const { error } = await admin
+      .from('github_connections' as never)
+      .delete()
+      .eq('profile_id', owned[0] as never);
+    if (error) {
+      return json({ error: 'Failed to disconnect GitHub' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+    return json({ disconnected: true }, 200, origin, env, { requestId });
+  });
+}
+
+async function handleGitHubRepoAction(
+  request: Request,
+  repoId: string,
+  action: 'select' | 'public',
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    // Ownership chain: caller → profile → connection → repository row.
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+    const { data: connRows } = await admin
+      .from('github_connections' as never)
+      .select('id')
+      .eq('profile_id', owned[0] as never)
+      .limit(1);
+    const connection = ((connRows ?? []) as Array<{ id: string }>)[0];
+    if (!connection) {
+      return json({ error: 'GitHub is not connected' }, 404, origin, env, {
+        code: 'NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const { data: repoRows } = await admin
+      .from('github_repositories' as never)
+      .select('id, is_private, selected_for_evidence, show_publicly')
+      .eq('connection_id', connection.id as never)
+      .eq('github_repo_id', Number(repoId) as never)
+      .limit(1);
+    const repo = (
+      (repoRows ?? []) as Array<{
+        id: string;
+        is_private: boolean;
+        selected_for_evidence: boolean;
+        show_publicly: boolean;
+      }>
+    )[0];
+    if (!repo) {
+      return json({ error: 'Repository not found' }, 404, origin, env, {
+        code: 'NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const body = (await request.json().catch(() => ({}))) as { value?: boolean };
+    if (typeof body.value !== 'boolean') {
+      return json({ error: 'value (boolean) is required' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    if (action === 'select') {
+      const subscription = await getSubscription(env, auth.userId);
+      const entitlements = resolveEntitlements(subscription);
+      const { count: selectedCount } = await admin
+        .from('github_repositories' as never)
+        .select('id', { count: 'exact', head: true })
+        .eq('connection_id', connection.id as never)
+        .eq('selected_for_evidence', true as never);
+      const nextCount =
+        repo.selected_for_evidence && !body.value
+          ? Math.max(0, (selectedCount ?? 0) - 1)
+          : repo.selected_for_evidence
+            ? (selectedCount ?? 0)
+            : (selectedCount ?? 0) + 1;
+      if (nextCount > entitlements.githubRepos) {
+        return json(
+          { error: `Plan limit: at most ${entitlements.githubRepos} selected repositories` },
+          429,
+          origin,
+          env,
+          { code: 'RATE_LIMITED', requestId }
+        );
+      }
+      const { error: updateError } = await admin
+        .from('github_repositories' as never)
+        .update({ selected_for_evidence: body.value } as never)
+        .eq('id', repo.id as never);
+      if (updateError) {
+        return json({ error: 'Failed to update repository' }, 500, origin, env, {
+          code: 'INTERNAL',
+          requestId,
+        });
+      }
+      return json({ ok: true }, 200, origin, env, { requestId });
+    }
+
+    // action === 'public': a private repo can NEVER be public evidence.
+    if (body.value && repo.is_private) {
+      return json({ error: 'Private repositories cannot be shown publicly' }, 403, origin, env, {
+        code: 'FORBIDDEN',
+        requestId,
+      });
+    }
+    const { error: updateError } = await admin
+      .from('github_repositories' as never)
+      .update({ show_publicly: body.value } as never)
+      .eq('id', repo.id as never);
+    if (updateError) {
+      return json({ error: 'Failed to update repository' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+    return json({ ok: true }, 200, origin, env, { requestId });
+  });
+}
+
+async function handleGitHubInstallInfo(
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  return withGitHubEnv(env, async () => {
+    const { githubInstallInfo } = await import('../lib/github/server');
+    const info = githubInstallInfo(env as never);
+    return json(info, 200, origin, env, { requestId });
+  });
 }
 
 // ─── Storage authorization ──────────────────────────────────────
@@ -1720,6 +2173,40 @@ export async function handleRequest(
 
   if (url.pathname === '/api/billing/subscription/resume' && request.method === 'POST') {
     return handleSubscriptionCancel(request, origin, env, id, 'resume');
+  }
+
+  if (url.pathname === '/api/github/install/start' && request.method === 'POST') {
+    return handleGitHubInstallStart(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/callback' && request.method === 'POST') {
+    return handleGitHubCallback(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/config' && request.method === 'GET') {
+    return handleGitHubInstallInfo(origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/sync' && request.method === 'POST') {
+    return handleGitHubSync(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/disconnect' && request.method === 'POST') {
+    return handleGitHubDisconnect(request, origin, env, id);
+  }
+
+  const githubRepoAction = url.pathname.match(
+    /^\/api\/github\/repositories\/([0-9]+)\/(select|public)$/
+  );
+  if (githubRepoAction && request.method === 'POST') {
+    return handleGitHubRepoAction(
+      request,
+      githubRepoAction[1],
+      githubRepoAction[2] as 'select' | 'public',
+      origin,
+      env,
+      id
+    );
   }
 
   if (url.pathname === '/api/domains/custom' && request.method === 'POST') {

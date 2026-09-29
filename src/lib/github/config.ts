@@ -44,23 +44,15 @@ export interface GitHubModuleConfig {
 
 // ─── Environment Loading ──────────────────────────────────────
 
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `Missing required environment variable: ${name}. ` +
-        'Configure it in your .env file or deployment settings.'
-    );
-  }
-  return value;
-}
-
 function optionalEnv(name: string, fallback: string): string {
-  return process.env[name] ?? fallback;
+  // Works in both Workers (env bindings are threaded into process.env shim
+  // by workerd's compatibility layer) and Node test runs.
+  const value = typeof process !== 'undefined' ? process.env[name] : undefined;
+  return value ?? fallback;
 }
 
 function intEnv(name: string, fallback: number): number {
-  const raw = process.env[name];
+  const raw = optionalEnv(name, '');
   if (!raw) return fallback;
   const parsed = parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -70,21 +62,27 @@ function intEnv(name: string, fallback: number): number {
 
 let cachedConfig: GitHubModuleConfig | null = null as GitHubModuleConfig | null;
 
+/**
+ * Loads the GitHub App module config WITHOUT throwing when credentials are
+ * absent — the audit requires truthful "not configured" behavior rather than
+ * crashes. Callers that require credentials must check `isConfigured()`
+ * first and degrade gracefully.
+ */
 export function loadGitHubConfig(): GitHubModuleConfig {
   if (cachedConfig) return cachedConfig;
 
-  const appId = parseInt(requiredEnv('GITHUB_APP_ID'), 10);
-  if (!Number.isFinite(appId) || appId <= 0) {
-    throw new Error('GITHUB_APP_ID must be a positive integer');
-  }
+  const appId = optionalEnv('GITHUB_APP_ID', '');
+  const privateKey = optionalEnv('GITHUB_APP_PRIVATE_KEY', '').replace(/\\n/g, '\n');
+  const clientId = optionalEnv('GITHUB_APP_CLIENT_ID', '');
+  const clientSecret = optionalEnv('GITHUB_APP_CLIENT_SECRET', '');
 
   const config: GitHubModuleConfig = {
     app: {
-      appId,
-      privateKey: requiredEnv('GITHUB_APP_PRIVATE_KEY'),
-      clientId: requiredEnv('GITHUB_APP_CLIENT_ID'),
-      clientSecret: requiredEnv('GITHUB_APP_CLIENT_SECRET'),
-      webhookSecret: requiredEnv('GITHUB_APP_WEBHOOK_SECRET'),
+      appId: Number.isFinite(parseInt(appId, 10)) && appId !== '' ? parseInt(appId, 10) : 0,
+      privateKey,
+      clientId,
+      clientSecret,
+      webhookSecret: optionalEnv('GITHUB_APP_WEBHOOK_SECRET', ''),
     },
     syncLimits: {
       maxCommits: intEnv('GITHUB_SYNC_MAX_COMMITS', DEFAULT_SYNC_LIMITS.maxCommits),
@@ -107,6 +105,16 @@ export function loadGitHubConfig(): GitHubModuleConfig {
 
   cachedConfig = config;
   return config;
+}
+
+/**
+ * Truthful configuration probe: the App can act on GitHub only when the
+ * signing identity (appId + privateKey) exists. OAuth-only fields are not
+ * required for installation-token flows.
+ */
+export function isGitHubAppConfigured(): boolean {
+  const { app } = loadGitHubConfig();
+  return Boolean(app.appId > 0 && app.privateKey);
 }
 
 export function resetConfigCache(): void {

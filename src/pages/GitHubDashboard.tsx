@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
@@ -14,6 +14,12 @@ import EvidenceList from '../components/EvidenceList';
 import { getSupabaseClient } from '../lib/supabase/client';
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
+interface GitHubConfig {
+  configured: boolean;
+  slug: string | null;
+  installUrl: string | null;
+}
+
 interface SyncState {
   loading: boolean;
   repositories: GitHubRepositoryRecord[];
@@ -22,14 +28,28 @@ interface SyncState {
   error: string | null;
 }
 
+function safeErrorMessage(status: number, fallback: string): string {
+  if (status === 403) return 'GitHub is not connected to your account.';
+  if (status === 404) return 'GitHub is not connected yet.';
+  if (status === 429) return 'Plan limit reached for selected repositories.';
+  return fallback;
+}
+
 export default function GitHubDashboard() {
   useNoindexMeta('GitHub evidence — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
-  const profileService = new ProfileService();
+  const profileServiceRef = useRef<ProfileService | null>(null);
+  if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
+  const profileService = profileServiceRef.current;
 
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ghConfig, setGhConfig] = useState<GitHubConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [installStarting, setInstallStarting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<SyncState>({
     loading: false,
     repositories: [],
@@ -45,13 +65,54 @@ export default function GitHubDashboard() {
         setLoading(false);
       });
     }
-  }, [auth]);
+  }, [auth, profileService]);
 
   useEffect(() => {
     if (auth.status === 'unauthenticated' && !loading) {
       void navigate('/login');
     }
   }, [auth, loading, navigate]);
+
+  // Public-safe config probe: drives the truthful not-configured state.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/github/config');
+        if (!res.ok) throw new Error(String(res.status));
+        const data = (await res.json()) as GitHubConfig;
+        if (!cancelled) setGhConfig(data);
+      } catch {
+        if (!cancelled) setGhConfig({ configured: false, slug: null, installUrl: null });
+      } finally {
+        if (!cancelled) setConfigLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const authedFetch = useCallback(
+    async (
+      path: string,
+      body?: unknown
+    ): Promise<{ ok: boolean; status: number; data: unknown }> => {
+      const session = (await getSupabaseClient().auth.getSession()).data.session;
+      const token = session?.access_token ?? '';
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const data = (await res.json().catch(() => ({}))) as unknown;
+      return { ok: res.ok, status: res.status, data };
+    },
+    []
+  );
 
   const loadConnectionData = useCallback(async () => {
     if (!profile) return;
@@ -101,11 +162,11 @@ export default function GitHubDashboard() {
         connection,
         error: null,
       });
-    } catch (err) {
+    } catch {
       setSyncState((prev) => ({
         ...prev,
         loading: false,
-        error: (err as Error).message,
+        error: 'Could not load your GitHub data. Please retry.',
       }));
     }
   }, [profile]);
@@ -114,23 +175,85 @@ export default function GitHubDashboard() {
     void loadConnectionData();
   }, [loadConnectionData]);
 
-  const handleToggleRepository = async (repoId: string, selected: boolean) => {
-    const supabase = getSupabaseClient();
+  const handleStartInstall = useCallback(() => {
+    void (async () => {
+      setInstallStarting(true);
+      setNotice(null);
+      try {
+        const result = await authedFetch('/api/github/install/start');
+        if (!result.ok) {
+          setNotice(
+            result.status === 503
+              ? 'GitHub integration is not configured in this environment.'
+              : 'Could not start the GitHub install. Please retry.'
+          );
+          return;
+        }
+        const { installUrl, state } = result.data as { installUrl: string; state: string };
+        window.location.assign(`${installUrl}?state=${encodeURIComponent(state)}`);
+      } catch {
+        setNotice('Could not start the GitHub install. Please retry.');
+      } finally {
+        setInstallStarting(false);
+      }
+    })();
+  }, [authedFetch]);
 
-    const { error } = await supabase
-      .from('github_repositories' as never)
-      .update({ selected_for_evidence: selected } as never)
-      .eq('id', repoId);
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    setNotice(null);
+    try {
+      const result = await authedFetch('/api/github/sync');
+      if (!result.ok) {
+        setNotice(
+          safeErrorMessage(
+            result.status,
+            'GitHub sync failed. If credentials are not configured, sync is unavailable.'
+          )
+        );
+        return;
+      }
+      await loadConnectionData();
+      setNotice('Repositories synced.');
+    } catch {
+      setNotice('GitHub sync failed. Please retry.');
+    } finally {
+      setSyncing(false);
+    }
+  }, [authedFetch, loadConnectionData]);
 
-    if (!error) {
+  const handleDisconnect = useCallback(async () => {
+    setNotice(null);
+    try {
+      const result = await authedFetch('/api/github/disconnect');
+      if (!result.ok) {
+        setNotice('Could not disconnect GitHub. Please retry.');
+        return;
+      }
+      await loadConnectionData();
+    } catch {
+      setNotice('Could not disconnect GitHub. Please retry.');
+    }
+  }, [authedFetch, loadConnectionData]);
+
+  const handleToggleRepository = useCallback(
+    async (githubRepoId: number, selected: boolean) => {
+      const result = await authedFetch(`/api/github/repositories/${githubRepoId}/select`, {
+        value: selected,
+      });
+      if (!result.ok) {
+        setNotice(safeErrorMessage(result.status, 'Could not update repository selection.'));
+        return;
+      }
       setSyncState((prev) => ({
         ...prev,
         repositories: prev.repositories.map((r) =>
-          r.id === repoId ? { ...r, selected_for_evidence: selected } : r
+          r.github_repo_id === githubRepoId ? { ...r, selected_for_evidence: selected } : r
         ),
       }));
-    }
-  };
+    },
+    [authedFetch]
+  );
 
   const handleToggleEvidencePublic = async (evidenceId: string, isPublic: boolean) => {
     const supabase = getSupabaseClient();
@@ -194,19 +317,49 @@ export default function GitHubDashboard() {
         </div>
       )}
 
+      {notice && (
+        <div
+          role="status"
+          className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-md mb-6">
+          {notice}
+        </div>
+      )}
+
       <GitHubConnectionCard
         connection={syncState.connection}
         repositoryCount={syncState.repositories.length}
         selectedCount={selectedCount}
         evidenceCount={syncState.evidence.length}
         publicEvidenceCount={publicEvidenceCount}
+        installUrl={ghConfig?.installUrl ?? null}
+        configLoading={configLoading}
+        onStartInstall={handleStartInstall}
+        installStarting={installStarting}
       />
 
       {syncState.connection && (
-        <div className="mt-8">
+        <div className="mt-8 space-y-6">
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => void handleSync()}
+              disabled={syncing}
+              className="text-sm border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50">
+              {syncing ? 'Syncing…' : 'Sync repositories'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDisconnect()}
+              className="text-sm border border-red-200 text-red-700 px-4 py-2 rounded-md hover:bg-red-50">
+              Disconnect
+            </button>
+          </div>
           <RepositoryList
             repositories={syncState.repositories}
-            onToggleRepository={(id, selected) => void handleToggleRepository(id, selected)}
+            onToggleRepository={(id, selected) => {
+              const repo = syncState.repositories.find((r) => r.id === id);
+              if (repo) void handleToggleRepository(repo.github_repo_id, selected);
+            }}
           />
         </div>
       )}
@@ -223,7 +376,7 @@ export default function GitHubDashboard() {
       <div className="mt-8 text-center text-sm text-gray-500">
         <p>
           Evidence items are automatically extracted from commits, pull requests, and releases in
-          selected repositories.
+          selected repositories. Private repositories can never be shown publicly.
         </p>
       </div>
     </div>
