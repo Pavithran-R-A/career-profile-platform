@@ -34,7 +34,7 @@ Secrets are never written into `dist/`; only `VITE_`-prefixed values are visible
 
 ## Local development
 
-- `pnpm dev` — Vite dev server; the Cloudflare plugin runs the worker locally, so API routes and SEO SSR behave like production (port 5173, strict).
+- `pnpm dev` — Vite dev server; the Cloudflare plugin runs the worker locally, so API routes and server-rendered metadata behave like production (port 5173, strict).
 - `pnpm preview` (or `pnpm exec vite preview --port 4173`) — serves the production build with the worker; this is what the E2E suite runs against.
 - Local worker env: the plugin copies `.env.local` into `dist/career_profile_platform/.dev.vars` at build time.
 

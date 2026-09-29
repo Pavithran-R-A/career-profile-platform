@@ -12,6 +12,15 @@ Browser <-> Cloudflare Worker (API + static assets)
          AI Provider (abstracted, future)
 ```
 
+### Rendering model (truthful description)
+
+This is **server-rendered metadata with a client-rendered application
+body** — not full React SSR. For crawler-visible routes (`/`, `/pricing`,
+`/u/:username`, unknown routes) the worker injects a complete, route-accurate
+`<head>` (exactly one `title`, description, canonical, OG/Twitter tags,
+JSON-LD, and `noindex` where appropriate) into the static HTML shell before
+responding. The visible body is then hydrated by React in the browser.
+
 ## Frontend
 
 - React 19 + TypeScript (strict mode)

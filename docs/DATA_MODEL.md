@@ -13,10 +13,15 @@
 | current_period_end   | timestamptz | nullable                                   |
 | provider             | text        | NOT NULL, default 'razorpay'               |
 | provider_customer_id | text        | nullable                                   |
+| cancel_at_period_end | boolean     | NOT NULL, default false — LEGACY/UNUSED:   |
+|                      |             | billing is one-time annual access, kept    |
+|                      |             | only to avoid a destructive migration      |
 | created_at           | timestamptz | NOT NULL, default now()                    |
 | updated_at           | timestamptz | NOT NULL, auto-updated via trigger         |
 
-RLS: owner SELECT only. Server writes via secret key.
+RLS: owner SELECT only. Server writes via secret key. One row grants
+one-time annual Pro access; renewal webhooks extend
+`current_period_end` from max(now, current_period_end) + 1 year.
 
 ### billing_orders
 
