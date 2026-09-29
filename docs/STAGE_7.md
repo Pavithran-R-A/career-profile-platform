@@ -27,13 +27,13 @@ Stage 7 introduces paid plans (Free / Pro), server-side billing with Razorpay, u
 
 ### Canonical Limits
 
-| Metric                       | Free      | Pro  |
-| ---------------------------- | --------- | ---- |
-| Resume variants (RPC)        | 3         | 20   |
-| GitHub repos (selected)      | 5         | 20   |
-| Recruiter AI / day (RPC)     | 10        | 100  |
-| Deterministic job tailoring  | Unlimited | Unlimited |
-| Custom domains               | 0         | 1    |
+| Metric                      | Free      | Pro       |
+| --------------------------- | --------- | --------- |
+| Resume variants (RPC)       | 3         | 20        |
+| GitHub repos (selected)     | 5         | 20        |
+| Recruiter AI / day (RPC)    | 10        | 100       |
+| Deterministic job tailoring | Unlimited | Unlimited |
+| Custom domains              | 0         | 1         |
 
 Every metered quota is enforced server-side: variant creation through the
 `create_profile_variant` RPC (the direct client INSERT policy was removed),

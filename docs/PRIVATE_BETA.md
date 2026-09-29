@@ -39,13 +39,13 @@ ats_downloaded`, plus `profile_updated`. No PII in events; allowlisted names;
 
 ## Plans (server-authoritative pricing)
 
-|                              | Free | Pro (one-time annual) |
-| ---------------------------- | ---- | --------------------- |
-| ATS resume variants          | 3    | 20                    |
-| Recruiter AI questions / day | 10   | 100                   |
-| Deterministic job tailoring  | Unlimited | Unlimited        |
-| GitHub repos (selected)      | 5    | 20                    |
-| Custom domains               | 0    | 1                     |
+|                              | Free      | Pro (one-time annual) |
+| ---------------------------- | --------- | --------------------- |
+| ATS resume variants          | 3         | 20                    |
+| Recruiter AI questions / day | 10        | 100                   |
+| Deterministic job tailoring  | Unlimited | Unlimited             |
+| GitHub repos (selected)      | 5         | 20                    |
+| Custom domains               | 0         | 1                     |
 
 All paid-feature quotas are enforced server-side (usage RPC / worker
 endpoints), not just in the UI. There is no branding-removal entitlement;
