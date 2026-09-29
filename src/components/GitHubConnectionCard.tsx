@@ -6,6 +6,12 @@ interface GitHubConnectionCardProps {
   selectedCount: number;
   evidenceCount: number;
   publicEvidenceCount: number;
+  /** Server-provided install entry point; null when the App is not configured. */
+  installUrl: string | null;
+  configLoading: boolean;
+  /** Begins the signed install flow (server issues state, then redirects). */
+  onStartInstall: () => void;
+  installStarting: boolean;
 }
 
 function statusColor(status: GitHubConnection['status']): string {
@@ -29,6 +35,10 @@ export default function GitHubConnectionCard({
   selectedCount,
   evidenceCount,
   publicEvidenceCount,
+  installUrl,
+  configLoading,
+  onStartInstall,
+  installStarting,
 }: GitHubConnectionCardProps) {
   if (!connection) {
     return (
@@ -43,16 +53,27 @@ export default function GitHubConnectionCard({
           </div>
         </div>
         <div className="bg-gray-50 rounded-md p-4 text-center">
-          <p className="text-gray-600 mb-3">
-            Install the Career Profile GitHub App on your account to get started.
-          </p>
-          <a
-            href="https://github.com/apps/career-profile-app/installations/new"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block bg-gray-900 text-white text-sm px-4 py-2 rounded-md hover:bg-gray-800">
-            Install GitHub App
-          </a>
+          {configLoading ? (
+            <p className="text-gray-500">Checking GitHub integration…</p>
+          ) : installUrl ? (
+            <>
+              <p className="text-gray-600 mb-3">
+                Install the Career Profile GitHub App on your account to get started.
+              </p>
+              <button
+                type="button"
+                onClick={onStartInstall}
+                disabled={installStarting}
+                className="inline-block bg-gray-900 text-white text-sm px-4 py-2 rounded-md hover:bg-gray-800 disabled:opacity-50">
+                {installStarting ? 'Opening GitHub…' : 'Install GitHub App'}
+              </button>
+            </>
+          ) : (
+            <p className="text-gray-600">
+              GitHub integration is not configured in this environment. Ask the operator to set the
+              GitHub App credentials to enable evidence sync.
+            </p>
+          )}
         </div>
       </div>
     );
