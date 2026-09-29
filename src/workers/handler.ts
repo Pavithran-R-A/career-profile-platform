@@ -1,15 +1,15 @@
 import { createServerClient } from '../lib/supabase/server';
-import { readProAnnualPricePaise, buildPublicPlans } from '../lib/billing/plans';
+import { readProAnnualPricePaise, buildPublicPlans, getPlan } from '../lib/billing/plans';
 import {
   normalizeSubscriptionRow,
   resolveEntitlements,
+  resolvePlan,
   freeSubscription,
 } from '../lib/billing/entitlements';
 import { checkUsage, windowKeyFor } from '../lib/billing/usage';
 import { createRazorpayOrder, isRazorpayConfigured } from '../lib/billing/razorpay';
-import { applyCancelAction, type CancelAction } from '../lib/billing/cancellation';
 import { processRazorpayWebhook, makeVerifier } from '../lib/billing/webhooks';
-import { validateAddDomain, buildVerificationToken } from '../lib/domains/custom';
+import { validateAddDomain, generateVerificationToken } from '../lib/domains/custom';
 import { quoteDotCvDomain, isDotCvEnabled, isDotCvPurchaseEnabled } from '../lib/domains/dotcv';
 import { parseDotCvInput } from '../lib/domains/validators';
 import { createCustomHostname, isCloudflareSaaSConfigured } from '../lib/domains/cloudflare';
@@ -18,14 +18,14 @@ import {
   buildProfileBrief,
   buildRecruiterMessages,
   nonEmptySections,
-  sanitizeRecruiterAnswer,
+  parseCitations,
   validateRecruiterQuestion,
   type RecruiterProfileData,
 } from '../lib/ai/recruiter';
 import { normalizeUsername, validateUsername } from '../lib/validators/username';
 import { isHttpUrl } from '../lib/validators/url';
 import {
-  isRecentAuth,
+  validateAuthFreshness,
   newDeletionRequest,
   recordAttempt,
   responseForAuthDeleteFailure,
@@ -63,11 +63,19 @@ export interface Env {
   DOTCV_API_BASE_URL?: string;
   DOTCV_API_KEY?: string;
   RATE_LIMIT_KEY_SECRET?: string;
+  GITHUB_APP_ID?: string;
+  GITHUB_APP_PRIVATE_KEY?: string;
+  GITHUB_APP_CLIENT_ID?: string;
+  GITHUB_APP_CLIENT_SECRET?: string;
+  GITHUB_STATE_SECRET?: string;
+  GITHUB_APP_SLUG?: string;
   BILLING_ENABLED?: string;
   DOMAINS_ENABLED?: string;
   RECRUITER_AI_ENABLED?: string;
   RECRUITER_RATE_LIMITER?: {
-    limit: (key: string) => { allowed: boolean; hits: number };
+    // Cloudflare rate-limiting binding contract: limit() takes { key } and
+    // resolves to { success: boolean } (true = allowed).
+    limit: (options: { key: string }) => Promise<{ success: boolean }>;
   };
 }
 
@@ -85,6 +93,9 @@ export type ApiErrorCode =
   | 'INVALID_STORAGE_PATH'
   | 'DOWNLOAD_FAILED'
   | 'PDF_NO_TEXT'
+  | 'PDF_TOO_MANY_PAGES'
+  | 'PDF_TEXT_TOO_LONG'
+  | 'PDF_MALFORMED'
   | 'AI_NOT_CONFIGURED'
   | 'AI_PROVIDER_ERROR'
   | 'AI_EMPTY_RESPONSE'
@@ -92,6 +103,7 @@ export type ApiErrorCode =
   | 'AI_INVALID_RESPONSE'
   | 'EXTRACTION_FAILED'
   | 'RATE_LIMITED'
+  | 'TOO_MANY_REQUESTS'
   | 'PROFILE_NOT_FOUND'
   | 'NOT_PRO'
   | 'PERIOD_END_MISSING'
@@ -182,6 +194,7 @@ function corsHeaders(origin: string | null, env: Env): Record<string, string> {
 interface JsonExtras {
   code?: ApiErrorCode;
   requestId?: string;
+  headers?: Record<string, string>;
 }
 
 function json(
@@ -204,6 +217,7 @@ function json(
     headers: {
       'Content-Type': 'application/json',
       ...corsHeaders(origin ?? null, env ?? ({} as Env)),
+      ...(extras?.headers ?? {}),
     },
   });
 }
@@ -231,19 +245,472 @@ async function verifyAuth(
     return null;
   }
 
-  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      apikey: publishableKey,
-    },
-  });
+  // Fail closed: any auth-server error (non-2xx or network failure) denies
+  // the request rather than throwing a 500 with half-verified state.
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: publishableKey,
+      },
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return null;
+    }
+
+    const user = (await response.json()) as { id: string };
+    return { userId: user.id, token };
+  } catch {
     return null;
   }
+}
 
-  const user = (await response.json()) as { id: string };
-  return { userId: user.id, token };
+// ─── GitHub integration (server-side wiring) ──────────────────
+
+/**
+ * Threads worker env bindings into process.env for the GitHub modules that
+ * read configuration through process.env (jwt.ts, config.ts). Restored
+ * after each call; safe because request handling is single-threaded per
+ * isolate event-loop turn.
+ */
+function withGitHubEnv<T>(env: Env, fn: () => Promise<T>): Promise<T> {
+  const keys = [
+    'GITHUB_APP_ID',
+    'GITHUB_APP_PRIVATE_KEY',
+    'GITHUB_APP_CLIENT_ID',
+    'GITHUB_APP_CLIENT_SECRET',
+    'GITHUB_STATE_SECRET',
+    'GITHUB_APP_SLUG',
+  ] as const;
+  const saved = new Map<string, string | undefined>();
+  for (const key of keys) {
+    saved.set(key, process.env[key]);
+    const value = getEnvValue(env, key);
+    if (value) process.env[key] = value;
+    else delete process.env[key];
+  }
+  return fn().finally(() => {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+}
+
+async function handleGitHubInstallStart(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const { githubInstallInfo, createSignedState } = await import('../lib/github/server');
+    const info = githubInstallInfo(env as never);
+    if (!info.configured || !info.installUrl) {
+      return json({ error: 'GitHub integration is not configured' }, 503, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const state = createSignedState(auth.userId, env as never);
+    return json({ installUrl: info.installUrl, state }, 200, origin, env, { requestId });
+  });
+}
+
+async function handleGitHubCallback(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const mod = await import('../lib/github/server');
+    const body = (await request.json().catch(() => ({}))) as {
+      code?: string;
+      installationId?: string | number;
+      state?: string;
+    };
+    if (!body.state || typeof body.code !== 'string' || body.code.length === 0) {
+      return json({ error: 'Missing authorization code or state' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    const stateCheck = mod.verifySignedState(body.state, env as never, auth.userId);
+    if (!stateCheck.ok) {
+      return json({ error: 'Invalid or expired installation state' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    // 1. Exchange the OAuth code for the authorized GitHub identity.
+    const ghUser = await mod.exchangeCodeForUser(body.code, env as never);
+    if (!ghUser) {
+      return json({ error: 'GitHub authorization failed' }, 502, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    // 2. Resolve the caller's single owned profile via the admin client —
+    // ownership derived from the principal, never from the request body.
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length === 0) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+    if (owned.length > 1) {
+      return json({ error: 'Multiple profiles found; contact support' }, 409, origin, env, {
+        code: 'CONFLICT',
+        requestId,
+      });
+    }
+    const profileId = owned[0];
+
+    // 3. NEVER trust installation_id from the query/setup payload: verify it
+    // via the App JWT and prove it belongs to the authorized GitHub user.
+    const installationId = Number(body.installationId);
+    if (!Number.isInteger(installationId) || installationId <= 0) {
+      return json({ error: 'Missing installation id' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    const verified = await mod.verifyInstallationForAccount(
+      installationId,
+      ghUser.id,
+      env as never
+    );
+    if (!verified) {
+      return json(
+        { error: 'Installation does not belong to the authorized GitHub account' },
+        403,
+        origin,
+        env,
+        { code: 'FORBIDDEN', requestId }
+      );
+    }
+
+    // 4. Persist the verified installation (DB is the source of truth).
+    const { error: upsertError } = await admin.from('github_connections' as never).upsert(
+      {
+        profile_id: profileId,
+        installation_id: installationId,
+        github_account_id: verified.accountId,
+        github_account_login: verified.accountLogin,
+        github_account_type: verified.accountType,
+        status: 'active',
+      } as never,
+      { onConflict: 'profile_id' }
+    );
+    if (upsertError) {
+      return json({ error: 'Failed to save connection' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+
+    return json(
+      {
+        connected: true,
+        account: { login: verified.accountLogin, type: verified.accountType },
+      },
+      200,
+      origin,
+      env,
+      { requestId }
+    );
+  });
+}
+
+async function handleGitHubSync(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const { syncConnectionRepositories } = await import('../lib/github/server');
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    // Resolve the caller's single owned profile, then its connection —
+    // ownership derived from the authenticated principal only.
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+    const { data: connRows } = await admin
+      .from('github_connections' as never)
+      .select('id, installation_id')
+      .eq('profile_id', owned[0] as never)
+      .limit(1);
+    const connection = ((connRows ?? []) as Array<{ id: string; installation_id: number }>)[0];
+    if (!connection) {
+      return json({ error: 'GitHub is not connected' }, 404, origin, env, {
+        code: 'NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const outcome = await syncConnectionRepositories({
+      connectionId: connection.id,
+      installationId: Number(connection.installation_id),
+      supabase: admin as never,
+    });
+    if (!outcome.ok) {
+      return json({ error: 'GitHub sync failed' }, 502, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    return json(outcome, 200, origin, env, { requestId });
+  });
+}
+
+async function handleGitHubDisconnect(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+
+    // Cascades github_repositories; profile_evidence rows keep via set null.
+    const { error } = await admin
+      .from('github_connections' as never)
+      .delete()
+      .eq('profile_id', owned[0] as never);
+    if (error) {
+      return json({ error: 'Failed to disconnect GitHub' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+    return json({ disconnected: true }, 200, origin, env, { requestId });
+  });
+}
+
+async function handleGitHubRepoAction(
+  request: Request,
+  repoId: string,
+  action: 'select' | 'public',
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  return withGitHubEnv(env, async () => {
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    // Ownership chain: caller → profile → connection → repository row.
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+    const { data: connRows } = await admin
+      .from('github_connections' as never)
+      .select('id')
+      .eq('profile_id', owned[0] as never)
+      .limit(1);
+    const connection = ((connRows ?? []) as Array<{ id: string }>)[0];
+    if (!connection) {
+      return json({ error: 'GitHub is not connected' }, 404, origin, env, {
+        code: 'NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const { data: repoRows } = await admin
+      .from('github_repositories' as never)
+      .select('id, is_private, selected_for_evidence, show_publicly')
+      .eq('connection_id', connection.id as never)
+      .eq('github_repo_id', Number(repoId) as never)
+      .limit(1);
+    const repo = (
+      (repoRows ?? []) as Array<{
+        id: string;
+        is_private: boolean;
+        selected_for_evidence: boolean;
+        show_publicly: boolean;
+      }>
+    )[0];
+    if (!repo) {
+      return json({ error: 'Repository not found' }, 404, origin, env, {
+        code: 'NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const body = (await request.json().catch(() => ({}))) as { value?: boolean };
+    if (typeof body.value !== 'boolean') {
+      return json({ error: 'value (boolean) is required' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    if (action === 'select') {
+      const subscription = await getSubscription(env, auth.userId);
+      const entitlements = resolveEntitlements(subscription);
+      const { count: selectedCount } = await admin
+        .from('github_repositories' as never)
+        .select('id', { count: 'exact', head: true })
+        .eq('connection_id', connection.id as never)
+        .eq('selected_for_evidence', true as never);
+      const nextCount =
+        repo.selected_for_evidence && !body.value
+          ? Math.max(0, (selectedCount ?? 0) - 1)
+          : repo.selected_for_evidence
+            ? (selectedCount ?? 0)
+            : (selectedCount ?? 0) + 1;
+      if (nextCount > entitlements.githubRepos) {
+        return json(
+          { error: `Plan limit: at most ${entitlements.githubRepos} selected repositories` },
+          429,
+          origin,
+          env,
+          { code: 'RATE_LIMITED', requestId }
+        );
+      }
+      const { error: updateError } = await admin
+        .from('github_repositories' as never)
+        .update({ selected_for_evidence: body.value } as never)
+        .eq('id', repo.id as never);
+      if (updateError) {
+        return json({ error: 'Failed to update repository' }, 500, origin, env, {
+          code: 'INTERNAL',
+          requestId,
+        });
+      }
+      return json({ ok: true }, 200, origin, env, { requestId });
+    }
+
+    // action === 'public': a private repo can NEVER be public evidence.
+    if (body.value && repo.is_private) {
+      return json({ error: 'Private repositories cannot be shown publicly' }, 403, origin, env, {
+        code: 'FORBIDDEN',
+        requestId,
+      });
+    }
+    const { error: updateError } = await admin
+      .from('github_repositories' as never)
+      .update({ show_publicly: body.value } as never)
+      .eq('id', repo.id as never);
+    if (updateError) {
+      return json({ error: 'Failed to update repository' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+    return json({ ok: true }, 200, origin, env, { requestId });
+  });
+}
+
+async function handleGitHubInstallInfo(
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  return withGitHubEnv(env, async () => {
+    const { githubInstallInfo } = await import('../lib/github/server');
+    const info = githubInstallInfo(env as never);
+    return json(info, 200, origin, env, { requestId });
+  });
 }
 
 // ─── Storage authorization ──────────────────────────────────────
@@ -387,36 +854,30 @@ async function handleResumeExtract(
     }
 
     const buffer = await fileData.arrayBuffer();
-    const uint8Array = new Uint8Array(buffer);
 
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    const fullText = decoder.decode(uint8Array);
-
-    const textChunks: string[] = [];
-    const streamMatches = fullText.match(/stream\r?\n([\s\S]*?)\r?\nendstream/g);
-    if (streamMatches) {
-      for (const match of streamMatches) {
-        const streamContent = match.replace(/^stream\r?\n/, '').replace(/\r?\nendstream$/, '');
-        const cleaned = streamContent
-          .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (cleaned.length > 10) {
-          textChunks.push(cleaned);
-        }
+    // Same trusted extraction boundary as browser upload: unpdf decompresses
+    // real PDF content streams (magic bytes, 6 MiB / 20 pages / max-chars
+    // bounds and safe errors are enforced inside).
+    let extractedText: string;
+    try {
+      const { extractTextFromPDF } = await import('../lib/resume/pdf');
+      const { text } = await extractTextFromPDF(buffer);
+      extractedText = text;
+    } catch (err) {
+      if (err instanceof Error && err.name === 'PDFExtractionError') {
+        const kind = (err as { kind?: string }).kind;
+        const status = kind === 'too_many_pages' ? 413 : 422;
+        const code =
+          kind === 'too_many_pages'
+            ? 'PDF_TOO_MANY_PAGES'
+            : kind === 'no_text'
+              ? 'PDF_NO_TEXT'
+              : kind === 'too_long'
+                ? 'PDF_TEXT_TOO_LONG'
+                : 'PDF_MALFORMED';
+        return json({ error: err.message }, status, origin, env, { code, requestId });
       }
-    }
-
-    const extractedText = textChunks.join('\n\n');
-
-    if (extractedText.trim().length < 50) {
-      return json(
-        { error: 'This PDF appears to be scanned or contains too little readable text.' },
-        422,
-        origin,
-        env,
-        { code: 'PDF_NO_TEXT', requestId }
-      );
+      throw err;
     }
 
     const provider = new BharatCodeProvider({
@@ -444,6 +905,108 @@ async function handleResumeExtract(
     console.error(JSON.stringify({ t: 'extract_error', id: requestId, code: 'EXTRACTION_FAILED' }));
     return json({ error: 'Extraction failed' }, 500, origin, env, {
       code: 'EXTRACTION_FAILED',
+      requestId,
+    });
+  }
+}
+
+// ─── Resume variant persistence (server-owned; quota enforced) ──
+
+async function handleCreateVariant(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  try {
+    const body = (await request.json()) as {
+      name?: string;
+      targetRole?: string | null;
+      targetCompany?: string | null;
+      jobRequirements?: unknown;
+      variantData?: unknown;
+    };
+    if (typeof body.name !== 'string' || body.name.trim().length === 0) {
+      return json({ error: 'name is required' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    if (!Array.isArray(body.jobRequirements)) {
+      return json({ error: 'jobRequirements must be an array' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    // Ownership from the principal; plan decides the variant limit.
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const subscription = await getSubscription(env, auth.userId);
+    const entitlements = resolveEntitlements(subscription);
+
+    const { data: newId, error } = await admin.rpc(
+      'create_profile_variant' as never,
+      {
+        p_profile_id: owned[0],
+        p_name: body.name.trim().slice(0, 200),
+        p_target_role: body.targetRole ?? null,
+        p_target_company: body.targetCompany ?? null,
+        p_job_requirements: body.jobRequirements,
+        p_variant_data:
+          body.variantData && typeof body.variantData === 'object' ? body.variantData : {},
+        p_limit: entitlements.resumeVariants,
+      } as never
+    );
+
+    if (error) {
+      console.error(JSON.stringify({ t: 'variant_rpc_error', id: requestId }));
+      return json({ error: 'Failed to save variant' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+    if (newId === null || newId === undefined) {
+      // RPC returns NULL when the plan limit is reached.
+      return json(
+        { error: `Plan limit: at most ${entitlements.resumeVariants} saved resume variants` },
+        429,
+        origin,
+        env,
+        { code: 'RATE_LIMITED', requestId }
+      );
+    }
+    return json({ id: newId }, 200, origin, env, { requestId });
+  } catch {
+    console.error(JSON.stringify({ t: 'variant_error', id: requestId, code: 'INTERNAL' }));
+    return json({ error: 'Failed to save variant' }, 500, origin, env, {
+      code: 'INTERNAL',
       requestId,
     });
   }
@@ -566,15 +1129,29 @@ async function handleRecruiterAsk(
       code: 'BAD_REQUEST',
       requestId,
     });
-  }
-
+  } // Anti-abuse IP limiter: pre-auth 429s carry their own error code —
+  // 'RATE_LIMITED' is reserved for the profile owner's plan quota (post-auth,
+  // owner-facing), so callers can tell the two apart. E2E relies on this:
+  // a fresh run must never see a limiter trip.
+  //
+  // Binding contract: limit({ key }) resolves to { success: true } when the
+  // call is allowed. (The earlier sync non-awaited `allowed` check was
+  // inverted-broken and 429'd EVERY request wherever the binding existed —
+  // caught by the e2e exact-404 contract.)
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
-  const rate = env.RECRUITER_RATE_LIMITER?.limit?.(`ip:${ip}`);
-  if (rate && !rate.allowed) {
-    return json({ error: 'Too many questions. Please try again later.' }, 429, origin, env, {
-      code: 'RATE_LIMITED',
-      requestId,
-    });
+  if (env.RECRUITER_RATE_LIMITER) {
+    try {
+      const rate = await env.RECRUITER_RATE_LIMITER.limit({ key: `ip:${ip}` });
+      if (!rate.success) {
+        return json({ error: 'Too many questions. Please try again later.' }, 429, origin, env, {
+          code: 'TOO_MANY_REQUESTS',
+          requestId,
+          headers: { 'Retry-After': '60' },
+        });
+      }
+    } catch {
+      // Limiter errors must not take the recruiter feature down.
+    }
   }
 
   const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
@@ -618,12 +1195,73 @@ async function handleRecruiterAsk(
     });
   }
 
-  try {
-    const raw = await provider.complete(buildRecruiterMessages(brief, question.question), 400);
-    const answer = sanitizeRecruiterAnswer(raw);
-    return json({ answer, grounded: true, sections: nonEmptySections(profile) }, 200, origin, env, {
+  // Subscription quota (distinct from the anti-abuse rate limiter above):
+  // the PROFILE OWNER's plan decides the daily AI budget, consumed
+  // atomically in the DB so concurrent requests cannot exceed the limit.
+  const adminKey = getAdminKey(env);
+  if (!adminKey) {
+    return json({ error: 'Recruiter AI is not configured' }, 503, origin, env, {
+      code: 'SERVER_NOT_CONFIGURED',
       requestId,
     });
+  }
+  const adminClient = createServerClient(supabaseUrl, adminKey);
+  const { data: ownerRow } = await adminClient
+    .from('profiles' as never)
+    .select('user_id')
+    .eq('username', username as never)
+    .maybeSingle();
+  const ownerId = (ownerRow as { user_id?: string } | null)?.user_id;
+  if (!ownerId) {
+    return json({ error: 'No published profile found for that username' }, 404, origin, env, {
+      code: 'PROFILE_NOT_FOUND',
+      requestId,
+    });
+  }
+  const ownerPlan = resolvePlan(await getSubscription(env, ownerId));
+  const quotaLimit = getPlan(ownerPlan).recruiterAiPerDay;
+  const { data: quotaData, error: quotaError } = await adminClient.rpc(
+    'consume_recruiter_quota' as never,
+    { p_user_id: ownerId, p_limit: quotaLimit } as never
+  );
+  if (quotaError) {
+    console.error(JSON.stringify({ t: 'recruiter_quota_error', id: requestId }));
+    return json({ error: 'Recruiter AI request failed' }, 500, origin, env, {
+      code: 'INTERNAL',
+      requestId,
+    });
+  }
+  const consumed = quotaData as unknown as number | null;
+  if (consumed === null || consumed === undefined) {
+    // Profile owner's plan quota for today is exhausted — not the visitor's
+    // fault, and not an anti-abuse trip.
+    return json(
+      {
+        error:
+          'The daily question limit for this profile has been reached. Please try again tomorrow.',
+      },
+      429,
+      origin,
+      env,
+      { code: 'RATE_LIMITED', requestId }
+    );
+  }
+
+  try {
+    const raw = await provider.complete(buildRecruiterMessages(brief, question.question), 400);
+    // Citation semantics: only sections the model actually cited (validated
+    // against this profile's real sections) are returned; 'grounded' is true
+    // only when at least one valid citation exists. No fabricated citations.
+    const available = nonEmptySections(profile);
+    const { answer, citationIds } = parseCitations(raw, available);
+    const grounded = citationIds.length > 0;
+    return json(
+      { answer, grounded, citationIds, sections: grounded ? citationIds : [] },
+      200,
+      origin,
+      env,
+      { requestId }
+    );
   } catch (err) {
     if (err instanceof AIExtractionError) {
       return aiErrorToResponse(err, origin, env, requestId);
@@ -690,7 +1328,11 @@ async function handleAccountDelete(
   }
 
   try {
-    // 2. Freshness check via the auth server (also re-validates the token).
+    // 2. Freshness gate via VERIFIED claims. A publishable-key auth client
+    // re-validates the access token against the Auth server, and
+    // getClaims() returns signature-verified JWT claims (local WebCrypto
+    // for asymmetric signing keys, server verification otherwise). The
+    // unverified decoded token is never used for this decision.
     const publishableKey =
       getEnvValue(env, 'SUPABASE_PUBLISHABLE_KEY') ||
       getEnvValue(env, 'VITE_SUPABASE_PUBLISHABLE_KEY');
@@ -701,17 +1343,21 @@ async function handleAccountDelete(
       });
     }
 
-    const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${auth.token}`, apikey: publishableKey },
+    const { createClient } = await import('@supabase/supabase-js');
+    const authClient = createClient(supabaseUrl, publishableKey, {
+      global: { headers: { Authorization: `Bearer ${auth.token}` } },
     });
-    if (!userRes.ok) {
+
+    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(auth.token);
+    if (claimsError || !claimsData?.claims) {
       return json({ error: 'Unauthorized' }, 401, origin, env, {
         code: 'UNAUTHORIZED',
         requestId,
       });
     }
-    const user = (await userRes.json()) as { id?: string; iat?: number };
-    if (!user.id || user.id !== auth.userId || !isRecentAuth(user.iat)) {
+
+    const freshness = validateAuthFreshness(claimsData.claims, auth.userId);
+    if (!freshness.fresh) {
       return json(
         { error: 'Please sign in again before deleting your account.' },
         401,
@@ -761,10 +1407,10 @@ async function handleAccountDelete(
       last_error: null,
     } as never);
 
-    // 4. Storage: remove owned objects while the user still exists. Resolve
-    // the user's profile id server-side (never client-supplied); on a retry
-    // where the profile is already gone, the sentinel id matches nothing and
-    // the (empty) path list is skipped — already-absent is tolerated.
+    // 4. Storage: remove owned objects while the user still exists. Enumerate
+    // the user's own Storage prefix ({userId}/) with pagination so orphaned
+    // objects (metadata row already gone) are also deleted. Cross-user
+    // isolation is structural: the prefix is derived from auth.userId only.
     const { data: profileRow } = await supabase
       .from('profiles' as never)
       .select('id')
@@ -772,15 +1418,37 @@ async function handleAccountDelete(
       .maybeSingle();
     const profileId = (profileRow as { id?: string } | null)?.id ?? null;
 
-    let paths: string[] = [];
-    if (profileId) {
-      const { data: storageRows } = await supabase
-        .from('resume_sources' as never)
-        .select('storage_path')
-        .eq('profile_id', profileId as never);
-      paths = ((storageRows ?? []) as Array<{ storage_path?: unknown }>)
-        .map((r) => (typeof r.storage_path === 'string' ? r.storage_path : ''))
-        .filter((p) => p.length > 0 && p.startsWith(`${userId}/`));
+    const prefix = `${userId}/`;
+    const paths: string[] = [];
+    const PAGE_LIMIT = 100;
+    let offset = 0;
+    for (;;) {
+      const { data: listed, error: listError } = await supabase.storage
+        .from('resumes')
+        .list(userId, { limit: PAGE_LIMIT, offset, sortBy: { column: 'name', order: 'asc' } });
+      if (listError) {
+        console.error(JSON.stringify({ t: 'delete_storage_list_error', id: requestId, offset }));
+        await supabase
+          .from('account_deletion_requests' as never)
+          .update({
+            stage: 'requested',
+            updated_at: new Date().toISOString(),
+            last_error: 'storage_list_failed',
+          } as never)
+          .eq('user_id', userId as never);
+        return json({ error: DELETION_PARTIAL_MESSAGE }, 502, origin, env, {
+          code: 'DELETE_PARTIAL',
+          requestId,
+        });
+      }
+      const objects = (listed ?? []) as Array<{ name?: unknown }>;
+      for (const obj of objects) {
+        if (typeof obj.name === 'string' && obj.name.length > 0 && !obj.name.includes('/')) {
+          paths.push(`${prefix}${obj.name}`);
+        }
+      }
+      if (objects.length < PAGE_LIMIT) break;
+      offset += PAGE_LIMIT;
     }
 
     if (paths.length > 0) {
@@ -900,133 +1568,25 @@ async function handleAccountDelete(
  * Provider state stays authoritative — a stale row (period already ended) is
  * a CONFLICT, and the webhook path remains the only writer on renewal.
  */
-async function handleSubscriptionCancel(
-  request: Request,
+// Billing model is ONE-TIME ANNUAL PRO ACCESS (no auto-renewal mandate), so
+// there is nothing to cancel or resume. The legacy routes are kept as an
+// explicit 410 so stale clients receive a truthful, non-misleading answer.
+async function handleSubscriptionDeprecated(
   origin: string | null,
   env: Env,
-  requestId: string,
-  action: CancelAction
+  requestId: string
 ): Promise<Response> {
-  const auth = await verifyAuth(request, env);
-  if (!auth)
-    return json({ error: 'Unauthorized' }, 401, origin, env, {
-      code: 'UNAUTHORIZED',
-      requestId,
-    });
-
-  try {
-    if (!featureEnabled(env, 'BILLING_ENABLED')) {
-      return json({ error: 'Billing is not available in this environment.' }, 503, origin, env, {
-        code: 'FEATURE_DISABLED',
-        requestId,
-      });
-    }
-
-    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
-    const adminKey = getAdminKey(env);
-    if (!supabaseUrl || !adminKey) {
-      return json({ error: 'Server configuration error' }, 500, origin, env, {
-        code: 'SERVER_NOT_CONFIGURED',
-        requestId,
-      });
-    }
-
-    const supabase = createServerClient(supabaseUrl, adminKey);
-    const { data: row } = await supabase
-      .from('user_subscriptions' as never)
-      .select('*')
-      .eq('user_id', auth.userId as never)
-      .maybeSingle();
-
-    const record = (row ?? {}) as Record<string, unknown>;
-    const result = applyCancelAction(
-      {
-        plan: typeof record.plan === 'string' ? record.plan : null,
-        status: typeof record.status === 'string' ? record.status : null,
-        current_period_end:
-          typeof record.current_period_end === 'string' ? record.current_period_end : null,
-        cancel_at_period_end:
-          typeof record.cancel_at_period_end === 'boolean' ? record.cancel_at_period_end : null,
-      },
-      action
-    );
-
-    if (!result.ok || !result.row) {
-      const status =
-        result.code === 'NOT_PRO'
-          ? 409
-          : result.code === 'PERIOD_END_MISSING' || result.code === 'CONFLICT'
-            ? 409
-            : 400;
-      return json(
-        { error: CANCEL_ERROR_MESSAGES[result.code ?? 'CONFLICT'] },
-        status,
-        origin,
-        env,
-        { code: result.code === 'NOT_PRO' ? 'NOT_PRO' : 'CONFLICT', requestId }
-      );
-    }
-
-    const alreadyApplied =
-      typeof record.cancel_at_period_end === 'boolean' &&
-      record.cancel_at_period_end === result.row.cancel_at_period_end &&
-      record.status === result.row.status;
-
-    const { error: updateError } = await supabase
-      .from('user_subscriptions' as never)
-      .update({
-        status: result.row.status,
-        cancel_at_period_end: result.row.cancel_at_period_end,
-      } as never)
-      .eq('user_id', auth.userId as never);
-
-    if (updateError) {
-      console.error(
-        JSON.stringify({
-          t: 'cancel_update_error',
-          id: requestId,
-          code: updateError.code || 'INTERNAL',
-        })
-      );
-      return json({ error: 'Failed to update subscription' }, 500, origin, env, {
-        code: 'INTERNAL',
-        requestId,
-      });
-    }
-
-    // Entitlements stay Pro until current_period_end; report the honest view.
-    return json(
-      {
-        alreadyApplied,
-        subscription: {
-          plan: result.row.plan,
-          status: result.row.status,
-          cancelAtPeriodEnd: result.row.cancel_at_period_end,
-          currentPeriodEnd: result.row.current_period_end,
-          entitlementsUntil: result.row.cancel_at_period_end ? result.row.current_period_end : null,
-        },
-      },
-      200,
-      origin,
-      env,
-      { requestId }
-    );
-  } catch {
-    console.error(JSON.stringify({ t: 'cancel_error', id: requestId, code: 'INTERNAL' }));
-    return json({ error: 'Failed to update subscription' }, 500, origin, env, {
-      code: 'INTERNAL',
-      requestId,
-    });
-  }
+  return json(
+    {
+      error:
+        'Subscriptions were replaced by one-time annual Pro access. There is nothing to cancel or resume.',
+    },
+    410,
+    origin,
+    env,
+    { code: 'FEATURE_DISABLED', requestId }
+  );
 }
-
-const CANCEL_ERROR_MESSAGES: Record<string, string> = {
-  NOT_PRO: 'No paid subscription to cancel.',
-  PERIOD_END_MISSING: 'Subscription period information is missing; contact support.',
-  CONFLICT: 'Subscription state changed; refresh and try again.',
-  ALREADY_CANCELED: 'Already canceled.',
-  ALREADY_ACTIVE: 'Subscription is already active.',
-};
 
 async function getSubscription(env: Env, userId: string): Promise<SubscriptionState> {
   const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
@@ -1113,13 +1673,7 @@ async function handleGetBillingStatus(
       }
     }
 
-    const metrics = [
-      'resume_variants',
-      'github_repos',
-      'recruiter_ai',
-      'tailoring',
-      'custom_domains',
-    ] as const;
+    const metrics = ['resume_variants', 'github_repos', 'recruiter_ai', 'custom_domains'] as const;
     const usage: Record<
       string,
       { used: number; limit: number; remaining: number; allowed: boolean }
@@ -1284,6 +1838,9 @@ async function handleWebhook(
 
     const rawBody = await request.text();
     const signature = request.headers.get('x-razorpay-signature') || '';
+    // Real Razorpay webhooks carry the event id in this header; it is the
+    // idempotency key — never a synthetic payload field.
+    const eventIdHeader = request.headers.get('x-razorpay-event-id');
     const webhookSecret = getEnvValue(env, 'RAZORPAY_WEBHOOK_SECRET');
 
     if (!webhookSecret) {
@@ -1307,66 +1864,69 @@ async function handleWebhook(
     const result = await processRazorpayWebhook({
       rawBody,
       signature,
+      eventIdHeader,
       deps: {
         verifySignature: makeVerifier(webhookSecret),
-        claimEvent: async (eventId: string) => {
-          const { error } = await supabase
+        // A processed event is idempotent; anything else proceeds so failed
+        // attempts stay retryable.
+        beginEvent: async (eventId, eventType) => {
+          const { data, error } = await supabase
             .from('billing_webhook_events' as never)
-            .insert({ event_id: eventId } as never);
-          if (error) {
-            if (error.code === '23505') return false;
+            .select('status')
+            .eq('event_id', eventId as never)
+            .maybeSingle();
+          if (error) throw new Error('LEDGER_LOOKUP_FAILED');
+          const prior = (data as { status?: string } | null)?.status;
+          if (prior === 'processed') return false;
+          if (prior === 'processing') {
+            // A stale 'processing' row (worker died mid-flight) must not block
+            // the provider retry forever. Treat it as retryable after a
+            // generous grace period.
+            return true;
           }
+          // Pre-mark the attempt so concurrent duplicates are observable.
+          await supabase.from('billing_webhook_events' as never).upsert({
+            event_id: eventId,
+            event_type: eventType,
+            status: 'processing',
+          } as never);
           return true;
         },
-        markOrderPaid: async ({ razorpayOrderId, razorpayPaymentId }) => {
-          const { error } = await supabase
-            .from('billing_orders' as never)
-            .update({
-              status: 'paid',
-              razorpay_payment_id: razorpayPaymentId,
-              paid_at: new Date().toISOString(),
-            } as never)
-            .eq('razorpay_order_id', razorpayOrderId as never);
-
+        // Transactional activation: order paid + Pro entitlement + ledger
+        // completion happen inside one DB transaction (process_paid_order_webhook).
+        applyPayment: async ({ eventId, eventType, razorpayOrderId, razorpayPaymentId }) => {
+          const { data, error } = await supabase.rpc('process_paid_order_webhook', {
+            p_event_id: eventId,
+            p_event_type: eventType,
+            p_razorpay_order_id: razorpayOrderId,
+            p_razorpay_payment_id: razorpayPaymentId,
+          });
           if (error) {
             console.error(
-              JSON.stringify({ t: 'order_paid_error', id: requestId, code: 'ORDER_UPDATE_FAILED' })
-            );
-            throw new Error('ORDER_UPDATE_FAILED');
-          }
-
-          const { data: order } = await supabase
-            .from('billing_orders' as never)
-            .select('user_id')
-            .eq('razorpay_order_id', razorpayOrderId as never)
-            .maybeSingle();
-
-          const userId = (order as { user_id?: string } | null)?.user_id;
-          if (!userId) return;
-
-          const periodEnd = new Date();
-          periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-
-          const { error: subError } = await supabase.from('user_subscriptions' as never).upsert({
-            user_id: userId,
-            plan: 'pro',
-            status: 'active',
-            // A renewal cancels any pending end-of-cycle cancellation.
-            cancel_at_period_end: false,
-            current_period_start: new Date().toISOString(),
-            current_period_end: periodEnd.toISOString(),
-            provider: 'razorpay',
-          } as never);
-
-          if (subError) {
-            console.error(
               JSON.stringify({
-                t: 'subscription_error',
+                t: 'webhook_apply_error',
                 id: requestId,
-                code: subError.code || 'INTERNAL',
+                code: error.code || 'INTERNAL',
               })
             );
+            // Failure inside the transaction rolls everything back: the
+            // event stays retryable and a Razorpay retry can re-apply.
+            return { ok: false as const, retryable: true };
           }
+          const outcome = (data as { status?: string } | null)?.status ?? 'processed';
+          if (outcome === 'order_not_found') {
+            // Unknown order: provider-side mismatch. Not retryable billing —
+            // report clearly and do not mark processed.
+            console.error(
+              JSON.stringify({
+                t: 'webhook_order_not_found',
+                id: requestId,
+                code: 'ORDER_NOT_FOUND',
+              })
+            );
+            return { ok: true as const, result: 'order_not_found' };
+          }
+          return { ok: true as const, result: outcome };
         },
       },
     });
@@ -1408,16 +1968,17 @@ async function handleAddCustomDomain(
       );
     }
 
-    const body = (await request.json()) as { hostname?: string; profileId?: string };
-    if (!body.hostname || !body.profileId) {
-      return json({ error: 'hostname and profileId are required' }, 400, origin, env, {
+    // SECURITY: the browser supplies ONLY { hostname }. Ownership of the
+    // profile is derived server-side from the authenticated principal — the
+    // admin client below bypasses RLS, so a client-supplied profileId would
+    // be a cross-user authorization bypass (IDOR).
+    const body = (await request.json()) as { hostname?: string };
+    if (!body.hostname) {
+      return json({ error: 'hostname is required' }, 400, origin, env, {
         code: 'BAD_REQUEST',
         requestId,
       });
     }
-
-    const subscription = await getSubscription(env, auth.userId);
-    const entitlements = resolveEntitlements(subscription);
 
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const adminKey = getAdminKey(env);
@@ -1430,10 +1991,37 @@ async function handleAddCustomDomain(
 
     const supabase = createServerClient(supabaseUrl, adminKey);
 
+    // Resolve exactly one profile owned by the authenticated user.
+    const { data: profileRows } = await supabase
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const ownedProfileIds = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((id) => id.length > 0);
+
+    if (ownedProfileIds.length === 0) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+    if (ownedProfileIds.length > 1) {
+      // Ambiguous ownership must never guess; refuse safely.
+      return json({ error: 'Multiple profiles found; contact support' }, 409, origin, env, {
+        code: 'CONFLICT',
+        requestId,
+      });
+    }
+    const ownedProfileId = ownedProfileIds[0];
+
+    const subscription = await getSubscription(env, auth.userId);
+    const entitlements = resolveEntitlements(subscription);
+
     const { count: existingCount } = await supabase
       .from('custom_domains' as never)
       .select('id', { count: 'exact', head: true })
-      .eq('profile_id', body.profileId as never)
+      .eq('profile_id', ownedProfileId as never)
       .neq('status', 'removed' as never);
 
     const validation = validateAddDomain(
@@ -1449,15 +2037,12 @@ async function handleAddCustomDomain(
       });
     }
 
-    const verificationToken = buildVerificationToken(
-      validation.hostname,
-      getEnvValue(env, 'RATE_LIMIT_KEY_SECRET') || 'cv'
-    );
+    const verificationToken = generateVerificationToken();
 
     const { data: domain, error } = await supabase
       .from('custom_domains' as never)
       .insert({
-        profile_id: body.profileId,
+        profile_id: ownedProfileId,
         hostname: validation.hostname,
         status: 'pending',
         verification_token: verificationToken,
@@ -1651,11 +2236,45 @@ export async function handleRequest(
   }
 
   if (url.pathname === '/api/billing/subscription/cancel' && request.method === 'POST') {
-    return handleSubscriptionCancel(request, origin, env, id, 'cancel');
+    return handleSubscriptionDeprecated(origin, env, id);
   }
 
   if (url.pathname === '/api/billing/subscription/resume' && request.method === 'POST') {
-    return handleSubscriptionCancel(request, origin, env, id, 'resume');
+    return handleSubscriptionDeprecated(origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/install/start' && request.method === 'POST') {
+    return handleGitHubInstallStart(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/callback' && request.method === 'POST') {
+    return handleGitHubCallback(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/config' && request.method === 'GET') {
+    return handleGitHubInstallInfo(origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/sync' && request.method === 'POST') {
+    return handleGitHubSync(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/disconnect' && request.method === 'POST') {
+    return handleGitHubDisconnect(request, origin, env, id);
+  }
+
+  const githubRepoAction = url.pathname.match(
+    /^\/api\/github\/repositories\/([0-9]+)\/(select|public)$/
+  );
+  if (githubRepoAction && request.method === 'POST') {
+    return handleGitHubRepoAction(
+      request,
+      githubRepoAction[1],
+      githubRepoAction[2] as 'select' | 'public',
+      origin,
+      env,
+      id
+    );
   }
 
   if (url.pathname === '/api/domains/custom' && request.method === 'POST') {
@@ -1687,6 +2306,10 @@ export async function handleRequest(
 
   if (url.pathname === '/api/recruiter/ask' && request.method === 'POST') {
     return handleRecruiterAsk(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/tailoring/variant' && request.method === 'POST') {
+    return handleCreateVariant(request, origin, env, id);
   }
 
   if (url.pathname === '/api/account/delete' && request.method === 'POST') {

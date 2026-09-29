@@ -38,26 +38,27 @@ pnpm dev
    VITE_SUPABASE_URL=https://your-project.supabase.co
    VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
    ```
-4. Run the migrations in the Supabase SQL editor:
-   - `supabase/migrations/20260920000000_initial.sql`
-   - `supabase/migrations/20260920010000_expand_profile_schema.sql`
+4. Apply the database migrations (all files in `supabase/migrations/`, in
+   filename order). With the Supabase CLI linked to your project:
+   `supabase db push`
 5. Enable Email auth in Authentication > Providers
 
 ### Commands
 
-| Command              | Description                   |
-| -------------------- | ----------------------------- |
-| `pnpm dev`           | Start development server      |
-| `pnpm build`         | Production build              |
-| `pnpm preview`       | Preview production build      |
-| `pnpm test`          | Run unit tests                |
-| `pnpm test:coverage` | Run tests with coverage       |
-| `pnpm test:e2e`      | Run Playwright E2E suite      |
-| `pnpm bundle:scan`   | Report production chunk sizes |
-| `pnpm lint`          | Run ESLint                    |
-| `pnpm typecheck`     | Run TypeScript type checking  |
-| `pnpm format`        | Format code with Prettier     |
-| `pnpm format:check`  | Check formatting              |
+| Command                 | Description                                                         |
+| ----------------------- | ------------------------------------------------------------------- |
+| `pnpm dev`              | Start development server                                            |
+| `pnpm build`            | Production build                                                    |
+| `pnpm preview`          | Preview production build                                            |
+| `pnpm test`             | Run unit tests                                                      |
+| `pnpm test:integration` | Run live-RLS integration tests (requires a linked Supabase project) |
+| `pnpm test:coverage`    | Run tests with coverage                                             |
+| `pnpm test:e2e`         | Run Playwright E2E suite                                            |
+| `pnpm bundle:scan`      | Report production chunk sizes                                       |
+| `pnpm lint`             | Run ESLint                                                          |
+| `pnpm typecheck`        | Run TypeScript type checking                                        |
+| `pnpm format`           | Format code with Prettier                                           |
+| `pnpm format:check`     | Check formatting                                                    |
 
 ## Project Structure
 
@@ -80,15 +81,19 @@ supabase/
 docs/            # Architecture and product documentation
 ```
 
-## Features (Stage 1)
+## Features
 
-- Email/password authentication
-- Email verification
-- Password reset
-- Profile creation with unique username
-- Profile editing (basics, experience, education, projects, skills, links)
-- Protected routes
-- Mobile-responsive design
+- Email/password authentication with verification and password reset
+- Profile editing (basics, experience, education, projects, skills, links,
+  achievements) with publish/draft visibility
+- Resume import (PDF parsing in the Worker) with ATS builder and job tailoring
+- GitHub App integration: repository sync as verifiable public evidence
+- Public portfolio with selectable templates and recruiter AI Q&A grounded in
+  published content only
+- One-time annual Pro plan (Razorpay orders) with server-side entitlements
+- Custom domains and account self-deletion with full data cleanup
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the staged plan and current status.
 
 ## License
 

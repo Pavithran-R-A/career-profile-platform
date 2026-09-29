@@ -34,7 +34,7 @@ Secrets are never written into `dist/`; only `VITE_`-prefixed values are visible
 
 ## Local development
 
-- `pnpm dev` — Vite dev server; the Cloudflare plugin runs the worker locally, so API routes and SEO SSR behave like production (port 5173, strict).
+- `pnpm dev` — Vite dev server; the Cloudflare plugin runs the worker locally, so API routes and server-rendered metadata behave like production (port 5173, strict).
 - `pnpm preview` (or `pnpm exec vite preview --port 4173`) — serves the production build with the worker; this is what the E2E suite runs against.
 - Local worker env: the plugin copies `.env.local` into `dist/career_profile_platform/.dev.vars` at build time.
 
@@ -67,7 +67,7 @@ npx wrangler preview \
 1. `GET /` — 200; correct `<title>`; SSR meta present (`og:title`, `og:image` with absolute URL, canonical).
 2. `GET /robots.txt`, `GET /sitemap.xml` — 200, absolute URLs on the deployed origin.
 3. `GET /u/<published-username>` — 200 + ProfilePage JSON-LD; unknown username → `noindex` + 404-style meta.
-4. `POST /api/recruiter/ask` — 401 `UNAUTHORIZED` without a session; 429 `RATE_LIMITED` past 30 calls/min per IP; 503 `AI_NOT_CONFIGURED` while no AI key is set.
+4. `POST /api/recruiter/ask` — 401 `UNAUTHORIZED` without a session; 429 `TOO_MANY_REQUESTS` past 30 calls/min per IP (anti-abuse limiter, includes `Retry-After`) and 429 `RATE_LIMITED` when the profile owner's daily plan quota is exhausted; 503 `AI_NOT_CONFIGURED` while no AI key is set.
 5. Locally: `pnpm test:e2e` (Playwright + system Chrome, desktop + Pixel 7) and the full unit gate `npx vitest run --maxWorkers=2`.
 
 ## Rollback

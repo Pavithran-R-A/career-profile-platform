@@ -95,26 +95,36 @@ export default function JobTailoring() {
         return;
       }
 
-      // Persist the analysis as a private variant row (schema: name /
-      // target_role / target_company / job_requirements / variant_data).
+      // Persist through the server-owned endpoint: quota is enforced
+      // server-side (RPC), so a direct client insert is no longer possible.
       void (async () => {
         try {
           const supabase = getSupabaseClient();
-          await supabase.from('profile_variants').insert({
-            profile_id: profile.id,
-            name: parsed.title,
-            target_role: parsed.title,
-            target_company: parsed.company,
-            job_description_sha256: null,
-            job_requirements: parsed.requirements,
-            variant_data: {
-              summary: matching.summary,
-              overallScore: matching.overallScore,
-              gaps: matching.gaps.map((g) => g.text).slice(0, 20),
-              createdAt: new Date().toISOString(),
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData.session?.access_token;
+          if (!token) {
+            setSavedVariant(null);
+            return;
+          }
+          const res = await fetch('/api/tailoring/variant', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
             },
+            body: JSON.stringify({
+              name: parsed.title,
+              targetRole: parsed.title,
+              targetCompany: parsed.company,
+              jobRequirements: parsed.requirements,
+              variantData: {
+                summary: matching.summary,
+                gaps: matching.gaps.map((g) => g.text).slice(0, 20),
+                createdAt: new Date().toISOString(),
+              },
+            }),
           });
-          setSavedVariant({ title: parsed.title, company: parsed.company });
+          setSavedVariant(res.ok ? { title: parsed.title, company: parsed.company } : null);
         } catch {
           // Variant bookkeeping must never fail the analysis; leave unsaved.
           setSavedVariant(null);

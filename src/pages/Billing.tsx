@@ -10,7 +10,6 @@ import { useNoindexMeta } from '../lib/seo/usePageMeta';
 interface BillingStatus {
   subscription: SubscriptionState;
   entitlements: PlanEntitlements;
-  cancelAtPeriodEnd?: boolean;
   usage: Record<string, UsageCheck>;
   pricePaise: number | null;
   currency: string;
@@ -32,8 +31,6 @@ export default function Billing() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [cancelBusy, setCancelBusy] = useState(false);
-  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   const loadStatus = useCallback(async (token: string) => {
     try {
@@ -111,12 +108,18 @@ export default function Billing() {
         amount: order.amountPaise,
         currency: order.currency,
         name: 'Career Profile Platform',
-        description: 'Pro plan (annual)',
+        description: 'Pro — one year of access (one-time payment)',
         order_id: order.razorpayOrderId,
         prefill: { email: auth.user.email },
         theme: { color: '#111827' },
         handler: () => {
           void loadStatus(token).then(() => setCheckoutLoading(false));
+        },
+
+        modal: {
+          ondismiss: () => {
+            setCheckoutLoading(false);
+          },
         },
       });
 
@@ -135,42 +138,12 @@ export default function Billing() {
     );
   }
 
-  const changeSubscription = async (action: 'cancel' | 'resume') => {
-    if (auth.status !== 'authenticated') return;
-    const supabase = getSupabaseClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    if (!token) return;
-
-    setCancelBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/billing/subscription/${action}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error || 'Could not update your subscription');
-      }
-      await loadStatus(token);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setCancelBusy(false);
-      setCancelConfirmOpen(false);
-    }
-  };
-
   if (auth.status === 'unauthenticated' || !status) {
     return null;
   }
 
   const isPro = status.entitlements.planId === 'pro';
-  const cancelPending = status.cancelAtPeriodEnd === true;
-  const renewDate = status.subscription.currentPeriodEnd
+  const accessUntil = status.subscription.currentPeriodEnd
     ? new Date(status.subscription.currentPeriodEnd).toLocaleDateString()
     : null;
 
@@ -178,7 +151,6 @@ export default function Billing() {
     { key: 'resume_variants', label: 'Resume variants', row: status.usage.resume_variants },
     { key: 'github_repos', label: 'GitHub repos', row: status.usage.github_repos },
     { key: 'recruiter_ai', label: 'Recruiter AI (today)', row: status.usage.recruiter_ai },
-    { key: 'tailoring', label: 'Job tailoring (month)', row: status.usage.tailoring },
     { key: 'custom_domains', label: 'Custom domains', row: status.usage.custom_domains },
   ].filter((item) => item.row);
 
@@ -199,10 +171,12 @@ export default function Billing() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-medium">Current plan</h2>
-            <p className="text-sm text-gray-500 capitalize">
-              {status.subscription.plan}
-              {status.subscription.currentPeriodEnd &&
-                ` · renews ${new Date(status.subscription.currentPeriodEnd).toLocaleDateString()}`}
+            <p className="text-sm text-gray-500">
+              {isPro
+                ? status.subscription.currentPeriodEnd
+                  ? `Pro access until ${accessUntil}. One-time payment — no automatic renewal.`
+                  : 'Pro access. One-time payment — no automatic renewal.'
+                : 'Free plan'}
             </p>
           </div>
           <span
@@ -213,80 +187,14 @@ export default function Billing() {
           </span>
         </div>
 
-        {isPro && cancelPending && (
-          <div className="border-t pt-4">
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-              Cancellation scheduled — Pro stays active through{' '}
-              <strong>{renewDate ?? 'the end of your billing cycle'}</strong>, then your account
-              moves to the Free plan. Nothing is deleted.
-            </p>
-            <div className="flex items-center justify-between mt-3">
-              <p className="text-sm text-gray-500">
-                Changed your mind? Keep Pro and renew as usual.
-              </p>
-              <button
-                onClick={() => void changeSubscription('resume')}
-                disabled={cancelBusy}
-                className="bg-gray-900 text-white px-4 py-2 rounded-md hover:bg-gray-800 disabled:opacity-50">
-                {cancelBusy ? 'Working…' : 'Resume Pro'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {isPro && !cancelPending && (
-          <div className="border-t pt-4">
-            {!cancelConfirmOpen ? (
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-500">
-                  {renewDate ? `Renews on ${renewDate}.` : 'Annual plan.'} Cancel anytime — you keep
-                  Pro until the period ends.
-                </p>
-                <button
-                  onClick={() => setCancelConfirmOpen(true)}
-                  disabled={!status.billingEnabled}
-                  className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50">
-                  Cancel subscription
-                </button>
-              </div>
-            ) : (
-              <div
-                role="alertdialog"
-                aria-label="Confirm cancellation"
-                className="border border-amber-200 bg-amber-50 rounded-md p-4">
-                <p className="font-medium text-amber-900">Cancel Pro at the end of this cycle?</p>
-                <p className="text-sm text-amber-800 mt-1">
-                  You keep every Pro feature until{' '}
-                  <strong>{renewDate ?? 'the end of your billing cycle'}</strong>. After that your
-                  plan becomes Free — your profile, portfolio and resumes stay yours.
-                </p>
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => void changeSubscription('cancel')}
-                    disabled={cancelBusy}
-                    className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 disabled:opacity-50">
-                    {cancelBusy ? 'Working…' : 'Yes, cancel at period end'}
-                  </button>
-                  <button
-                    onClick={() => setCancelConfirmOpen(false)}
-                    disabled={cancelBusy}
-                    className="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50">
-                    Keep Pro
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {!isPro && (
           <div className="border-t pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium">Pro annual</p>
+                <p className="font-medium">Pro — 1 year of access</p>
                 <p className="text-sm text-gray-500">
                   {status.pricePaise !== null
-                    ? `${(status.pricePaise / 100).toLocaleString('en-IN')} ${status.currency} / year`
+                    ? `${(status.pricePaise / 100).toLocaleString('en-IN')} ${status.currency} · one-time payment · no automatic renewal`
                     : 'Price not configured'}
                 </p>
               </div>
@@ -296,7 +204,7 @@ export default function Billing() {
                   checkoutLoading || !status.razorpayConfigured || status.pricePaise === null
                 }
                 className="bg-gray-900 text-white px-4 py-2 rounded-md hover:bg-gray-800 disabled:opacity-50">
-                {checkoutLoading ? 'Opening…' : 'Upgrade to Pro'}
+                {checkoutLoading ? 'Opening…' : 'Get Pro'}
               </button>
             </div>
             {!status.razorpayConfigured && (
@@ -304,6 +212,15 @@ export default function Billing() {
                 Payment provider is not configured on this environment.
               </p>
             )}
+          </div>
+        )}
+
+        {isPro && (
+          <div className="border-t pt-4">
+            <p className="text-sm text-gray-500">
+              When your access ends you can purchase another year any time — nothing is deleted and
+              there is no automatic charge.
+            </p>
           </div>
         )}
       </div>
@@ -321,6 +238,7 @@ export default function Billing() {
             </div>
           ))}
         </div>
+        <p className="text-xs text-gray-500 mt-3">Deterministic job tailoring is unlimited.</p>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg p-6">
@@ -339,18 +257,12 @@ export default function Billing() {
             <span className="font-medium">{status.entitlements.recruiterAiPerDay}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Tailoring / month</span>
-            <span className="font-medium">{status.entitlements.tailoringPerMonth}</span>
+            <span className="text-gray-600">Job tailoring</span>
+            <span className="font-medium">Unlimited</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Custom domains</span>
             <span className="font-medium">{status.entitlements.customDomains}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">Branding</span>
-            <span className="font-medium">
-              {status.entitlements.removeBranding ? 'Removed' : 'Shown'}
-            </span>
           </div>
         </div>
 
@@ -373,16 +285,10 @@ export default function Billing() {
 
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${src}"]`);
-    if (existing) {
-      resolve();
-      return;
-    }
     const script = document.createElement('script');
     script.src = src;
-    script.async = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load payment script'));
-    document.body.appendChild(script);
+    script.onerror = () => reject(new Error('Payment checkout failed to load'));
+    document.head.appendChild(script);
   });
 }

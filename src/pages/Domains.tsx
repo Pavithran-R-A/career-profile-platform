@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { getSupabaseClient } from '../lib/supabase/client';
@@ -28,7 +28,11 @@ export default function Domains() {
   useNoindexMeta('Custom domain — Career Profile');
   const auth = useAuth();
   const navigate = useNavigate();
-  const profileService = new ProfileService();
+  // Stable across renders: constructing inside render and using it as an
+  // effect dependency re-runs the profile load on every render.
+  const profileServiceRef = useRef<ProfileService | null>(null);
+  if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
+  const profileService = profileServiceRef.current;
 
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,7 +128,9 @@ export default function Domains() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ hostname: hostnameInput, profileId: profile.id }),
+        // Ownership is derived server-side from the auth token; the client
+        // never supplies a profileId (IDOR hardening).
+        body: JSON.stringify({ hostname: hostnameInput }),
       });
 
       const body = (await res.json()) as { error?: string; hostname?: string };

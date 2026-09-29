@@ -170,7 +170,11 @@ export function applyPageMeta(meta: PageMeta): void {
   upsertTag('meta', 'name', 'twitter:image', meta.ogImage ?? null);
 }
 
-/** Full set of head tags for one page (server injection + client parity). */
+/**
+ * Full set of head tags for one page (server injection + client parity).
+ * Always includes the <title> element so the server can REPLACE the static
+ * document title (never append a second one).
+ */
 export function metaTags(meta: PageMeta): string {
   const ogTitle = meta.title;
   const ogDescription = meta.description ?? '';
@@ -179,6 +183,7 @@ export function metaTags(meta: PageMeta): string {
   const hasImage = ogImage.length > 0;
 
   const parts: string[] = [];
+  parts.push(`<title>${escapeHtml(meta.title)}</title>`);
   if (meta.noindex) parts.push('<meta name="robots" content="noindex" />');
   parts.push(nameTag('description', meta.description));
   if (meta.canonical) parts.push(`<link rel="canonical" href="${escapeHtml(meta.canonical)}" />`);

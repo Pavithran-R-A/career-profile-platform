@@ -16,6 +16,22 @@ export interface ExtractedPDFContent {
   pageCount: number;
 }
 
+/**
+ * Machine-readable failure kinds so server callers can map to stable error
+ * codes without matching on prose. Messages stay customer-safe.
+ */
+export type PDFExtractionErrorKind = 'malformed' | 'too_many_pages' | 'no_text' | 'too_long';
+
+export class PDFExtractionError extends Error {
+  readonly kind: PDFExtractionErrorKind;
+
+  constructor(kind: PDFExtractionErrorKind, message: string) {
+    super(message);
+    this.name = 'PDFExtractionError';
+    this.kind = kind;
+  }
+}
+
 export function validatePDFFile(file: File): PDFValidationResult {
   if (file.size > MAX_FILE_SIZE) {
     return {
@@ -42,6 +58,11 @@ export function validatePDFMagicBytes(buffer: ArrayBuffer): PDFValidationResult 
   return { valid: true };
 }
 
+/**
+ * The ONE shared, trustworthy PDF extraction boundary (browser upload and
+ * worker AI extraction both use this). Backed by unpdf's serverless pdf.js
+ * build, which decompresses real content streams — unlike naive byte regex.
+ */
 export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<ExtractedPDFContent> {
   try {
     const uint8Array = new Uint8Array(buffer);
@@ -51,7 +72,10 @@ export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<Extracted
     const pageCount = doc.numPages;
 
     if (pageCount > MAX_PAGES) {
-      throw new Error(`PDF has ${pageCount} pages. Maximum allowed is ${MAX_PAGES}.`);
+      throw new PDFExtractionError(
+        'too_many_pages',
+        `PDF has ${pageCount} pages. Maximum allowed is ${MAX_PAGES}.`
+      );
     }
 
     const { text: fullText } = await extractText(doc);
@@ -59,14 +83,18 @@ export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<Extracted
     const extractedText = fullText.join('\n\n').replace(/\s+/g, ' ').trim();
 
     if (extractedText.length < 50) {
-      throw new Error(
+      throw new PDFExtractionError(
+        'no_text',
         'This PDF appears to be scanned or contains too little readable text. ' +
           'Please upload a text-based PDF.'
       );
     }
 
     if (extractedText.length > MAX_TEXT_LENGTH) {
-      throw new Error(`Extracted text exceeds maximum length of ${MAX_TEXT_LENGTH} characters.`);
+      throw new PDFExtractionError(
+        'too_long',
+        `Extracted text exceeds maximum length of ${MAX_TEXT_LENGTH} characters.`
+      );
     }
 
     return {
@@ -74,15 +102,14 @@ export async function extractTextFromPDF(buffer: ArrayBuffer): Promise<Extracted
       pageCount,
     };
   } catch (err) {
-    if (err instanceof Error && err.message.includes('Maximum allowed')) {
+    if (err instanceof PDFExtractionError) {
       throw err;
     }
-    if (err instanceof Error && err.message.includes('readable text')) {
-      throw err;
-    }
-    if (err instanceof Error && err.message.includes('maximum length')) {
-      throw err;
-    }
-    throw new Error('Failed to parse PDF. File may be corrupted or not a valid PDF.');
+    // Corrupted, encrypted, or otherwise unparseable input: one safe message,
+    // never the parser's internal stack.
+    throw new PDFExtractionError(
+      'malformed',
+      'Failed to parse PDF. File may be corrupted, password-protected, or not a valid PDF.'
+    );
   }
 }

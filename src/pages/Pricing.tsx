@@ -73,7 +73,7 @@ export default function Pricing() {
                     {formatPrice(plan.pricePaise, plan.currency)}
                   </div>
                   {plan.billingPeriod === 'year' && plan.pricePaise !== null && (
-                    <div className="text-xs text-gray-500">per year</div>
+                    <div className="text-xs text-gray-500">/ 1 year · one-time payment</div>
                   )}
                 </div>
               </div>
@@ -82,16 +82,16 @@ export default function Pricing() {
                 <li>{plan.entitlements.resumeVariants} resume variants</li>
                 <li>{plan.entitlements.githubRepos} GitHub repos</li>
                 <li>{plan.entitlements.recruiterAiPerDay} recruiter AI questions / day</li>
-                <li>{plan.entitlements.tailoringPerMonth} job tailoring / month</li>
+                <li>Unlimited deterministic job tailoring</li>
                 <li>
                   {plan.entitlements.customDomains} custom domain
                   {plan.entitlements.customDomains === 1 ? '' : 's'}
                 </li>
-                <li>
-                  {plan.entitlements.removeBranding
-                    ? 'No platform branding'
-                    : 'Platform branding shown'}
-                </li>
+                {plan.planId === 'pro' && (
+                  <li className="text-xs text-gray-500">
+                    No automatic renewal — buy another year any time
+                  </li>
+                )}
               </ul>
 
               <Link

@@ -20,7 +20,6 @@ export interface RequirementMatch {
 }
 
 export interface MatchingResult {
-  overallScore: number;
   matches: RequirementMatch[];
   gaps: JobRequirement[];
   summary: {
@@ -402,35 +401,6 @@ function generateGapSuggestions(requirement: JobRequirement, strength: MatchStre
   return suggestions;
 }
 
-function calculateOverallScore(matches: RequirementMatch[]): number {
-  if (matches.length === 0) return 0;
-
-  const strengthScores: Record<MatchStrength, number> = {
-    [MatchStrength.exact]: 100,
-    [MatchStrength.strong]: 80,
-    [MatchStrength.moderate]: 50,
-    [MatchStrength.weak]: 20,
-    [MatchStrength.none]: 0,
-  };
-
-  let weightedSum = 0;
-  let totalWeight = 0;
-
-  for (const match of matches) {
-    const weight =
-      match.requirement.priority === JobRequirementPriority.required
-        ? 3
-        : match.requirement.priority === JobRequirementPriority.preferred
-          ? 2
-          : 1;
-
-    weightedSum += strengthScores[match.strength] * weight;
-    totalWeight += weight;
-  }
-
-  return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
-}
-
 export function matchRequirements(job: ParsedJob, profile: ProfileWithRelations): MatchingResult {
   const profileSkills = extractProfileSkills(profile);
   const matches = job.requirements.map((req) => matchRequirement(req, profile, profileSkills));
@@ -455,7 +425,6 @@ export function matchRequirements(job: ParsedJob, profile: ProfileWithRelations)
   }
 
   return {
-    overallScore: calculateOverallScore(matches),
     matches,
     gaps,
     summary: {

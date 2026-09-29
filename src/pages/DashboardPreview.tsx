@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService } from '../lib/profiles/service';
@@ -16,7 +16,9 @@ export default function DashboardPreview() {
   const [preferences, setPreferences] = useState<ProfilePreferences | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const profileService = new ProfileService();
+  const profileServiceRef = useRef<ProfileService | null>(null);
+  if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
+  const profileService = profileServiceRef.current;
 
   useEffect(() => {
     if (auth.status !== 'authenticated') return;

@@ -194,9 +194,12 @@ export default function EditorialTemplate({
                       style={{ color: config.colors.text, fontFamily: config.fonts.heading }}>
                       {proj.name}
                     </h3>
+                    {/* Decorative index is visually hidden but meaningful to
+                        screen readers as project position (QA-010). */}
                     <span
                       className="text-xs font-bold tabular-nums"
-                      style={{ color: accent, fontFamily: config.fonts.mono }}>
+                      style={{ color: accent, fontFamily: config.fonts.mono }}
+                      aria-label={`Project ${i + 1}`}>
                       {String(i + 1).padStart(2, '0')}
                     </span>
                   </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
 import { getSupabaseClient } from '../../lib/supabase/client';
+import { toSafeAuthMessage } from '../../lib/auth/errors';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 
 export default function VerifyEmail() {
@@ -11,6 +12,10 @@ export default function VerifyEmail() {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
   const [verified, setVerified] = useState(false);
+  // QA-008: the button must NEVER look like a silent no-op. One of three
+  // explicit outcomes is always shown after a check.
+  const [feedback, setFeedback] = useState<'none' | 'not_yet' | 'error'>('none');
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
   useEffect(() => {
     if (auth.status === 'authenticated' && auth.user.emailConfirmed) {
@@ -56,20 +61,40 @@ export default function VerifyEmail() {
 
   const handleCheckVerification = async () => {
     setChecking(true);
-    await auth.refreshUser();
-    const supabase = getSupabaseClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session?.user) {
+    setFeedback('none');
+    setErrorDetail(null);
+    try {
+      // Refresh the user so a just-clicked verification link is reflected.
+      // (refreshUser resolves without throwing even when the fetch fails;
+      // the getUser probe below decides the outcome.)
+      await auth.refreshUser();
+      const supabase = getSupabaseClient();
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user?.email_confirmed_at) {
-        setVerified(true);
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+        if (userError) {
+          setFeedback('error');
+          setErrorDetail(toSafeAuthMessage(userError.message));
+          return;
+        }
+        if (user?.email_confirmed_at) {
+          setVerified(true);
+          return;
+        }
       }
+      // Explicit still-unverified outcome — no silent no-op.
+      setFeedback('not_yet');
+    } catch {
+      setFeedback('error');
+      setErrorDetail('Could not check verification status. Please try again.');
+    } finally {
+      setChecking(false);
     }
-    setChecking(false);
   };
 
   if (auth.status === 'authenticated' && auth.user.emailConfirmed) {
@@ -90,8 +115,22 @@ export default function VerifyEmail() {
             onClick={() => void handleCheckVerification()}
             disabled={checking}
             className="w-full bg-gray-900 text-white py-2 px-4 rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed">
-            {checking ? 'Checking...' : "I've verified my email"}
+            {checking ? 'Checking…' : "I've verified my email"}
           </button>
+
+          {feedback === 'not_yet' && (
+            <p
+              className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
+              role="status">
+              We still can't see the verification yet. If you just clicked the link, wait a few
+              seconds and try again.
+            </p>
+          )}
+          {feedback === 'error' && (
+            <p className="text-sm text-red-600" role="alert">
+              {errorDetail ?? 'Could not check verification status. Please try again.'}
+            </p>
+          )}
 
           <p className="text-sm text-gray-500">
             Didn't receive the email? Check your spam folder or{' '}

@@ -17,7 +17,6 @@ import {
   DEFAULT_DESCRIPTION,
   DEFAULT_TITLE,
   OG_IMAGE_PATH,
-  escapeHtml,
   metaTags,
   profileMeta,
   siteMeta,
@@ -130,6 +129,40 @@ export function isHtmlPagePath(pathname: string): boolean {
   return pathname === '/' || pathname === '/pricing' || pathname.startsWith('/u/');
 }
 
+/** Unknown SPA routes still get truthful not-found meta (QA SEO defects). */
+function notFoundInjection(request: Request) {
+  const origin = originOf(request);
+  const meta = {
+    title: 'Page not found — Career Profile',
+    description: 'The page you requested does not exist.',
+    canonical: `${origin}${new URL(request.url).pathname}`,
+    noindex: true,
+    ogImage: `${origin}${OG_IMAGE_PATH}`,
+  };
+  return metaTags(meta);
+}
+
+/**
+ * Replaces the static index.html <title> with the page-specific one. After
+ * this runs there is EXACTLY ONE title element in the document.
+ */
+function replaceStaticTitle(html: string, injection: string): string {
+  const titleMatch = injection.match(/<title>[\s\S]*?<\/title>/i);
+  if (!titleMatch) return html;
+  const withoutTitle = injection.replace(titleMatch[0], '');
+  const hadStaticTitle = /<title[\s\S]*?<\/title>/i.test(html);
+  let next = html;
+  if (hadStaticTitle) {
+    next = html.replace(/<title[\s\S]*?<\/title>/i, titleMatch[0]);
+  } else {
+    next = html.replace(/<head>/i, `<head>\n${titleMatch[0]}`);
+  }
+  if (withoutTitle.trim().length > 0) {
+    next = next.replace(/<head>/i, `<head>\n${withoutTitle}`);
+  }
+  return next;
+}
+
 function siteInjection(request: Request, pathname: string, title: string, description: string) {
   const origin = originOf(request);
   const ogImage = `${origin}${OG_IMAGE_PATH}`;
@@ -189,12 +222,21 @@ export async function handleHtmlPage(
       });
       injection = `${metaTags(meta)}\n${jsonLdScript(jsonLd)}`;
     } else {
-      injection = `<meta name="robots" content="noindex" />\n<meta name="description" content="${escapeHtml('This profile does not exist or is not published.')}">\n<link rel="canonical" href="${escapeHtml(`${origin}/u/${encodeURIComponent(username)}`)}" />`;
+      // Unknown/draft profile: truthful not-found meta, noindex.
+      injection = metaTags({
+        title: 'Profile not found — Career Profile',
+        description: 'This profile does not exist or is not published.',
+        canonical: `${origin}/u/${encodeURIComponent(username)}`,
+        noindex: true,
+        ogImage: `${origin}${OG_IMAGE_PATH}`,
+      });
     }
+  } else {
+    injection = notFoundInjection(request);
   }
 
   if (injection) {
-    html = html.replace(/<head>/i, `<head>\n${injection}`);
+    html = replaceStaticTitle(html, injection);
   }
 
   const headers = new Headers(upstream.headers);

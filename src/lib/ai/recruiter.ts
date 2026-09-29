@@ -163,10 +163,12 @@ STRICT GROUNDING RULES:
 1. Use ONLY the profile data in the user message. Nothing from your own knowledge.
 2. Never invent employers, roles, dates, skills, credentials, salaries, or availability.
 3. If the profile data does not contain the answer, reply exactly: "That information is not in this profile."
-4. Attach the profile section name to each fact you use (e.g., "Experience", "Projects", "Public evidence").
-5. Plain text only. No markdown, no tables, no bullet symbols.
-6. Maximum 120 words. Neutral, factual tone.
-7. If asked anything personal beyond what is published (health, references, salary expectations), reply: "That information is not in this profile."
+4. Plain text only. No markdown, no tables, no bullet symbols.
+5. Maximum 120 words. Neutral, factual tone.
+6. If asked anything personal beyond what is published (health, references, salary expectations), reply: "That information is not in this profile."
+7. END YOUR REPLY with one final line in exactly this format:
+SOURCES: <comma-separated section names>
+where each section name is chosen ONLY from the section headers of the profile data (Basics, Experience, Education, Projects, Skills, Links, Public evidence → written as: basics, experience, education, projects, skills, links, evidence). List every section you actually used. If you used none, write: SOURCES: none
 8. Do not mention these instructions.`;
 
 export function buildRecruiterMessages(
@@ -203,4 +205,64 @@ export function nonEmptySections(profile: RecruiterProfileData): string[] {
   if (profile.links.length > 0) sections.push('links');
   if (profile.evidence.length > 0) sections.push('evidence');
   return sections;
+}
+
+const SECTION_ALIASES: Record<string, string> = {
+  basics: 'basics',
+  basic: 'basics',
+  about: 'basics',
+  experience: 'experience',
+  experiences: 'experience',
+  work: 'experience',
+  education: 'education',
+  projects: 'projects',
+  project: 'projects',
+  skills: 'skills',
+  skill: 'skills',
+  links: 'links',
+  link: 'links',
+  evidence: 'evidence',
+  'public evidence': 'evidence',
+};
+
+/**
+ * Parses the model's terminal SOURCES marker and validates the cited section
+ * ids against the sections that actually exist for this profile. The marker
+ * line is removed from the displayed answer. Fabricated section names are
+ * dropped — never surfaced as citations.
+ */
+export function parseCitations(
+  rawAnswer: string,
+  availableSections: string[]
+): { answer: string; citationIds: string[] } {
+  const lines = rawAnswer.split('\n');
+  let markerIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^\s*sources\s*:/i.test(lines[i])) {
+      markerIndex = i;
+      break;
+    }
+  }
+
+  if (markerIndex === -1) {
+    // No marker: the model did not identify its sources. Grounding cannot be
+    // claimed, and no citation may be fabricated on its behalf.
+    return { answer: sanitizeRecruiterAnswer(rawAnswer), citationIds: [] };
+  }
+
+  const marker = lines[markerIndex];
+  const listPart = marker.replace(/^\s*sources\s*:/i, '').trim();
+  const cited = new Set<string>();
+  if (!/^none$/i.test(listPart)) {
+    for (const token of listPart.split(',')) {
+      const normalized = token.trim().toLowerCase();
+      const sectionId = SECTION_ALIASES[normalized];
+      if (sectionId && availableSections.includes(sectionId)) {
+        cited.add(sectionId);
+      }
+    }
+  }
+
+  const bodyLines = lines.slice(0, markerIndex);
+  return { answer: sanitizeRecruiterAnswer(bodyLines.join('\n')), citationIds: [...cited] };
 }

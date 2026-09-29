@@ -1,19 +1,19 @@
 /**
- * Live/schema qualification for the end-of-cycle cancellation feature.
+ * Integration qualification for the BILLING MODEL (one-time annual Pro) and
+ * the legacy cancellation column. Runs ONLY via `pnpm test:integration`.
  *
- * Runs against the real project: the remote migration must already be applied
- * (`supabase db push`), so the types include `cancel_at_period_end`.
+ * Live probes need the linked project's publishable config. Per the
+ * audit's live-test policy there is NO silent skip: when the configuration
+ * is absent, the suite FAILS with a clear configuration message.
  *
- * What is verified here (credential-free):
- *   - the remote column exists (types generated FROM the linked DB assert it)
+ * Verified here:
+ *   - remote schema truth: cancel_at_period_end exists (types generated
+ *     FROM the linked DB assert it) and was added idempotently (migration)
  *   - anonymous clients can NEVER read or write user_subscriptions (RLS)
- *   - the pure state machine stays idempotent and conflicts on stale state
- *   - a renewal webhook clears the flag (webhook unit contract re-checked
- *     against the real migration's CHECK constraints via upsert shape)
- *
- * What is NOT verified here (needs Razorpay credentials):
- *   - a provider-driven cancellation; classified CREDENTIAL_BLOCKED in the
- *     closure report rather than faked.
+ *   - the marker table is fully client-inaccessible (worker-only)
+ *   - the pure cancel/resume state machine (legacy semantics) stays
+ *     idempotent and conflicts on stale state
+ *   - a renewal webhook upsert clears the flag and EXTENDS the period
  */
 import { describe, it, expect } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
@@ -26,16 +26,26 @@ import { join } from 'node:path';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
+function requireLiveConfig(): { url: string; key: string } {
+  if (!supabaseUrl || !publishableKey) {
+    throw new Error(
+      'test:integration requires VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY ' +
+        'in .env.local (linked Supabase project). No silent skips: configure them and re-run.'
+    );
+  }
+  return { url: supabaseUrl, key: publishableKey };
+}
+
 // The generated types come from the LINKED remote database. If the column
 // were missing remotely, regeneration would have omitted it and this
 // static assertion would fail.
-describe('remote schema: cancel_at_period_end exists', () => {
+describe('remote schema: legacy cancellation column exists', () => {
   it('is part of the user_subscriptions Row type (generated from linked DB)', () => {
     const types = readFileSync(
       join(__dirname, '..', '..', 'lib', 'supabase', 'database.types.ts'),
       'utf-8'
     );
-    expect(types).toContain('cancel_at_period_end: boolean;');
+    expect(types).toContain('cancel_at_period_end: boolean');
   });
 
   it('the checked-in migration adds it idempotently with a default', () => {
@@ -61,54 +71,50 @@ describe('remote schema: cancel_at_period_end exists', () => {
 // never data. The deletion marker table has NO policies at all, so even
 // authenticated clients can never touch it (worker-only).
 describe('anon access to sensitive tables is denied (live RLS)', () => {
-  it.skipIf(!supabaseUrl || !publishableKey)(
-    'anon select returns no rows and anon update affects nothing',
-    async () => {
-      const anon = createClient<Database>(supabaseUrl!, publishableKey!, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
+  it('anon select returns no rows and anon update affects nothing', async () => {
+    const { url, key } = requireLiveConfig();
+    const anon = createClient<Database>(url, key, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
-      const { data: selected, error: selectError } = await anon
-        .from('user_subscriptions')
-        .select('*')
-        .limit(5);
+    const { data: selected, error: selectError } = await anon
+      .from('user_subscriptions')
+      .select('*')
+      .limit(5);
 
-      // RLS blocks the read: either an error or an empty result set.
-      const leaked = (selected ?? []).length > 0;
-      expect(leaked).toBe(false);
-      expect(selectError === null || selected === null).toBe(true);
+    // RLS blocks the read: either an error or an empty result set.
+    const leaked = (selected ?? []).length > 0;
+    expect(leaked).toBe(false);
+    expect(selectError === null || selected === null).toBe(true);
 
-      // RLS also blocks writes: the update matches no visible rows.
-      const { data: updated, error: updateError } = await anon
-        .from('user_subscriptions')
-        .update({ cancel_at_period_end: true })
-        .eq('user_id', '00000000-0000-4000-8000-00000000dead');
+    // RLS also blocks writes: the update matches no visible rows.
+    const { data: updated, error: updateError } = await anon
+      .from('user_subscriptions')
+      .update({ cancel_at_period_end: true })
+      .eq('user_id', '00000000-0000-4000-8000-00000000dead');
 
-      expect(updateError === null || updated === null).toBe(true);
-      if (updated !== null) expect((updated as unknown[]).length).toBe(0);
-    }
-  );
+    expect(updateError === null || updated === null).toBe(true);
+    if (updated !== null) expect((updated as unknown[]).length).toBe(0);
+  });
 
-  it.skipIf(!supabaseUrl || !publishableKey)(
-    'deletion marker table is completely inaccessible to clients (worker-only)',
-    async () => {
-      const anon = createClient<Database>(supabaseUrl!, publishableKey!, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
+  it('deletion marker table is completely inaccessible to clients (worker-only)', async () => {
+    const { url, key } = requireLiveConfig();
+    const anon = createClient<Database>(url, key, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
-      // SELECT: no grant → error, never rows.
-      const { data, error } = await anon.from('account_deletion_requests').select('*').limit(5);
-      expect(error).not.toBeNull();
-      expect(data).toBeNull();
+    // SELECT: no grant → error, never rows.
+    const { data, error } = await anon.from('account_deletion_requests').select('*').limit(5);
+    expect(error).not.toBeNull();
+    expect(data).toBeNull();
 
-      // INSERT: a client must never be able to forge a deletion marker.
-      const { error: insertError } = await anon.from('account_deletion_requests').insert({
-        user_id: '00000000-0000-4000-8000-00000000dead',
-        stage: 'requested',
-      });
-      expect(insertError).not.toBeNull();
-    }
-  );
+    // INSERT: a client must never be able to forge a deletion marker.
+    const { error: insertError } = await anon.from('account_deletion_requests').insert({
+      user_id: '00000000-0000-4000-8000-00000000dead',
+      stage: 'requested',
+    });
+    expect(insertError).not.toBeNull();
+  });
 
   it('the marker table is covered by the explicit non-cascading plan check', () => {
     // The marker itself cascades from auth.users (FK), so it must NOT be in
@@ -117,9 +123,9 @@ describe('anon access to sensitive tables is denied (live RLS)', () => {
   });
 });
 
-// Idempotency + conflict semantics of the state machine (server behavior
-// mirror): repeat requests must not error, stale state must conflict.
-describe('cancel/resume semantics (server mirror)', () => {
+// Idempotency + conflict semantics of the legacy state machine (server
+// behavior mirror): repeat requests must not error, stale state must conflict.
+describe('cancel/resume semantics (legacy state machine mirror)', () => {
   const future = new Date(Date.now() + 30 * 86400000).toISOString();
   const past = new Date(Date.now() - 86400000).toISOString();
   const base = {
@@ -159,13 +165,11 @@ describe('cancel/resume semantics (server mirror)', () => {
   });
 });
 
-// Webhook contract: a renewal upsert (what markOrderPaid performs) writes
-// cancel_at_period_end = false. The row shape must satisfy the real
-// migration's constraints (plan CHECK, status CHECK, column exists).
-describe('renewal webhook clears the cancellation flag', () => {
+// Webhook contract: a renewal upsert (what the webhook RPC performs)
+// writes cancel_at_period_end = false and EXTENDS from
+// max(now, current_period_end) — never shortens existing access.
+describe('renewal webhook clears the legacy flag and extends access', () => {
   it('upsert shape includes cancel_at_period_end=false (renewal semantics)', () => {
-    // Mirrors handler.ts markOrderPaid's upsert payload; the type-level
-    // check proves the column exists remotely and accepts the write.
     type UpsertShape = Database['public']['Tables']['user_subscriptions']['Insert'];
     const renewal: UpsertShape = {
       user_id: '00000000-0000-4000-8000-00000000dead',

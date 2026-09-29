@@ -36,6 +36,28 @@ describe('askRecruiterQuestion', () => {
     expect(result.answer).toBe('They built CLI tools.');
     expect(result.sections).toEqual(['projects']);
   });
+  it('fetchRecruiterConfig degrades to the disabled default on network failure', async () => {
+    // The module-level mock replaces fetchRecruiterConfig; grab the real one.
+    const real = (await vi.importActual('../../lib/recruiter/ask')) as typeof AskModule;
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to parse URL')));
+    const cfg = await real.fetchRecruiterConfig();
+    expect(cfg).toEqual({ enabled: false, aiConfigured: false, maxQuestionChars: 400 });
+  });
+
+  it('fetchRecruiterConfig survives a non-JSON success body', async () => {
+    const real = (await vi.importActual('../../lib/recruiter/ask')) as typeof AskModule;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('<html>gateway noise</html>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' },
+        })
+      )
+    );
+    const cfg = await real.fetchRecruiterConfig();
+    expect(cfg.enabled).toBe(false);
+  });
 
   it('maps rate limiting to a retryable error with retry-after', async () => {
     vi.stubGlobal(
@@ -178,11 +200,11 @@ describe('RecruiterAsk component', () => {
     ).toBeInTheDocument();
   });
 
-  it('translates rate limiting into human copy with the retry hint', async () => {
+  it('translates anti-abuse limiting (TOO_MANY_REQUESTS) into human copy with the retry hint', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: 'Too many questions.', code: 'RATE_LIMITED' }), {
+        new Response(JSON.stringify({ error: 'Too many questions.', code: 'TOO_MANY_REQUESTS' }), {
           status: 429,
           headers: { 'Content-Type': 'application/json', 'retry-after': '20' },
         })
@@ -195,6 +217,29 @@ describe('RecruiterAsk component', () => {
 
     expect(await screen.findByText(/too many questions/i)).toBeInTheDocument();
     expect(await screen.findByText(/20s/i)).toBeInTheDocument();
+  });
+
+  it('translates the owner plan-quota limit (RATE_LIMITED) into truthful copy without a retry hint', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: 'The daily question limit for this profile has been reached.',
+            code: 'RATE_LIMITED',
+          }),
+          { status: 429, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    );
+    render(<RecruiterAsk username="ada" />);
+    const input = await screen.findByLabelText(/your question about this profile/i);
+    fireEvent.change(input, { target: { value: 'Hello?' } });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    expect(
+      await screen.findByText(/daily question limit for this profile has been reached/i)
+    ).toBeInTheDocument();
   });
 
   it('blocks questions above the configured character limit', async () => {

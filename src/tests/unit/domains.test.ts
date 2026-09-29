@@ -9,7 +9,7 @@ import {
 import {
   checkDomainQuota,
   validateAddDomain,
-  buildVerificationToken,
+  generateVerificationToken,
 } from '../../lib/domains/custom';
 import type { PlanEntitlements } from '../../lib/billing/plans';
 
@@ -18,9 +18,7 @@ const freeEnt: PlanEntitlements = {
   resumeVariants: 3,
   githubRepos: 5,
   recruiterAiPerDay: 10,
-  tailoringPerMonth: 3,
   customDomains: 0,
-  removeBranding: false,
 };
 
 const proEnt: PlanEntitlements = {
@@ -28,9 +26,7 @@ const proEnt: PlanEntitlements = {
   resumeVariants: 20,
   githubRepos: 20,
   recruiterAiPerDay: 100,
-  tailoringPerMonth: 30,
   customDomains: 1,
-  removeBranding: true,
 };
 
 describe('validators', () => {
@@ -121,10 +117,11 @@ describe('custom domain quota', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('buildVerificationToken is deterministic', () => {
-    const a = buildVerificationToken('careers.example.io', 'salt');
-    const b = buildVerificationToken('careers.example.io', 'salt');
-    expect(a).toBe(b);
-    expect(a).toMatch(/^cv-verify-/);
+  it('generateVerificationToken is random per call and URL-safe', () => {
+    const a = generateVerificationToken();
+    const b = generateVerificationToken();
+    expect(a).not.toBe(b);
+    expect(a).toMatch(/^cv-verify-[A-Za-z0-9_-]{43}$/);
+    expect(b).toMatch(/^cv-verify-[A-Za-z0-9_-]{43}$/);
   });
 });

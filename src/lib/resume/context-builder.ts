@@ -43,7 +43,6 @@ export interface PublicJobContext {
 }
 
 export interface PublicMatchingContext {
-  overallScore: number;
   matchedCount: number;
   gapCount: number;
   topMatches: PublicMatchSummary[];
@@ -160,7 +159,6 @@ export function buildMatchingContext(matchingResult: MatchingResult): PublicMatc
   }));
 
   return {
-    overallScore: matchingResult.overallScore,
     matchedCount: matchingResult.summary.matched,
     gapCount: matchingResult.gaps.length,
     topMatches,
@@ -219,7 +217,6 @@ export function buildAIPromptContext(
   sections.push(`Preferred: ${jobContext.preferredCount}`);
 
   sections.push('\n=== MATCHING CONTEXT ===');
-  sections.push(`Overall Score: ${matchingContext.overallScore}%`);
   sections.push(`Matched: ${matchingContext.matchedCount}`);
   sections.push(`Gaps: ${matchingContext.gapCount}`);
 
