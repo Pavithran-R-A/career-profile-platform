@@ -118,9 +118,11 @@ function renderAt(path: string) {
 }
 
 describe('production routes (actual AppRoutes)', () => {
-  it('/dashboard/resume/ats renders the ATS builder', async () => {
+  // React.lazy chunks can take >1s to resolve under full-suite parallel load;
+  // give findBy* a bounded 10s window instead of testing-library's 1s default.
+  it('/dashboard/resume/ats renders the ATS builder', { timeout: 20_000 }, async () => {
     renderAt('/dashboard/resume/ats');
-    expect(await screen.findByText('ATS resume')).toBeInTheDocument();
+    expect(await screen.findByText('ATS resume', {}, { timeout: 10_000 })).toBeInTheDocument();
     // deterministic inclusion summary with truthful counts (mock profile is empty)
     expect(await screen.findByText(/Included:/)).toBeInTheDocument();
     expect(screen.getByText(/0 roles/)).toBeInTheDocument();
@@ -175,22 +177,28 @@ describe('template selector (actual registry)', () => {
 });
 
 describe('dashboard discoverability (actual Dashboard)', () => {
-  it('ATS, tailoring and preview actions resolve to canonical routes', async () => {
-    renderAt('/dashboard');
-    const ats = await screen.findByRole('link', { name: /ATS resume/ });
-    const tailor = await screen.findByRole('link', { name: /Job tailoring/ });
-    const preview = await screen.findByRole('link', { name: /Preview portfolio/ });
-    const profile = await screen.findByRole('link', { name: /Edit profile/ });
-    const resume = await screen.findByRole('link', { name: /Import resume/ });
-    expect(ats).toHaveAttribute('href', '/dashboard/resume/ats');
-    expect(tailor).toHaveAttribute('href', '/dashboard/resume/tailor');
-    expect(preview).toHaveAttribute('href', '/dashboard/preview');
-    expect(profile).toHaveAttribute('href', '/dashboard/profile');
-    expect(resume).toHaveAttribute('href', '/dashboard/resume');
-    // meaningful completion details, no repeated "5/5" totals
-    expect(screen.getByText('Complete')).toBeInTheDocument();
-    expect(screen.getAllByText('No entries yet').length).toBe(2);
-    expect(screen.queryByText('0/5')).not.toBeInTheDocument();
-    expect(screen.queryByText('5/5')).not.toBeInTheDocument();
-  });
+  // Full-suite parallel load stretches React lazy chunks; the 5s default
+  // timeout flakes. Generous but bounded.
+  it(
+    'ATS, tailoring and preview actions resolve to canonical routes',
+    { timeout: 20_000 },
+    async () => {
+      renderAt('/dashboard');
+      const ats = await screen.findByRole('link', { name: /ATS resume/ });
+      const tailor = await screen.findByRole('link', { name: /Job tailoring/ });
+      const preview = await screen.findByRole('link', { name: /Preview portfolio/ });
+      const profile = await screen.findByRole('link', { name: /Edit profile/ });
+      const resume = await screen.findByRole('link', { name: /Import resume/ });
+      expect(ats).toHaveAttribute('href', '/dashboard/resume/ats');
+      expect(tailor).toHaveAttribute('href', '/dashboard/resume/tailor');
+      expect(preview).toHaveAttribute('href', '/dashboard/preview');
+      expect(profile).toHaveAttribute('href', '/dashboard/profile');
+      expect(resume).toHaveAttribute('href', '/dashboard/resume');
+      // meaningful completion details, no repeated "5/5" totals
+      expect(screen.getByText('Complete')).toBeInTheDocument();
+      expect(screen.getAllByText('No entries yet').length).toBe(2);
+      expect(screen.queryByText('0/5')).not.toBeInTheDocument();
+      expect(screen.queryByText('5/5')).not.toBeInTheDocument();
+    }
+  );
 });

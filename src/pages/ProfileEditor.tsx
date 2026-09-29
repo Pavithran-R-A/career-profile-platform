@@ -248,6 +248,12 @@ export default function ProfileEditor() {
   if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
   const profileService = profileServiceRef.current;
 
+  // Initialize BEFORE any early return: the load effect's async callback
+  // closes over this binding, and a first render that takes the loading
+  // early-return would otherwise leave it in its temporal dead zone —
+  // silently killing the achievements query (ReferenceError on access).
+  const supabase = getSupabaseClient();
+
   useEffect(() => {
     if (!previewOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -334,8 +340,6 @@ export default function ProfileEditor() {
   if (auth.status === 'unauthenticated' || !profile) {
     return null;
   }
-
-  const supabase = getSupabaseClient();
 
   // ── Generic row operations (owner RLS policies cover update/delete) ──
 
