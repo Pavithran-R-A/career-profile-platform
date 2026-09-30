@@ -1115,7 +1115,6 @@ export type Database = {
         Row: {
           evidence_type: string | null;
           id: string | null;
-          metadata: Json | null;
           observed_at: string | null;
           profile_id: string | null;
           repository_full_name: string | null;
@@ -1123,7 +1122,34 @@ export type Database = {
           repository_topics: Json | null;
           repository_url: string | null;
           source_commit_sha: string | null;
-          source_path: string | null;
+          source_url: string | null;
+          subject: string | null;
+          summary: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'profile_evidence_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profile_evidence_profile_id_fkey';
+            columns: ['profile_id'];
+            isOneToOne: false;
+            referencedRelation: 'public_profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      published_evidence_non_repo: {
+        Row: {
+          evidence_type: string | null;
+          id: string | null;
+          observed_at: string | null;
+          profile_id: string | null;
+          source_commit_sha: string | null;
           source_url: string | null;
           subject: string | null;
           summary: string | null;
@@ -1152,6 +1178,10 @@ export type Database = {
         Args: { p_limit: number; p_user_id: string };
         Returns: number;
       };
+      create_custom_domain_atomic: {
+        Args: { p_hostname: string; p_limit: number; p_profile_id: string };
+        Returns: string;
+      };
       create_profile_variant: {
         Args: {
           p_job_requirements: Json;
@@ -1164,6 +1194,17 @@ export type Database = {
         };
         Returns: string;
       };
+      create_profile_with_basics: {
+        Args: {
+          p_about: string;
+          p_display_name: string;
+          p_headline: string;
+          p_location: string;
+          p_user_id: string;
+          p_username: string;
+        };
+        Returns: string;
+      };
       process_paid_order_webhook: {
         Args: {
           p_event_id: string;
@@ -1173,7 +1214,23 @@ export type Database = {
         };
         Returns: Json;
       };
+      refund_github_repository_select: {
+        Args: { p_repo_id: string };
+        Returns: undefined;
+      };
+      refund_recruiter_quota: {
+        Args: { p_user_id: string };
+        Returns: undefined;
+      };
+      release_custom_domain_slot: {
+        Args: { p_domain_id: string; p_safe_error: string };
+        Returns: undefined;
+      };
       safe_int: { Args: { fallback: number; value: string }; Returns: number };
+      select_github_repository: {
+        Args: { p_connection_id: string; p_limit: number; p_repo_id: string };
+        Returns: string;
+      };
     };
     Enums: {
       [_ in never]: never;

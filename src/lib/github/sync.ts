@@ -1,4 +1,5 @@
 import { GitHubClient } from './client';
+import type { GitHubJwtConfig } from './jwt';
 import type { GitHubRepositoryRecord } from './types';
 
 export interface SyncJobResult {
@@ -19,8 +20,8 @@ export class SyncEngine {
   private errors: string[] = [];
   private progress: SyncProgress = { phase: 'idle', current: 0, total: 0 };
 
-  constructor(installationId: number) {
-    this.client = new GitHubClient(installationId);
+  constructor(installationId: number, jwtConfig: GitHubJwtConfig) {
+    this.client = new GitHubClient(installationId, jwtConfig);
   }
 
   getProgress(): SyncProgress {

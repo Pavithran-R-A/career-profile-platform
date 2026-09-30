@@ -7,6 +7,7 @@ import {
   normalizeSubscriptionRow,
 } from '../../lib/billing/entitlements';
 import { checkUsage, dayKey, monthKey, windowKeyFor } from '../../lib/billing/usage';
+import type { PlanEntitlements } from '../../lib/billing/plans';
 import { canTransition, applyTransition, createLocalOrder, isPaid } from '../../lib/billing/orders';
 import type { BillingOrder } from '../../lib/billing/orders';
 
@@ -71,14 +72,14 @@ describe('normalizeSubscriptionRow', () => {
 });
 
 describe('usage', () => {
-  const freeEnt = {
+  // Aligned with the REAL PlanEntitlements contract — no removed legacy
+  // fields (tailoringPerMonth / removeBranding no longer exist).
+  const freeEnt: PlanEntitlements = {
     planId: 'free' as const,
     resumeVariants: 3,
     githubRepos: 5,
     recruiterAiPerDay: 10,
-    tailoringPerMonth: 3,
     customDomains: 0,
-    removeBranding: false,
   };
 
   it('allows within limit', () => {

@@ -49,6 +49,7 @@ export default function GitHubDashboard() {
   const [configLoading, setConfigLoading] = useState(true);
   const [installStarting, setInstallStarting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<SyncState>({
     loading: false,
@@ -222,6 +223,36 @@ export default function GitHubDashboard() {
     }
   }, [authedFetch, loadConnectionData]);
 
+  // REAL evidence generation: calls the server pipeline that fetches bounded
+  // commits/PRs/releases for selected repos and persists is_public=false rows.
+  const handleGenerateEvidence = useCallback(async () => {
+    setGenerating(true);
+    setNotice(null);
+    try {
+      const result = await authedFetch('/api/github/evidence/generate');
+      if (!result.ok) {
+        setNotice(
+          safeErrorMessage(
+            result.status,
+            'Evidence generation failed. If credentials are not configured, it is unavailable.'
+          )
+        );
+        return;
+      }
+      const outcome = result.data as { evidenceExtracted?: number; evidenceDeduped?: number };
+      await loadConnectionData();
+      const added = outcome?.evidenceExtracted ?? 0;
+      const dupes = outcome?.evidenceDeduped ?? 0;
+      setNotice(
+        `Evidence ready: ${added} new item${added === 1 ? '' : 's'}${dupes > 0 ? `, ${dupes} already known` : ''}. New items stay private until you publish them.`
+      );
+    } catch {
+      setNotice('Evidence generation failed. Please retry.');
+    } finally {
+      setGenerating(false);
+    }
+  }, [authedFetch, loadConnectionData]);
+
   const handleDisconnect = useCallback(async () => {
     setNotice(null);
     try {
@@ -255,23 +286,46 @@ export default function GitHubDashboard() {
     [authedFetch]
   );
 
+  // Evidence publish toggle: the SERVER derives ownership, refuses private
+  // repositories and requires the repository's show_publicly flag. The client
+  // NEVER writes is_public directly (the base table denies it to anon, and
+  // the server enforces the public-safety rules).
   const handleToggleEvidencePublic = async (evidenceId: string, isPublic: boolean) => {
-    const supabase = getSupabaseClient();
+    const result = await authedFetch(`/api/github/evidence/${evidenceId}/public`, {
+      value: isPublic,
+    });
+    if (!result.ok) {
+      const body = result.data as { error?: string };
+      setNotice(
+        body?.error ?? safeErrorMessage(result.status, 'Could not update evidence visibility.')
+      );
+      await loadConnectionData();
+      return;
+    }
+    setSyncState((prev) => ({
+      ...prev,
+      evidence: prev.evidence.map((e) => (e.id === evidenceId ? { ...e, is_public: isPublic } : e)),
+    }));
+  };
 
-    const { error } = await supabase
-      .from('profile_evidence' as never)
-      .update({ is_public: isPublic } as never)
-      .eq('id', evidenceId);
-
-    if (!error) {
+  const handleToggleRepositoryPublic = useCallback(
+    async (githubRepoId: number, visible: boolean) => {
+      const result = await authedFetch(`/api/github/repositories/${githubRepoId}/public`, {
+        value: visible,
+      });
+      if (!result.ok) {
+        setNotice(safeErrorMessage(result.status, 'Could not update repository visibility.'));
+        return;
+      }
       setSyncState((prev) => ({
         ...prev,
-        evidence: prev.evidence.map((e) =>
-          e.id === evidenceId ? { ...e, is_public: isPublic } : e
+        repositories: prev.repositories.map((r) =>
+          r.github_repo_id === githubRepoId ? { ...r, show_publicly: visible } : r
         ),
       }));
-    }
-  };
+    },
+    [authedFetch]
+  );
 
   const handleRefresh = () => {
     void loadConnectionData();
@@ -349,6 +403,13 @@ export default function GitHubDashboard() {
             </button>
             <button
               type="button"
+              onClick={() => void handleGenerateEvidence()}
+              disabled={generating || syncing}
+              className="text-sm bg-gray-900 text-white px-4 py-2 rounded-md hover:bg-gray-800 disabled:opacity-50">
+              {generating ? 'Generating…' : 'Generate evidence'}
+            </button>
+            <button
+              type="button"
               onClick={() => void handleDisconnect()}
               className="text-sm border border-red-200 text-red-700 px-4 py-2 rounded-md hover:bg-red-50">
               Disconnect
@@ -359,6 +420,10 @@ export default function GitHubDashboard() {
             onToggleRepository={(id, selected) => {
               const repo = syncState.repositories.find((r) => r.id === id);
               if (repo) void handleToggleRepository(repo.github_repo_id, selected);
+            }}
+            onTogglePublic={(id, visible) => {
+              const repo = syncState.repositories.find((r) => r.id === id);
+              if (repo) void handleToggleRepositoryPublic(repo.github_repo_id, visible);
             }}
           />
         </div>
@@ -375,8 +440,10 @@ export default function GitHubDashboard() {
 
       <div className="mt-8 text-center text-sm text-gray-500">
         <p>
-          Evidence items are automatically extracted from commits, pull requests, and releases in
-          selected repositories. Private repositories can never be shown publicly.
+          "Sync repositories" refreshes the repo list. "Generate evidence" extracts bounded commits,
+          pull requests, and releases from selected repositories; new evidence stays private until
+          you publish it. Evidence from private repositories can never be shown publicly, and public
+          evidence requires the repository's "show publicly" switch.
         </p>
       </div>
     </div>

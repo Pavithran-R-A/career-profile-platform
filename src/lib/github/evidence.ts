@@ -6,7 +6,26 @@ import type {
   GitHubCodeReview,
   ProfileEvidence,
 } from './types';
-import { loadGitHubConfig } from './config';
+
+/**
+ * Extraction tuning. Passed explicitly by the pipeline (resolved from Env);
+ * the extraction functions themselves stay pure and process.env-free.
+ */
+export interface EvidenceTuning {
+  minCommitMessageLength: number;
+  excludeMergeCommits: boolean;
+  excludeBotCommits: boolean;
+  excludeBuiltinBotNames: string[];
+  classifyConventionalCommits: boolean;
+}
+
+export const DEFAULT_EVIDENCE_TUNING: EvidenceTuning = {
+  minCommitMessageLength: 10,
+  excludeMergeCommits: true,
+  excludeBotCommits: true,
+  excludeBuiltinBotNames: ['dependabot[bot]', 'renovate[bot]', 'github-actions[bot]'],
+  classifyConventionalCommits: true,
+};
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -51,14 +70,13 @@ function isMergeCommit(commit: GitHubCommit): boolean {
   return commit.parents.length > 1;
 }
 
-function isBotUser(login: string | null | undefined): boolean {
+function isBotUser(login: string | null | undefined, tuning: EvidenceTuning): boolean {
   if (!login) return false;
-  const config = loadGitHubConfig();
-  return login.endsWith('[bot]') || config.evidence.excludeBuiltinBotNames.includes(login);
+  return login.endsWith('[bot]') || tuning.excludeBuiltinBotNames.includes(login);
 }
 
 const CONVENTIONAL_COMMIT_RE =
-  /^(?<type>\w+)(?:\((?<scope>[^)]+)\))?\s*[!]?\s*:\s*(?<description>.+)$/;
+  /^(?<type>\w+)(?:\((?<scope>[^)]+)\))?\s*[!]?\s*:\s*(?<description>.+)$/m;
 
 export function classifyCommit(message: string): CommitClassification {
   const match = message.match(CONVENTIONAL_COMMIT_RE);
@@ -112,17 +130,17 @@ function dedupeById(items: ProfileEvidence[]): ProfileEvidence[] {
 function extractCommitEvidence(
   commit: GitHubCommit,
   githubRepoId: string,
-  ownerLogin: string
+  ownerLogin: string,
+  tuning: EvidenceTuning
 ): ProfileEvidence | null {
-  const config = loadGitHubConfig();
   const msg = commit.commit.message;
 
-  if (isMergeCommit(commit) && config.evidence.excludeMergeCommits) return null;
-  if (isBotUser(commit.author?.login) && config.evidence.excludeBotCommits) return null;
-  if (msg.trim().length < config.evidence.minCommitMessageLength) return null;
+  if (isMergeCommit(commit) && tuning.excludeMergeCommits) return null;
+  if (isBotUser(commit.author?.login, tuning) && tuning.excludeBotCommits) return null;
+  if (msg.trim().length < tuning.minCommitMessageLength) return null;
 
   const firstLine = msg.split('\n')[0];
-  const classification = config.evidence.classifyConventionalCommits ? classifyCommit(msg) : null;
+  const classification = tuning.classifyConventionalCommits ? classifyCommit(msg) : null;
 
   const subject = classification
     ? `[${classification.type}] ${classification.description}`
@@ -168,13 +186,14 @@ function extractCommitEvidence(
 export function extractCommitsEvidence(
   commits: GitHubCommit[],
   githubRepoId: string,
-  ownerLogin: string
+  ownerLogin: string,
+  tuning: EvidenceTuning = DEFAULT_EVIDENCE_TUNING
 ): EvidenceExtractionResult {
   const result: EvidenceExtractionResult = { evidence: [], skipped: 0, errors: [] };
 
   for (const commit of commits) {
     try {
-      const ev = extractCommitEvidence(commit, githubRepoId, ownerLogin);
+      const ev = extractCommitEvidence(commit, githubRepoId, ownerLogin, tuning);
       if (ev) {
         result.evidence.push(ev);
       } else {

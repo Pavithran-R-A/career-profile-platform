@@ -1,256 +1,190 @@
+// Tests import the REAL production extraction functions — no reimplemented
+// extractor lives here (the old copy was deleted).
 import { describe, it, expect } from 'vitest';
+import {
+  extractCommitsEvidence,
+  extractPullRequestsEvidence,
+  extractIssuesEvidence,
+  extractReleasesEvidence,
+  extractCodeReviewsEvidence,
+  extractAllEvidence,
+  classifyCommit,
+  dedupeEvidence,
+  inferLanguageFromPath,
+  deduceSkillsFromEvidence,
+  DEFAULT_EVIDENCE_TUNING,
+  type EvidenceTuning,
+} from '../../lib/github/evidence';
 import type {
-  ProfileEvidence,
   GitHubCommit,
   GitHubPullRequest,
+  GitHubIssue,
   GitHubRelease,
+  GitHubCodeReview,
+  ProfileEvidence,
 } from '../../lib/github/types';
 
-// ─── Evidence Extraction Helpers ──────────────────────────────
+const TUNING: EvidenceTuning = { ...DEFAULT_EVIDENCE_TUNING };
 
-interface EvidenceExtractor {
-  type: ProfileEvidence['evidence_type'];
-  canHandle: (item: unknown) => boolean;
-  extract: (
-    item: unknown,
-    repositoryFullName: string
-  ) => Omit<
-    ProfileEvidence,
-    'id' | 'profile_id' | 'github_repository_id' | 'created_at' | 'updated_at'
-  >;
+function makeCommit(overrides: Partial<GitHubCommit> = {}): GitHubCommit {
+  return {
+    sha: 'abc123def456',
+    node_id: 'C_1',
+    commit: {
+      author: { name: 'Alice', email: 'alice@example.com', date: '2025-01-15T10:30:00Z' },
+      committer: { name: 'Alice', email: 'alice@example.com', date: '2025-01-15T10:30:00Z' },
+      message: 'feat: add user authentication\n\nImplemented JWT-based auth flow',
+      tree: { sha: 'tree123', url: 'https://github.com' },
+      url: 'https://github.com',
+      comment_count: 0,
+      verification: { verified: true, reason: 'valid', signature: 'sig', payload: 'payload' },
+    },
+    url: 'https://github.com',
+    html_url: 'https://github.com/user/repo/commit/abc123',
+    comments_url: 'https://github.com',
+    author: null,
+    committer: null,
+    parents: [],
+    ...overrides,
+  };
 }
 
-const commitExtractor: EvidenceExtractor = {
-  type: 'commit',
-  canHandle: (item): item is GitHubCommit => {
-    return typeof item === 'object' && item !== null && 'commit' in item && 'sha' in item;
-  },
-  extract: (item, repositoryFullName) => {
-    const commit = item as GitHubCommit;
-    return {
-      evidence_type: 'commit',
-      subject: commit.commit.message.split('\n')[0],
-      summary: `Commit by ${commit.commit.author.name} in ${repositoryFullName}`,
-      source_path: null,
-      source_url: commit.html_url,
-      source_commit_sha: commit.sha,
-      metadata: {
-        author: commit.commit.author.name,
-        date: commit.commit.author.date,
-        message: commit.commit.message,
-        verified: commit.commit.verification?.verified ?? false,
-      },
-      is_public: false,
-      observed_at: commit.commit.author.date,
-    };
-  },
-};
-
-const pullRequestExtractor: EvidenceExtractor = {
-  type: 'pull_request',
-  canHandle: (item): item is GitHubPullRequest => {
-    return (
-      typeof item === 'object' &&
-      item !== null &&
-      'pull_request' in item === false &&
-      'number' in item &&
-      'merged' in item
-    );
-  },
-  extract: (item, repositoryFullName) => {
-    const pr = item as GitHubPullRequest;
-    const status = pr.merged ? 'merged' : pr.state;
-    return {
-      evidence_type: 'pull_request',
-      subject: pr.title,
-      summary: `Pull request #${pr.number} ${status} in ${repositoryFullName} (+${pr.additions}/-${pr.deletions})`,
-      source_path: null,
-      source_url: pr.html_url,
-      source_commit_sha: null,
-      metadata: {
-        number: pr.number,
-        state: pr.state,
-        merged: pr.merged,
-        additions: pr.additions,
-        deletions: pr.deletions,
-        changed_files: pr.changed_files,
-        author: pr.user.login,
-      },
-      is_public: false,
-      observed_at: pr.created_at,
-    };
-  },
-};
-
-const releaseExtractor: EvidenceExtractor = {
-  type: 'release',
-  canHandle: (item): item is GitHubRelease => {
-    return (
-      typeof item === 'object' && item !== null && 'tag_name' in item && 'published_at' in item
-    );
-  },
-  extract: (item, repositoryFullName) => {
-    const release = item as GitHubRelease;
-    return {
-      evidence_type: 'release',
-      subject: release.name ?? release.tag_name,
-      summary: `Release ${release.tag_name} published in ${repositoryFullName}`,
-      source_path: null,
-      source_url: release.html_url,
-      source_commit_sha: null,
-      metadata: {
-        tag_name: release.tag_name,
-        prerelease: release.prerelease,
-        draft: release.draft,
-        assets_count: release.assets.length,
-        author: release.author.login,
-      },
-      is_public: false,
-      observed_at: release.published_at,
-    };
-  },
-};
-
-const extractors: EvidenceExtractor[] = [commitExtractor, pullRequestExtractor, releaseExtractor];
-
-function extractEvidence(
-  item: unknown,
-  repositoryFullName: string
-): Omit<
-  ProfileEvidence,
-  'id' | 'profile_id' | 'github_repository_id' | 'created_at' | 'updated_at'
-> | null {
-  for (const extractor of extractors) {
-    if (extractor.canHandle(item)) {
-      return extractor.extract(item, repositoryFullName);
-    }
-  }
-  return null;
+function makePullRequest(overrides: Partial<GitHubPullRequest> = {}): GitHubPullRequest {
+  const user = {
+    login: 'bob',
+    id: 1,
+    node_id: 'U_1',
+    avatar_url: '',
+    gravatar_id: '',
+    url: '',
+    html_url: '',
+    type: 'User' as const,
+    site_admin: false,
+    name: null,
+    company: null,
+    blog: null,
+    location: null,
+    email: null,
+    bio: null,
+    public_repos: 0,
+    followers: 0,
+    following: 0,
+    created_at: '',
+    updated_at: '',
+  };
+  return {
+    id: 1,
+    node_id: 'PR_1',
+    url: 'https://github.com',
+    html_url: 'https://github.com/user/repo/pull/1',
+    diff_url: 'https://github.com',
+    patch_url: 'https://github.com',
+    issue_url: 'https://github.com',
+    number: 1,
+    state: 'closed',
+    locked: false,
+    title: 'Add CI pipeline',
+    user,
+    body: null,
+    created_at: '2025-02-01T09:00:00Z',
+    updated_at: '2025-02-01T09:00:00Z',
+    closed_at: '2025-02-02T09:00:00Z',
+    merged_at: '2025-02-02T09:00:00Z',
+    merge_commit_sha: null,
+    head: { label: 'feature', ref: 'feature', sha: 'h1', user, repo: null },
+    base: { label: 'main', ref: 'main', sha: 'b1', user, repo: null as never },
+    merged: true,
+    mergeable: null,
+    merged_by: null,
+    additions: 120,
+    deletions: 15,
+    changed_files: 4,
+    ...overrides,
+  };
 }
 
-// ─── Tests ────────────────────────────────────────────────────
+function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
+  return {
+    id: 7,
+    node_id: 'I_7',
+    url: 'https://github.com',
+    html_url: 'https://github.com/user/repo/issues/7',
+    number: 7,
+    state: 'open',
+    title: 'Document the public API',
+    body: null,
+    user: makePullRequest().user,
+    labels: [{ id: 1, name: 'docs', color: 'cccccc', description: null }],
+    assignee: null,
+    assignees: [],
+    milestone: null,
+    locked: false,
+    created_at: '2025-03-01T08:00:00Z',
+    updated_at: '2025-03-01T08:00:00Z',
+    closed_at: null,
+    comments: 2,
+    ...overrides,
+  };
+}
 
-describe('extractEvidence', () => {
-  it('extracts evidence from a commit', () => {
-    const commit: GitHubCommit = {
-      sha: 'abc123def456',
-      node_id: 'C_1',
-      commit: {
-        author: { name: 'Alice', email: 'alice@example.com', date: '2025-01-15T10:30:00Z' },
-        committer: { name: 'Alice', email: 'alice@example.com', date: '2025-01-15T10:30:00Z' },
-        message: 'feat: add user authentication\n\nImplemented JWT-based auth flow',
-        tree: { sha: 'tree123', url: 'https://github.com' },
-        url: 'https://github.com',
-        comment_count: 0,
-        verification: { verified: true, reason: 'valid', signature: 'sig', payload: 'payload' },
-      },
-      url: 'https://github.com',
-      html_url: 'https://github.com/user/repo/commit/abc123',
-      comments_url: 'https://github.com',
-      author: null,
-      committer: null,
-      parents: [],
-    };
+function makeRelease(overrides: Partial<GitHubRelease> = {}): GitHubRelease {
+  return {
+    id: 9,
+    node_id: 'R_9',
+    tag_name: 'v1.2.0',
+    target_commitish: 'main',
+    name: 'Version 1.2.0',
+    body: null,
+    draft: false,
+    prerelease: false,
+    created_at: '2025-04-01T00:00:00Z',
+    published_at: '2025-04-01T00:00:00Z',
+    author: makePullRequest().user,
+    assets: [],
+    tarball_url: 'https://github.com/tar',
+    zipball_url: 'https://github.com/zip',
+    html_url: 'https://github.com/user/repo/releases/v1.2.0',
+    ...overrides,
+  };
+}
 
-    const result = extractEvidence(commit, 'user/repo');
-
-    expect(result).not.toBeNull();
-    expect(result!.evidence_type).toBe('commit');
-    expect(result!.subject).toBe('feat: add user authentication');
-    expect(result!.source_url).toBe('https://github.com/user/repo/commit/abc123');
-    expect(result!.source_commit_sha).toBe('abc123def456');
-    expect(result!.metadata).toMatchObject({
-      author: 'Alice',
-      verified: true,
-    });
+describe('extractCommitsEvidence (real module)', () => {
+  it('extracts evidence from a conventional commit', () => {
+    const result = extractCommitsEvidence([makeCommit()], 'repo-row-1', 'user', TUNING);
+    expect(result.evidence).toHaveLength(1);
+    const item = result.evidence[0];
+    expect(item.evidence_type).toBe('commit');
+    expect(item.subject).toBe('[feat] add user authentication');
+    expect(item.source_url).toBe('https://github.com/user/repo/commit/abc123');
+    expect(item.source_commit_sha).toBe('abc123def456');
+    expect(item.metadata.author_email).toBe('alice@example.com');
+    expect(item.metadata.verified).toBe(true);
+    expect(item.is_public).toBe(false);
   });
 
-  it('extracts evidence from a pull request', () => {
-    const pr: GitHubPullRequest = {
-      id: 1,
-      node_id: 'PR_1',
-      url: 'https://github.com',
-      html_url: 'https://github.com/user/repo/pull/1',
-      diff_url: 'https://github.com',
-      patch_url: 'https://github.com',
-      issue_url: 'https://github.com',
-      number: 1,
-      state: 'closed',
-      locked: false,
-      title: 'Add CI pipeline',
-      user: {
-        login: 'bob',
-        id: 1,
-        node_id: 'U_1',
-        avatar_url: '',
-        gravatar_id: '',
-        url: '',
-        html_url: '',
-        type: 'User',
-        site_admin: false,
-        name: null,
-        company: null,
-        blog: null,
-        location: null,
-        email: null,
-        bio: null,
-        public_repos: 0,
-        followers: 0,
-        following: 0,
-        created_at: '',
-        updated_at: '',
-      },
-      body: 'Adds GitHub Actions workflow',
-      created_at: '2025-01-10T08:00:00Z',
-      updated_at: '2025-01-10T12:00:00Z',
-      closed_at: '2025-01-10T12:00:00Z',
-      merged_at: '2025-01-10T12:00:00Z',
-      merge_commit_sha: 'merge123',
-      head: { label: 'user:feature', ref: 'feature', sha: 'sha1', user: {} as any, repo: null },
-      base: { label: 'user:main', ref: 'main', sha: 'sha2', user: {} as any, repo: {} as any },
-      merged: true,
-      mergeable: true,
-      merged_by: null,
-      additions: 45,
-      deletions: 3,
-      changed_files: 2,
-    };
-
-    const result = extractEvidence(pr, 'user/repo');
-
-    expect(result).not.toBeNull();
-    expect(result!.evidence_type).toBe('pull_request');
-    expect(result!.subject).toBe('Add CI pipeline');
-    expect(result!.source_url).toBe('https://github.com/user/repo/pull/1');
-    expect(result!.metadata).toMatchObject({
-      number: 1,
-      merged: true,
-      additions: 45,
-      deletions: 3,
+  it('skips merge commits when configured', () => {
+    const merge = makeCommit({
+      parents: [
+        { sha: 'p1', url: '', html_url: '' },
+        { sha: 'p2', url: '', html_url: '' },
+      ],
     });
+    const result = extractCommitsEvidence([merge], 'r', 'user', TUNING);
+    expect(result.evidence).toHaveLength(0);
+    expect(result.skipped).toBe(1);
   });
 
-  it('extracts evidence from a release', () => {
-    const release: GitHubRelease = {
-      id: 10,
-      node_id: 'R_10',
-      tag_name: 'v2.0.0',
-      target_commitish: 'main',
-      name: 'Version 2.0.0',
-      body: 'Major release with breaking changes',
-      draft: false,
-      prerelease: false,
-      created_at: '2025-02-01T00:00:00Z',
-      published_at: '2025-02-01T12:00:00Z',
+  it('skips bot commits', () => {
+    const bot = makeCommit({
       author: {
-        login: 'carol',
-        id: 2,
-        node_id: 'U_2',
+        login: 'dependabot[bot]',
+        id: 1,
+        node_id: '',
         avatar_url: '',
         gravatar_id: '',
         url: '',
         html_url: '',
-        type: 'User',
+        type: 'Bot' as never,
         site_admin: false,
         name: null,
         company: null,
@@ -264,88 +198,198 @@ describe('extractEvidence', () => {
         created_at: '',
         updated_at: '',
       },
-      assets: [],
-      tarball_url: 'https://github.com',
-      zipball_url: 'https://github.com',
-      html_url: 'https://github.com/user/repo/releases/tag/v2.0.0',
-    };
-
-    const result = extractEvidence(release, 'user/repo');
-
-    expect(result).not.toBeNull();
-    expect(result!.evidence_type).toBe('release');
-    expect(result!.subject).toBe('Version 2.0.0');
-    expect(result!.source_url).toBe('https://github.com/user/repo/releases/tag/v2.0.0');
-    expect(result!.metadata).toMatchObject({
-      tag_name: 'v2.0.0',
-      prerelease: false,
     });
+    const result = extractCommitsEvidence([bot], 'r', 'user', TUNING);
+    expect(result.skipped).toBe(1);
   });
 
-  it('returns null for unsupported item types', () => {
-    const result = extractEvidence({ unknown: true }, 'user/repo');
-    expect(result).toBeNull();
-  });
-
-  it('returns null for null input', () => {
-    const result = extractEvidence(null, 'user/repo');
-    expect(result).toBeNull();
-  });
-
-  it('returns null for string input', () => {
-    const result = extractEvidence('not an object', 'user/repo');
-    expect(result).toBeNull();
-  });
-
-  it('truncates commit subject to first line', () => {
-    const commit: GitHubCommit = {
-      sha: 'abc123',
-      node_id: 'C_1',
+  it('skips short commit messages', () => {
+    const short = makeCommit({
       commit: {
-        author: { name: 'Alice', email: 'alice@example.com', date: '2025-01-15T10:30:00Z' },
-        committer: { name: 'Alice', email: 'alice@example.com', date: '2025-01-15T10:30:00Z' },
-        message: 'fix: resolve memory leak\n\nDetailed description\nMore details',
-        tree: { sha: 'tree1', url: 'https://github.com' },
-        url: 'https://github.com',
-        comment_count: 0,
-        verification: { verified: false, reason: 'unsigned', signature: null, payload: null },
+        ...makeCommit().commit,
+        message: 'fix typo',
       },
-      url: 'https://github.com',
-      html_url: 'https://github.com',
-      comments_url: 'https://github.com',
-      author: null,
-      committer: null,
-      parents: [],
-    };
+    });
+    const result = extractCommitsEvidence([short], 'r', 'user', {
+      ...TUNING,
+      minCommitMessageLength: 10,
+    });
+    expect(result.skipped).toBe(1);
+  });
+});
 
-    const result = extractEvidence(commit, 'user/repo');
-
-    expect(result!.subject).toBe('fix: resolve memory leak');
-    expect(result!.subject).not.toContain('Detailed description');
+describe('extractPullRequestsEvidence (real module)', () => {
+  it('extracts merged PR evidence', () => {
+    const result = extractPullRequestsEvidence([makePullRequest()], 'repo-row-1');
+    expect(result.evidence).toHaveLength(1);
+    const item = result.evidence[0];
+    expect(item.evidence_type).toBe('pull_request');
+    expect(item.subject).toContain('Merged PR #1');
+    expect(item.metadata.additions).toBe(120);
+    expect(item.metadata.author_login).toBe('bob');
+    expect(item.is_public).toBe(false);
   });
 
-  it('handles commit without verification', () => {
-    const commit: GitHubCommit = {
-      sha: 'abc123',
-      node_id: 'C_1',
-      commit: {
-        author: { name: 'Alice', email: 'alice@example.com', date: '2025-01-15T10:30:00Z' },
-        committer: { name: 'Alice', email: 'alice@example.com', date: '2025-01-15T10:30:00Z' },
-        message: 'update readme',
-        tree: { sha: 'tree1', url: 'https://github.com' },
-        url: 'https://github.com',
-        comment_count: 0,
-        verification: { verified: false, reason: 'unsigned', signature: null, payload: null },
-      },
-      url: 'https://github.com',
-      html_url: 'https://github.com',
-      comments_url: 'https://github.com',
-      author: null,
-      committer: null,
-      parents: [],
-    };
+  it('labels open PRs', () => {
+    const open = makePullRequest({
+      state: 'open',
+      merged: false,
+      merged_at: null,
+      closed_at: null,
+    });
+    const result = extractPullRequestsEvidence([open], 'repo-row-1');
+    expect(result.evidence[0].subject).toContain('Open PR #1');
+  });
+});
 
-    const result = extractEvidence(commit, 'user/repo');
-    expect(result!.metadata).toMatchObject({ verified: false });
+describe('extractIssuesEvidence / extractReleasesEvidence (real module)', () => {
+  it('extracts issue evidence with labels', () => {
+    const result = extractIssuesEvidence([makeIssue()], 'repo-row-1');
+    expect(result.evidence[0].evidence_type).toBe('issue');
+    expect(result.evidence[0].metadata.labels).toEqual(['docs']);
+  });
+
+  it('extracts release evidence', () => {
+    const result = extractReleasesEvidence([makeRelease()], 'repo-row-1');
+    expect(result.evidence[0].evidence_type).toBe('release');
+    expect(result.evidence[0].subject).toContain('v1.2.0');
+    expect(result.evidence[0].metadata.tag_name).toBe('v1.2.0');
+  });
+});
+
+describe('extractCodeReviewsEvidence (real module)', () => {
+  it('extracts review evidence', () => {
+    const review: GitHubCodeReview = {
+      id: 11,
+      node_id: 'CR_11',
+      user: makePullRequest().user,
+      body: null,
+      commit_id: 'c11',
+      submitted_at: '2025-05-01T00:00:00Z',
+      state: 'approved',
+      html_url: 'https://github.com/user/repo/pull/1#review',
+      pull_request_url: 'https://github.com/user/repo/pull/1',
+    };
+    const result = extractCodeReviewsEvidence([review], 'repo-row-1');
+    expect(result.evidence[0].evidence_type).toBe('code_review');
+    expect(result.evidence[0].metadata.reviewer_login).toBe('bob');
+  });
+});
+
+describe('extractAllEvidence (real module)', () => {
+  it('routes each source type and dedupes stable identities', () => {
+    const commit = makeCommit();
+    const result = extractAllEvidence(
+      [
+        { type: 'commit', data: commit },
+        { type: 'commit', data: makeCommit() }, // duplicate identity
+        { type: 'pull_request', data: makePullRequest() },
+        { type: 'issue', data: makeIssue() },
+        { type: 'release', data: makeRelease() },
+      ],
+      'repo-row-1'
+    );
+    expect(result.evidence).toHaveLength(4);
+    expect(result.evidence.map((e) => e.evidence_type)).toEqual([
+      'commit',
+      'pull_request',
+      'issue',
+      'release',
+    ]);
+    expect(result.skipped).toBe(0);
+  });
+});
+
+describe('classifyCommit', () => {
+  it('parses conventional commit headers', () => {
+    expect(classifyCommit('feat(api): add tokens')).toEqual({
+      type: 'feat',
+      scope: 'api',
+      description: 'add tokens',
+      isBreaking: false,
+    });
+    expect(classifyCommit('fix!: crash on load').isBreaking).toBe(true);
+  });
+
+  it('falls back to unknown', () => {
+    const result = classifyCommit('just some message');
+    expect(result.type).toBe('unknown');
+  });
+});
+
+describe('dedupeEvidence', () => {
+  it('removes items with identical stable identities', () => {
+    const base: ProfileEvidence = {
+      id: '1',
+      profile_id: 'p',
+      github_repository_id: 'r',
+      evidence_type: 'commit',
+      subject: 's',
+      summary: 'm',
+      source_path: null,
+      source_url: 'https://github.com/x/1',
+      source_commit_sha: null,
+      metadata: {},
+      is_public: false,
+      observed_at: '2025-01-01',
+      created_at: '',
+      updated_at: '',
+    };
+    expect(dedupeEvidence([base, { ...base }])).toHaveLength(1);
+    expect(
+      dedupeEvidence([base, { ...base, id: '2', source_url: 'https://github.com/x/2' }])
+    ).toHaveLength(2);
+  });
+});
+
+describe('path/skills helpers', () => {
+  it('infers language from file extension', () => {
+    expect(inferLanguageFromPath('src/main.ts')).toBe('TypeScript');
+    expect(inferLanguageFromPath('app.py')).toBe('Python');
+    expect(inferLanguageFromPath('unknownfile')).toBeNull();
+  });
+
+  it('deduces skills from commit scopes', () => {
+    const items: ProfileEvidence[] = [
+      {
+        ...({
+          id: '1',
+          profile_id: 'p',
+          github_repository_id: 'r',
+          evidence_type: 'commit',
+          subject: 's',
+          summary: 'm',
+          source_path: null,
+          source_url: null,
+          source_commit_sha: 'sha',
+          metadata: {
+            sha: 'sha',
+            classification: { type: 'feat', scope: 'api', description: 'x', isBreaking: false },
+          },
+          is_public: false,
+          observed_at: '',
+          created_at: '',
+          updated_at: '',
+        } as unknown as ProfileEvidence),
+      },
+    ];
+    const skills = deduceSkillsFromEvidence(items);
+    expect(skills.get('api')).toBe(1);
+  });
+});
+
+describe('pipeline defaults', () => {
+  it('every extracted item defaults to is_public=false (nothing auto-publishes)', () => {
+    const results = [
+      extractCommitsEvidence([makeCommit()], 'r', 'user', TUNING),
+      extractPullRequestsEvidence([makePullRequest()], 'r'),
+      extractIssuesEvidence([makeIssue()], 'r'),
+      extractReleasesEvidence([makeRelease()], 'r'),
+    ];
+    for (const result of results) {
+      for (const item of result.evidence) {
+        expect(item.is_public).toBe(false);
+      }
+    }
   });
 });

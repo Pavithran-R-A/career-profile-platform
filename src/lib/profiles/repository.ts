@@ -115,6 +115,48 @@ interface RawProfile {
   updated_at: string;
 }
 
+/**
+ * Customer-safe application error. The message is ALWAYS safe to show; raw
+ * Postgres/Supabase error text never reaches the UI.
+ */
+export class ProfileAppError extends Error {
+  readonly reason: 'network' | 'backend';
+  constructor(reason: 'network' | 'backend', message: string) {
+    super(message);
+    this.name = 'ProfileAppError';
+    this.reason = reason;
+  }
+}
+
+function isNetworkish(err: { message?: string; code?: string } | null | undefined): boolean {
+  if (!err) return false;
+  const msg = (err.message ?? '').toLowerCase();
+  return (
+    err.code === 'NETWORK' ||
+    msg.includes('fetch') ||
+    msg.includes('network') ||
+    msg.includes('failed to fetch')
+  );
+}
+
+function throwProfileLoadError(source: string, error: { message?: string; code?: string }): never {
+  if (isNetworkish(error)) {
+    console.error(JSON.stringify({ t: 'profile_load_network_error', source }));
+    throw new ProfileAppError(
+      'network',
+      'Could not reach the server. Check your connection and try again.'
+    );
+  }
+  // NEVER surface raw Postgres error text.
+  console.error(
+    JSON.stringify({ t: 'profile_load_error', source, code: error?.code ?? 'unknown' })
+  );
+  throw new ProfileAppError(
+    'backend',
+    'Something went wrong loading your profile. Please try again.'
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function castArray<T>(data: any): T[] {
   return (data || []) as T[];
@@ -126,6 +168,11 @@ function castOne<T>(data: any): T {
 }
 
 export class ProfileRepository {
+  /**
+   * null means "the user genuinely has no profile". Backend or network
+   * failures THROW a customer-safe ProfileAppError — a query outage must
+   * never masquerade as an empty/missing profile.
+   */
   async getProfileByUserId(userId: string): Promise<ProfileWithRelations | null> {
     const supabase = getSupabaseClient();
 
@@ -133,14 +180,19 @@ export class ProfileRepository {
       .from('profiles')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
-    if (profileError || !profile) {
+    if (profileError) {
+      throwProfileLoadError('getProfileByUserId', profileError);
+    }
+    if (!profile) {
       return null;
     }
 
     const profileId = castOne<RawProfile>(profile).id;
 
+    // EVERY relation result's error is checked — a failed query must not
+    // silently become an empty array (a populated profile would render empty).
     const [experiencesResult, educationResult, projectsResult, skillsResult, linksResult] =
       await Promise.all([
         supabase
@@ -162,6 +214,12 @@ export class ProfileRepository {
         supabase.from('profile_links').select('*').eq('profile_id', profileId).order('sort_order'),
       ]);
 
+    if (experiencesResult.error) throwProfileLoadError('experiences', experiencesResult.error);
+    if (educationResult.error) throwProfileLoadError('education', educationResult.error);
+    if (projectsResult.error) throwProfileLoadError('projects', projectsResult.error);
+    if (skillsResult.error) throwProfileLoadError('skills', skillsResult.error);
+    if (linksResult.error) throwProfileLoadError('links', linksResult.error);
+
     return {
       ...castOne<RawProfile>(profile),
       experiences: castArray<ExperienceRow>(experiencesResult.data),
@@ -172,27 +230,38 @@ export class ProfileRepository {
     };
   }
 
-  async createProfile(userId: string, username: string): Promise<ProfileWithRelations> {
+  /**
+   * ATOMIC onboarding insert: user_id, username, display_name, headline,
+   * about, location in ONE statement (RPC). Resume semantics: if the user
+   * already owns a profile (a previous partial attempt), it is updated, not
+   * duplicated. Returns the profile id, or null when the username is taken.
+   */
+  async createProfileWithBasics(input: {
+    userId: string;
+    username: string;
+    displayName: string;
+    headline: string;
+    about: string;
+    location: string;
+  }): Promise<string | null> {
     const supabase = getSupabaseClient();
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .insert({ user_id: userId, username } as never)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc(
+      'create_profile_with_basics' as never,
+      {
+        p_user_id: input.userId,
+        p_username: input.username,
+        p_display_name: input.displayName,
+        p_headline: input.headline,
+        p_about: input.about,
+        p_location: input.location,
+      } as never
+    );
 
     if (error) {
-      throw new Error(error.message);
+      throwProfileLoadError('createProfileWithBasics', error);
     }
-
-    return {
-      ...castOne<RawProfile>(data),
-      experiences: [],
-      education: [],
-      projects: [],
-      skills: [],
-      links: [],
-    };
+    return (data as unknown as string | null) ?? null;
   }
 
   async updateProfile(
@@ -209,7 +278,7 @@ export class ProfileRepository {
       .single();
 
     if (error) {
-      throw new Error(error.message);
+      throwProfileLoadError('updateProfile', error);
     }
 
     return castOne<ProfileWithRelations>(data);
@@ -218,10 +287,14 @@ export class ProfileRepository {
   async checkUsernameAvailability(username: string): Promise<boolean> {
     const supabase = getSupabaseClient();
 
-    const { count } = await supabase
+    const { count, error } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true })
       .ilike('username', username);
+
+    if (error) {
+      throwProfileLoadError('checkUsernameAvailability', error);
+    }
 
     return count === 0;
   }
