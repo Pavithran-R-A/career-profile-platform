@@ -93,7 +93,13 @@ GITHUB_APP_ID=12345
 GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
 GITHUB_APP_CLIENT_ID=Iv1.abc123def456
 GITHUB_APP_CLIENT_SECRET=secret123abc456def789
+GITHUB_STATE_SECRET=some-long-random-string
+GITHUB_APP_SLUG=career-profile-app
 ```
+
+All SIX values are required: the dashboard shows the Install button only
+when the complete set is configured; a partial set truthfully reports
+"GitHub integration is not configured".
 
 ## Step 5: Install the App
 
@@ -129,9 +135,13 @@ publicly — enforced in the database, the server API, and the UI.
 
 ## Troubleshooting
 
-### "GitHub App credentials are not configured"
+### "GitHub integration is not configured"
 
-Ensure `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` are set in your environment.
+Ensure ALL SIX variables are set in your environment:
+`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`,
+`GITHUB_APP_CLIENT_SECRET`, `GITHUB_STATE_SECRET`, `GITHUB_APP_SLUG`.
+A partial set intentionally keeps the Install entry point hidden, because
+Flow A cannot complete without every one of them.
 
 ### "Failed to create installation token"
 
