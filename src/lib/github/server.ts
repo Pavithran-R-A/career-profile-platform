@@ -62,15 +62,26 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
   return timingSafeEqual(a, b);
 }
 
-/** Signed-state secret: explicit config first; documented fallback derives
- *  from the App identity when GITHUB_STATE_SECRET is absent. */
+/**
+ * Signed-state secret: EXPLICITLY configured GITHUB_STATE_SECRET only.
+ * There is no fallback to the client secret (or any other credential):
+ * deriving the state key from another secret silently rotates every issued
+ * state when one variable changes and couples two secrets that must stay
+ * independent. createSignedState refuses to operate without it, so a
+ * partially configured production GitHub integration can never issue an
+ * install state (and therefore never starts a flow that cannot complete).
+ */
 export function makeStateSecret(config: GitHubModuleConfig): string {
-  return (
-    config.stateSecret || `gh-state::${config.app.appId || ''}::${config.app.clientSecret || ''}`
-  );
+  return config.stateSecret;
 }
 
 export function createSignedState(userId: string, config: GitHubModuleConfig): string {
+  // Refuse to mint states under a partially configured Flow A — without the
+  // explicit state secret (or the rest of the App identity) the callback
+  // could never verify the state, so starting the flow would be a lie.
+  if (!isGitHubAppConfigured(config)) {
+    throw new Error('GITHUB_NOT_CONFIGURED');
+  }
   const now = Math.floor(Date.now() / 1000);
   const payload: GitHubStatePayload = {
     u: userId,
