@@ -136,7 +136,22 @@ export function resolveGitHubConfig(env: GitHubEnvSource): GitHubModuleConfig {
   };
 }
 
-/** Truthful configuration probe: can the App sign JWTs and act on GitHub? */
+/**
+ * Truthful configuration probe: is Flow A (OAuth during install) fully
+ * usable? It needs ALL SIX values — appId + private key (App JWT / token
+ * exchange authority), clientId + clientSecret (code exchange), an explicit
+ * GITHUB_STATE_SECRET (signed install state — never derived from the client
+ * secret), and the app slug (install URL + GET /user/installations filter).
+ * A partial configuration must report "not configured" so the dashboard
+ * never shows an Install button whose flow cannot complete.
+ */
 export function isGitHubAppConfigured(config: GitHubModuleConfig): boolean {
-  return Boolean(config.app.appId > 0 && config.app.privateKey);
+  return Boolean(
+    config.app.appId > 0 &&
+    config.app.privateKey &&
+    config.app.clientId &&
+    config.app.clientSecret &&
+    config.stateSecret &&
+    config.appSlug
+  );
 }
