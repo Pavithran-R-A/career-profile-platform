@@ -62,16 +62,15 @@ export function validateAddDomain(
 }
 
 /**
- * Cryptographically random per-domain verification token, generated once at
- * insert time and stored server-side. Never derived from a predictable
- * secret (an HMAC over a fallback like "cv" would be guessable), so a
- * token's presence in DNS genuinely proves control of the hostname.
+ * DEPRECATED and retained only so stale imports fail loudly in review: the
+ * app no longer generates verification tokens. The Cloudflare
+ * create-custom-hostname response itself supplies the ownership verification
+ * record (see src/lib/domains/cloudflare.ts) and that provider-actual record
+ * is what the UI displays. Any call here throws — a made-up `cv-verify-*`
+ * TXT value proves nothing and must never reappear.
  */
-export function generateVerificationToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  const encoded = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return `cv-verify-${encoded}`;
+export function generateVerificationToken(): never {
+  throw new Error(
+    'generateVerificationToken removed: display the Cloudflare provider validation record instead'
+  );
 }

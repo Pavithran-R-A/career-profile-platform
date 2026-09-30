@@ -31,6 +31,9 @@ export default function Billing() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  // false = not pending; true = activating; 'still_processing' = bounded
+  // polling window elapsed (never shown as failure).
+  const [paymentPending, setPaymentPending] = useState<boolean | 'still_processing'>(false);
 
   const loadStatus = useCallback(async (token: string) => {
     try {
@@ -113,7 +116,41 @@ export default function Billing() {
         prefill: { email: auth.user.email },
         theme: { color: '#111827' },
         handler: () => {
-          void loadStatus(token).then(() => setCheckoutLoading(false));
+          // Webhook activation is ASYNC. Never claim failure because the
+          // webhook hasn't landed yet: show a truthful pending state and poll
+          // the server-authoritative status for a bounded window. Pro is only
+          // ever granted by the server (idempotent webhook RPC).
+          setCheckoutLoading(true);
+          setPaymentPending(true);
+          void (async () => {
+            const deadline = Date.now() + 45_000;
+            const delays = [2_000, 4_000, 6_000, 8_000, 10_000];
+            let i = 0;
+            while (Date.now() < deadline) {
+              await new Promise((r) => setTimeout(r, delays[Math.min(i, delays.length - 1)]));
+              i += 1;
+              try {
+                const res = await fetch('/api/billing/status', {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                  const data = (await res.json()) as BillingStatus;
+                  setStatus(data);
+                  if (data.entitlements.planId === 'pro') {
+                    setPaymentPending(false);
+                    setCheckoutLoading(false);
+                    return;
+                  }
+                }
+              } catch {
+                // transient — keep polling until the window closes
+              }
+            }
+            // Bounded window elapsed without activation. Do NOT show failure:
+            // the payment was received; activation is still processing.
+            setPaymentPending('still_processing');
+            setCheckoutLoading(false);
+          })();
         },
 
         modal: {
@@ -164,6 +201,16 @@ export default function Billing() {
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
           {error}
+        </div>
+      )}
+
+      {paymentPending && (
+        <div
+          role="status"
+          className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-md mb-6">
+          {paymentPending === 'still_processing'
+            ? 'Payment received. Activation is still processing. Refresh shortly.'
+            : 'Payment received. Activating Pro…'}
         </div>
       )}
 

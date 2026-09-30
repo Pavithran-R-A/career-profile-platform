@@ -5,9 +5,14 @@ import { sanitizeUrl } from '../lib/validators/url';
 interface RepositoryListProps {
   repositories: GitHubRepositoryRecord[];
   onToggleRepository: (repoId: string, selected: boolean) => void;
+  onTogglePublic?: (repoId: string, visible: boolean) => void;
 }
 
-export default function RepositoryList({ repositories, onToggleRepository }: RepositoryListProps) {
+export default function RepositoryList({
+  repositories,
+  onToggleRepository,
+  onTogglePublic,
+}: RepositoryListProps) {
   const [filter, setFilter] = useState<'all' | 'selected' | 'unselected'>('all');
 
   const filtered = repositories.filter((repo) => {
@@ -101,13 +106,19 @@ export default function RepositoryList({ repositories, onToggleRepository }: Rep
                 </div>
               </div>
               <div className="flex-shrink-0">
+                {/* Private repos can NEVER be shown publicly — the switch is
+                    disabled in the UI and the server rejects it anyway. */}
                 <input
                   type="checkbox"
                   checked={repo.show_publicly}
-                  onChange={() => {}}
-                  disabled
-                  className="w-4 h-4 rounded border-gray-300 opacity-50"
-                  title="Show publicly (requires evidence selection)"
+                  onChange={(e) => onTogglePublic?.(repo.id, e.target.checked)}
+                  disabled={repo.is_private || !onTogglePublic}
+                  className="w-4 h-4 rounded border-gray-300 disabled:opacity-40"
+                  title={
+                    repo.is_private
+                      ? 'Private repositories can never be shown publicly'
+                      : "Allow this repository's evidence to be shown publicly"
+                  }
                 />
               </div>
             </div>

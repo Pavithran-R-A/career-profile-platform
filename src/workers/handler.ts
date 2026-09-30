@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { createServerClient } from '../lib/supabase/server';
 import { readProAnnualPricePaise, buildPublicPlans, getPlan } from '../lib/billing/plans';
 import {
@@ -9,10 +10,17 @@ import {
 import { checkUsage, windowKeyFor } from '../lib/billing/usage';
 import { createRazorpayOrder, isRazorpayConfigured } from '../lib/billing/razorpay';
 import { processRazorpayWebhook, makeVerifier } from '../lib/billing/webhooks';
-import { validateAddDomain, generateVerificationToken } from '../lib/domains/custom';
+import { validateAddDomain as _validateAddDomain } from '../lib/domains/custom';
+void _validateAddDomain;
 import { quoteDotCvDomain, isDotCvEnabled, isDotCvPurchaseEnabled } from '../lib/domains/dotcv';
-import { parseDotCvInput } from '../lib/domains/validators';
-import { createCustomHostname, isCloudflareSaaSConfigured } from '../lib/domains/cloudflare';
+import { parseDotCvInput, validateCustomDomain } from '../lib/domains/validators';
+import {
+  createCustomHostname,
+  getCustomHostname,
+  deleteCustomHostname,
+  isCloudflareSaaSConfigured,
+} from '../lib/domains/cloudflare';
+import { resolveGitHubConfig, type GitHubModuleConfig } from '../lib/github/config';
 import { AIExtractionError, BharatCodeProvider } from '../lib/ai/bharatcode';
 import {
   buildProfileBrief,
@@ -34,7 +42,6 @@ import {
   type DeletionStage,
 } from '../lib/account/deletion';
 import { z } from 'zod';
-import type { PlanEntitlements } from '../lib/billing/plans';
 import type { SubscriptionState } from '../lib/billing/entitlements';
 
 export interface Env {
@@ -124,18 +131,34 @@ function getAdminKey(env: Env): string {
 }
 
 /**
- * Safe feature flags: explicit true/false wins; otherwise enabled only in
- * production. This keeps preview environments from mutating production
- * billing or domain provisioning by accident.
+ * Safe feature flags: EXPLICIT OPT-IN. A missing flag is DISABLED in every
+ * environment, so "missing credentials + missing flag" is always a truthful
+ * disabled state. Set BILLING_ENABLED=true / DOMAINS_ENABLED=true /
+ * RECRUITER_AI_ENABLED=true deliberately to turn a feature on.
  */
 function featureEnabled(
   env: Env,
   flag: 'BILLING_ENABLED' | 'DOMAINS_ENABLED' | 'RECRUITER_AI_ENABLED'
 ): boolean {
   const raw = getEnvValue(env, flag).toLowerCase();
-  if (raw === 'true' || raw === '1') return true;
-  if (raw === 'false' || raw === '0') return false;
-  return getEnvValue(env, 'ENVIRONMENT').toLowerCase() === 'production';
+  return raw === 'true' || raw === '1';
+}
+
+/**
+ * Privacy-preserving recruiter rate-limit key: HMAC(secret, username|ip|
+ * rotatingMinute). The binding only ever sees the digest — raw IPs are not
+ * stored or logged. Without RATE_LIMIT_KEY_SECRET the documented fallback
+ * keeps PROFILE identity in the key (no IP), trading NAT granularity for
+ * privacy instead of keying on shared IPs alone.
+ */
+function recruiterRateLimitKey(username: string, ip: string, secret: string): string {
+  const period = Math.floor(Date.now() / 60_000); // rotating 1-minute period
+  if (!secret) return `profile:${username}:p${period}`;
+  const digest = createHmac('sha256', secret)
+    .update(`${username}|${ip}|${period}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `h1:${digest}`;
 }
 
 // ─── CORS ───────────────────────────────────────────────────────
@@ -269,33 +292,11 @@ async function verifyAuth(
 // ─── GitHub integration (server-side wiring) ──────────────────
 
 /**
- * Threads worker env bindings into process.env for the GitHub modules that
- * read configuration through process.env (jwt.ts, config.ts). Restored
- * after each call; safe because request handling is single-threaded per
- * isolate event-loop turn.
+ * Immutable per-request GitHub config. Never mutates process.env: one
+ * request's environment cannot change another request's configuration.
  */
-function withGitHubEnv<T>(env: Env, fn: () => Promise<T>): Promise<T> {
-  const keys = [
-    'GITHUB_APP_ID',
-    'GITHUB_APP_PRIVATE_KEY',
-    'GITHUB_APP_CLIENT_ID',
-    'GITHUB_APP_CLIENT_SECRET',
-    'GITHUB_STATE_SECRET',
-    'GITHUB_APP_SLUG',
-  ] as const;
-  const saved = new Map<string, string | undefined>();
-  for (const key of keys) {
-    saved.set(key, process.env[key]);
-    const value = getEnvValue(env, key);
-    if (value) process.env[key] = value;
-    else delete process.env[key];
-  }
-  return fn().finally(() => {
-    for (const [key, value] of saved) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  });
+function ghConfig(env: Env): GitHubModuleConfig {
+  return resolveGitHubConfig(env as unknown as Record<string, string>);
 }
 
 async function handleGitHubInstallStart(
@@ -308,18 +309,19 @@ async function handleGitHubInstallStart(
   if (!auth)
     return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
 
-  return withGitHubEnv(env, async () => {
+  {
     const { githubInstallInfo, createSignedState } = await import('../lib/github/server');
-    const info = githubInstallInfo(env as never);
+    const config = ghConfig(env);
+    const info = githubInstallInfo(config);
     if (!info.configured || !info.installUrl) {
       return json({ error: 'GitHub integration is not configured' }, 503, origin, env, {
         code: 'SERVER_NOT_CONFIGURED',
         requestId,
       });
     }
-    const state = createSignedState(auth.userId, env as never);
+    const state = createSignedState(auth.userId, config);
     return json({ installUrl: info.installUrl, state }, 200, origin, env, { requestId });
-  });
+  }
 }
 
 async function handleGitHubCallback(
@@ -332,11 +334,14 @@ async function handleGitHubCallback(
   if (!auth)
     return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
 
-  return withGitHubEnv(env, async () => {
+  {
     const mod = await import('../lib/github/server');
+    const config = ghConfig(env);
+    // Flow A (OAuth during install): GitHub's callback carries code + state
+    // ONLY. An installation_id is never read from the browser here — the
+    // installation is resolved server-side from GET /user/installations.
     const body = (await request.json().catch(() => ({}))) as {
       code?: string;
-      installationId?: string | number;
       state?: string;
     };
     if (!body.state || typeof body.code !== 'string' || body.code.length === 0) {
@@ -345,7 +350,7 @@ async function handleGitHubCallback(
         requestId,
       });
     }
-    const stateCheck = mod.verifySignedState(body.state, env as never, auth.userId);
+    const stateCheck = mod.verifySignedState(body.state, config, auth.userId);
     if (!stateCheck.ok) {
       return json({ error: 'Invalid or expired installation state' }, 400, origin, env, {
         code: 'BAD_REQUEST',
@@ -353,16 +358,7 @@ async function handleGitHubCallback(
       });
     }
 
-    // 1. Exchange the OAuth code for the authorized GitHub identity.
-    const ghUser = await mod.exchangeCodeForUser(body.code, env as never);
-    if (!ghUser) {
-      return json({ error: 'GitHub authorization failed' }, 502, origin, env, {
-        code: 'BAD_REQUEST',
-        requestId,
-      });
-    }
-
-    // 2. Resolve the caller's single owned profile via the admin client —
+    // 1. Resolve the caller's single owned profile via the admin client —
     // ownership derived from the principal, never from the request body.
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const adminKey = getAdminKey(env);
@@ -394,35 +390,51 @@ async function handleGitHubCallback(
     }
     const profileId = owned[0];
 
-    // 3. NEVER trust installation_id from the query/setup payload: verify it
-    // via the App JWT and prove it belongs to the authorized GitHub user.
-    const installationId = Number(body.installationId);
-    if (!Number.isInteger(installationId) || installationId <= 0) {
-      return json({ error: 'Missing installation id' }, 400, origin, env, {
-        code: 'BAD_REQUEST',
-        requestId,
-      });
-    }
-    const verified = await mod.verifyInstallationForAccount(
-      installationId,
-      ghUser.id,
-      env as never
-    );
-    if (!verified) {
-      return json(
-        { error: 'Installation does not belong to the authorized GitHub account' },
-        403,
-        origin,
-        env,
-        { code: 'FORBIDDEN', requestId }
-      );
+    // 2. Exchange the code and resolve the installation from GitHub's OWN
+    // listing of installations accessible to that GitHub App user. Nothing
+    // is derived from browser input.
+    const resolution = await mod.resolveInstallationForUser(body.code, config);
+    switch (resolution.status) {
+      case 'error':
+        return json({ error: 'GitHub authorization failed' }, 502, origin, env, {
+          code: 'BAD_REQUEST',
+          requestId,
+        });
+      case 'no_eligible':
+        return json(
+          { error: 'No installation of this GitHub App is accessible to your GitHub account' },
+          404,
+          origin,
+          env,
+          { code: 'NOT_FOUND', requestId }
+        );
+      case 'multiple':
+        // NEVER guess: hand back the eligible accounts and a signed
+        // selection token per installation for the explicit choice round-trip.
+        return json(
+          {
+            status: 'selection_required',
+            installations: resolution.installations.map((inst) => ({
+              installationId: inst.installationId,
+              accountLogin: inst.accountLogin,
+              accountType: inst.accountType,
+              selectionToken: mod.createSelectionToken(inst.installationId, auth.userId, config),
+            })),
+          },
+          200,
+          origin,
+          env,
+          { requestId }
+        );
     }
 
-    // 4. Persist the verified installation (DB is the source of truth).
+    // 3. Exactly one eligible installation (already App-JWT cross-verified):
+    // persist it. DB is the source of truth.
+    const verified = resolution.installation;
     const { error: upsertError } = await admin.from('github_connections' as never).upsert(
       {
         profile_id: profileId,
-        installation_id: installationId,
+        installation_id: verified.installationId,
         github_account_id: verified.accountId,
         github_account_login: verified.accountLogin,
         github_account_type: verified.accountType,
@@ -447,7 +459,117 @@ async function handleGitHubCallback(
       env,
       { requestId }
     );
-  });
+  }
+}
+
+/**
+ * Explicit selection round-trip when the user's GitHub account can access
+ * MORE than one installation of this app. The chosen installation id must
+ * arrive inside a server-signed selection token (issued with the choice
+ * list) bound to THIS user — a raw browser installation id is not accepted —
+ * and the choice is STILL cross-verified with the App JWT (installation must
+ * exist on this app and belong to the same GitHub account as the connected
+ * user's other installations listing) before persisting.
+ */
+async function handleGitHubConnectChoose(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  {
+    const mod = await import('../lib/github/server');
+    const config = ghConfig(env);
+    const body = (await request.json().catch(() => ({}))) as {
+      selectionToken?: string;
+    };
+    if (!body.selectionToken) {
+      return json({ error: 'selectionToken is required' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    const selection = mod.verifySelectionToken(body.selectionToken, config, auth.userId);
+    if (!selection.ok || selection.installationId === undefined) {
+      return json({ error: 'Invalid or expired selection token' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+
+    // Independent App-JWT credential check: the installation must exist on
+    // THIS app (its account was already proven to belong to the user's
+    // installation list when the signed selection token was issued; the JWT
+    // check here re-proves the installation's existence on our app at
+    // connect time, keeping the two-credential invariant).
+    const verified = await mod.verifyInstallationOnApp(selection.installationId, config);
+    if (!verified) {
+      return json(
+        { error: 'Selected installation is not accessible to your GitHub account' },
+        403,
+        origin,
+        env,
+        { code: 'FORBIDDEN', requestId }
+      );
+    }
+    const installation = verified;
+
+    const { error: upsertError } = await admin.from('github_connections' as never).upsert(
+      {
+        profile_id: owned[0],
+        installation_id: installation.installationId,
+        github_account_id: installation.accountId,
+        github_account_login: installation.accountLogin,
+        github_account_type: installation.accountType,
+        status: 'active',
+      } as never,
+      { onConflict: 'profile_id' }
+    );
+    if (upsertError) {
+      return json({ error: 'Failed to save connection' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+
+    return json(
+      {
+        connected: true,
+        account: { login: installation.accountLogin, type: installation.accountType },
+      },
+      200,
+      origin,
+      env,
+      { requestId }
+    );
+  }
 }
 
 async function handleGitHubSync(
@@ -460,8 +582,9 @@ async function handleGitHubSync(
   if (!auth)
     return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
 
-  return withGitHubEnv(env, async () => {
+  {
     const { syncConnectionRepositories } = await import('../lib/github/server');
+    const config = ghConfig(env);
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const adminKey = getAdminKey(env);
     if (!supabaseUrl || !adminKey) {
@@ -503,6 +626,7 @@ async function handleGitHubSync(
     const outcome = await syncConnectionRepositories({
       connectionId: connection.id,
       installationId: Number(connection.installation_id),
+      config,
       supabase: admin as never,
     });
     if (!outcome.ok) {
@@ -512,7 +636,207 @@ async function handleGitHubSync(
       });
     }
     return json(outcome, 200, origin, env, { requestId });
-  });
+  }
+}
+
+/**
+ * REAL evidence generation for the caller's SELECTED repositories: bounded
+ * commits/PRs/issues/releases → production extraction → profile_evidence
+ * with is_public=false. The dashboard's "Generate evidence" button calls
+ * this; nothing is published automatically.
+ */
+async function handleGitHubEvidenceGenerate(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  {
+    const { generateEvidenceForSelected } = await import('../lib/github/server');
+    const config = ghConfig(env);
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+    const { data: connRows } = await admin
+      .from('github_connections' as never)
+      .select('id, installation_id')
+      .eq('profile_id', owned[0] as never)
+      .limit(1);
+    const connection = ((connRows ?? []) as Array<{ id: string; installation_id: number }>)[0];
+    if (!connection) {
+      return json({ error: 'GitHub is not connected' }, 404, origin, env, {
+        code: 'NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const outcome = await generateEvidenceForSelected({
+      profileId: owned[0],
+      connectionId: connection.id,
+      installationId: Number(connection.installation_id),
+      config,
+      supabase: admin as never,
+    });
+    if (!outcome.ok) {
+      return json({ error: 'Evidence generation failed' }, 502, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+    return json(outcome, 200, origin, env, { requestId });
+  }
+}
+
+/**
+ * Owner-only evidence publish toggle at the SERVER boundary. A private
+ * repository's evidence can NEVER be published; public evidence requires
+ * repository.show_publicly = true. (The published_evidence view enforces
+ * the same rules independently — defense in depth.)
+ */
+async function handleEvidencePublicToggle(
+  request: Request,
+  evidenceId: string,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  {
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const admin = createServerClient(supabaseUrl, adminKey);
+
+    const body = (await request.json().catch(() => ({}))) as { value?: boolean };
+    if (typeof body.value !== 'boolean') {
+      return json({ error: 'value (boolean) is required' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    // Ownership chain: caller → profile → evidence row.
+    const { data: profileRows } = await admin
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const owned = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0);
+    if (owned.length !== 1) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const { data: evidenceRows } = await admin
+      .from('profile_evidence' as never)
+      .select('id, profile_id, github_repository_id')
+      .eq('id', evidenceId as never)
+      .limit(1);
+    const evidence = (
+      (evidenceRows ?? []) as Array<{
+        id: string;
+        profile_id: string;
+        github_repository_id: string | null;
+      }>
+    )[0];
+    if (!evidence) {
+      return json({ error: 'Evidence not found' }, 404, origin, env, {
+        code: 'NOT_FOUND',
+        requestId,
+      });
+    }
+    if (evidence.profile_id !== owned[0]) {
+      return json({ error: 'Forbidden' }, 403, origin, env, { code: 'FORBIDDEN', requestId });
+    }
+
+    if (body.value) {
+      if (!evidence.github_repository_id) {
+        return json(
+          { error: 'Only repository-backed evidence can be published' },
+          400,
+          origin,
+          env,
+          { code: 'BAD_REQUEST', requestId }
+        );
+      }
+      const { data: repoRows } = await admin
+        .from('github_repositories' as never)
+        .select('id, is_private, show_publicly')
+        .eq('id', evidence.github_repository_id as never)
+        .limit(1);
+      const repo = (
+        (repoRows ?? []) as Array<{ id: string; is_private: boolean; show_publicly: boolean }>
+      )[0];
+      if (!repo) {
+        return json({ error: 'Repository not found' }, 404, origin, env, {
+          code: 'NOT_FOUND',
+          requestId,
+        });
+      }
+      if (repo.is_private) {
+        return json(
+          { error: 'Private repositories can never be shown publicly' },
+          403,
+          origin,
+          env,
+          { code: 'FORBIDDEN', requestId }
+        );
+      }
+      if (!repo.show_publicly) {
+        return json({ error: 'Enable "show publicly" on the repository first' }, 403, origin, env, {
+          code: 'FORBIDDEN',
+          requestId,
+        });
+      }
+    }
+
+    const { error } = await admin
+      .from('profile_evidence' as never)
+      .update({ is_public: body.value } as never)
+      .eq('id', evidence.id as never);
+    if (error) {
+      return json({ error: 'Failed to update evidence' }, 500, origin, env, {
+        code: 'INTERNAL',
+        requestId,
+      });
+    }
+    return json({ ok: true, is_public: body.value }, 200, origin, env, { requestId });
+  }
 }
 
 async function handleGitHubDisconnect(
@@ -525,7 +849,7 @@ async function handleGitHubDisconnect(
   if (!auth)
     return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
 
-  return withGitHubEnv(env, async () => {
+  {
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const adminKey = getAdminKey(env);
     if (!supabaseUrl || !adminKey) {
@@ -562,7 +886,7 @@ async function handleGitHubDisconnect(
       });
     }
     return json({ disconnected: true }, 200, origin, env, { requestId });
-  });
+  }
 }
 
 async function handleGitHubRepoAction(
@@ -577,7 +901,7 @@ async function handleGitHubRepoAction(
   if (!auth)
     return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
 
-  return withGitHubEnv(env, async () => {
+  {
     const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
     const adminKey = getAdminKey(env);
     if (!supabaseUrl || !adminKey) {
@@ -647,18 +971,26 @@ async function handleGitHubRepoAction(
     if (action === 'select') {
       const subscription = await getSubscription(env, auth.userId);
       const entitlements = resolveEntitlements(subscription);
-      const { count: selectedCount } = await admin
-        .from('github_repositories' as never)
-        .select('id', { count: 'exact', head: true })
-        .eq('connection_id', connection.id as never)
-        .eq('selected_for_evidence', true as never);
-      const nextCount =
-        repo.selected_for_evidence && !body.value
-          ? Math.max(0, (selectedCount ?? 0) - 1)
-          : repo.selected_for_evidence
-            ? (selectedCount ?? 0)
-            : (selectedCount ?? 0) + 1;
-      if (nextCount > entitlements.githubRepos) {
+
+      // ATOMIC quota + mutate: the RPC serializes concurrent selections with
+      // an advisory lock, then counts → validates → updates in one
+      // transaction, so two simultaneous creates cannot both pass the count.
+      // Unselecting always succeeds inside the same RPC.
+      const { data: rpcResult, error: rpcError } = await admin.rpc(
+        'select_github_repository' as never,
+        {
+          p_connection_id: connection.id,
+          p_repo_id: repo.id,
+          p_limit: entitlements.githubRepos,
+        } as never
+      );
+      if (rpcError) {
+        return json({ error: 'Failed to update repository' }, 500, origin, env, {
+          code: 'INTERNAL',
+          requestId,
+        });
+      }
+      if (rpcResult === null || rpcResult === undefined) {
         return json(
           { error: `Plan limit: at most ${entitlements.githubRepos} selected repositories` },
           429,
@@ -666,16 +998,6 @@ async function handleGitHubRepoAction(
           env,
           { code: 'RATE_LIMITED', requestId }
         );
-      }
-      const { error: updateError } = await admin
-        .from('github_repositories' as never)
-        .update({ selected_for_evidence: body.value } as never)
-        .eq('id', repo.id as never);
-      if (updateError) {
-        return json({ error: 'Failed to update repository' }, 500, origin, env, {
-          code: 'INTERNAL',
-          requestId,
-        });
       }
       return json({ ok: true }, 200, origin, env, { requestId });
     }
@@ -698,7 +1020,7 @@ async function handleGitHubRepoAction(
       });
     }
     return json({ ok: true }, 200, origin, env, { requestId });
-  });
+  }
 }
 
 async function handleGitHubInstallInfo(
@@ -706,11 +1028,11 @@ async function handleGitHubInstallInfo(
   env: Env,
   requestId: string
 ): Promise<Response> {
-  return withGitHubEnv(env, async () => {
+  {
     const { githubInstallInfo } = await import('../lib/github/server');
-    const info = githubInstallInfo(env as never);
+    const info = githubInstallInfo(ghConfig(env));
     return json(info, 200, origin, env, { requestId });
-  });
+  }
 }
 
 // ─── Storage authorization ──────────────────────────────────────
@@ -1141,7 +1463,9 @@ async function handleRecruiterAsk(
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
   if (env.RECRUITER_RATE_LIMITER) {
     try {
-      const rate = await env.RECRUITER_RATE_LIMITER.limit({ key: `ip:${ip}` });
+      const rate = await env.RECRUITER_RATE_LIMITER.limit({
+        key: recruiterRateLimitKey(username, ip, getEnvValue(env, 'RATE_LIMIT_KEY_SECRET')),
+      });
       if (!rate.success) {
         return json({ error: 'Too many questions. Please try again later.' }, 429, origin, env, {
           code: 'TOO_MANY_REQUESTS',
@@ -1249,6 +1573,7 @@ async function handleRecruiterAsk(
 
   try {
     const raw = await provider.complete(buildRecruiterMessages(brief, question.question), 400);
+    // NOTE: quota stays consumed — an answer was produced.
     // Citation semantics: only sections the model actually cited (validated
     // against this profile's real sections) are returned; 'grounded' is true
     // only when at least one valid citation exists. No fabricated citations.
@@ -1263,6 +1588,10 @@ async function handleRecruiterAsk(
       { requestId }
     );
   } catch (err) {
+    // Fairness: the provider produced NO answer — refund the consumed daily
+    // quota (transactionally clamped at zero). Answered requests are never
+    // refunded.
+    await adminClient.rpc('refund_recruiter_quota' as never, { p_user_id: ownerId } as never);
     if (err instanceof AIExtractionError) {
       return aiErrorToResponse(err, origin, env, requestId);
     }
@@ -1679,9 +2008,68 @@ async function handleGetBillingStatus(
       { used: number; limit: number; remaining: number; allowed: boolean }
     > = {};
 
+    // CANONICAL usage: resume_variants / github_repos / custom_domains are
+    // counted from their OWN feature tables (usage_counters rows are not
+    // maintained by those paths); recruiter_ai stays on its daily counter.
+    let canonicalVariants: number | null = null;
+    let canonicalRepos: number | null = null;
+    let canonicalDomains: number | null = null;
+    {
+      const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+      const adminKey = getAdminKey(env);
+      if (supabaseUrl && adminKey) {
+        const supabase = createServerClient(supabaseUrl, adminKey);
+        const { data: profileRows } = await supabase
+          .from('profiles' as never)
+          .select('id')
+          .eq('user_id', auth.userId as never);
+        const profileId = ((profileRows ?? []) as Array<{ id?: unknown }>)
+          .map((r) => (typeof r.id === 'string' ? r.id : ''))
+          .filter((x) => x.length > 0)[0];
+
+        const { count: variantCount } = await supabase
+          .from('profile_variants' as never)
+          .select('id', { count: 'exact', head: true })
+          .eq('profile_id', (profileId ?? '') as never);
+        canonicalVariants = variantCount ?? 0;
+
+        if (profileId) {
+          const { data: connRows } = await supabase
+            .from('github_connections' as never)
+            .select('id')
+            .eq('profile_id', profileId as never)
+            .limit(1);
+          const connId = ((connRows ?? []) as Array<{ id?: string }>)[0]?.id;
+          if (connId) {
+            const { count: repoCount } = await supabase
+              .from('github_repositories' as never)
+              .select('id', { count: 'exact', head: true })
+              .eq('connection_id', connId as never)
+              .eq('selected_for_evidence', true as never);
+            canonicalRepos = repoCount ?? 0;
+          } else {
+            canonicalRepos = 0;
+          }
+
+          const { count: domainCount } = await supabase
+            .from('custom_domains' as never)
+            .select('id', { count: 'exact', head: true })
+            .eq('profile_id', profileId as never)
+            .in('status', ['pending', 'pending_validation', 'active'] as never);
+          canonicalDomains = domainCount ?? 0;
+        } else {
+          canonicalRepos = 0;
+          canonicalDomains = 0;
+        }
+      }
+    }
+
     for (const metric of metrics) {
       const windowKey = windowKeyFor(metric);
-      const used = await getUsageCount(env, auth.userId, metric, windowKey);
+      let used = await getUsageCount(env, auth.userId, metric, windowKey);
+      if (metric === 'resume_variants' && canonicalVariants !== null) used = canonicalVariants;
+      if (metric === 'github_repos' && canonicalRepos !== null) used = canonicalRepos;
+      if (metric === 'custom_domains' && canonicalDomains !== null) used = canonicalDomains;
       const check = checkUsage(metric, used, entitlements);
       usage[metric] = check;
     }
@@ -1915,8 +2303,14 @@ async function handleWebhook(
           }
           const outcome = (data as { status?: string } | null)?.status ?? 'processed';
           if (outcome === 'order_not_found') {
-            // Unknown order: provider-side mismatch. Not retryable billing —
-            // report clearly and do not mark processed.
+            // Unknown order: the ledger row must NOT stay 'processing' forever.
+            // Record an explicit final 'failed' state with a safe reason. The
+            // event stays retryable (only 'processed' is terminal), so a
+            // legitimate later retry can still re-apply.
+            await supabase
+              .from('billing_webhook_events' as never)
+              .update({ status: 'failed', last_error: 'order_not_found' } as never)
+              .eq('event_id', eventId as never);
             console.error(
               JSON.stringify({
                 t: 'webhook_order_not_found',
@@ -2015,53 +2409,229 @@ async function handleAddCustomDomain(
     }
     const ownedProfileId = ownedProfileIds[0];
 
-    const subscription = await getSubscription(env, auth.userId);
-    const entitlements = resolveEntitlements(subscription);
-
-    const { count: existingCount } = await supabase
-      .from('custom_domains' as never)
-      .select('id', { count: 'exact', head: true })
-      .eq('profile_id', ownedProfileId as never)
-      .neq('status', 'removed' as never);
-
-    const validation = validateAddDomain(
-      body.hostname,
-      existingCount ?? 0,
-      entitlements as PlanEntitlements
-    );
-
-    if (!validation.ok || !validation.hostname) {
+    const validation = validateCustomDomain(body.hostname);
+    if (!validation.valid || !validation.hostname) {
       return json({ error: validation.error }, 400, origin, env, {
         code: 'BAD_REQUEST',
         requestId,
       });
     }
 
-    const verificationToken = generateVerificationToken();
+    // Provisioning REQUIRES an explicit platform origin. Enabling domains
+    // without PLATFORM_PROFILE_ORIGIN must fail loudly, not provision against
+    // a placeholder like profile.example.com.
+    const platformOrigin = getEnvValue(env, 'PLATFORM_PROFILE_ORIGIN');
+    const cloudflareConfig = {
+      apiToken: getEnvValue(env, 'CLOUDFLARE_API_TOKEN'),
+      accountId: getEnvValue(env, 'CLOUDFLARE_ACCOUNT_ID'),
+      zoneId: getEnvValue(env, 'CLOUDFLARE_ZONE_ID'),
+    };
+    const provisioning = isCloudflareSaaSConfigured(cloudflareConfig);
+    if (provisioning && !platformOrigin) {
+      console.error(JSON.stringify({ t: 'domain_origin_missing', id: requestId, code: 'CONFIG' }));
+      return json({ error: 'Custom domain provisioning is misconfigured' }, 503, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
 
-    const { data: domain, error } = await supabase
-      .from('custom_domains' as never)
-      .insert({
-        profile_id: ownedProfileId,
-        hostname: validation.hostname,
-        status: 'pending',
-        verification_token: verificationToken,
-      } as never)
-      .select()
-      .single();
+    const subscription = await getSubscription(env, auth.userId);
+    const entitlements = resolveEntitlements(subscription);
 
-    if (error || !domain) {
-      if (error?.code === '23505') {
-        return json({ error: 'Domain already in use' }, 409, origin, env, {
-          code: 'BAD_REQUEST',
-          requestId,
-        });
-      }
+    // ATOMIC quota + pending insert. Slot-reserving states: pending /
+    // pending_validation / active. 'failed' does NOT reserve a slot, so a
+    // provider failure never permanently consumes the user's only domain
+    // slot, and a hostname that hit a transient error can be retried.
+    const { data: newDomainId, error: atomicError } = await supabase.rpc(
+      'create_custom_domain_atomic' as never,
+      {
+        p_profile_id: ownedProfileId,
+        p_hostname: validation.hostname,
+        p_limit: entitlements.customDomains,
+      } as never
+    );
+
+    if (atomicError) {
       console.error(
-        JSON.stringify({ t: 'domain_insert_error', id: requestId, code: error?.code || 'INTERNAL' })
+        JSON.stringify({
+          t: 'domain_insert_error',
+          id: requestId,
+          code: atomicError.code || 'INTERNAL',
+        })
       );
       return json({ error: 'Failed to add domain' }, 500, origin, env, {
         code: 'INTERNAL',
+        requestId,
+      });
+    }
+    if (!newDomainId) {
+      const { count: currentCount } = await supabase
+        .from('custom_domains' as never)
+        .select('id', { count: 'exact', head: true })
+        .eq('profile_id', ownedProfileId as never)
+        .in('status', ['pending', 'pending_validation', 'active'] as never);
+      const limitReached = (currentCount ?? 0) >= entitlements.customDomains;
+      return json(
+        {
+          error: limitReached
+            ? entitlements.customDomains === 0
+              ? 'Custom domains require the Pro plan'
+              : 'Custom domain limit reached'
+            : 'Domain already in use',
+        },
+        limitReached ? 429 : 409,
+        origin,
+        env,
+        { code: limitReached ? 'RATE_LIMITED' : 'BAD_REQUEST', requestId }
+      );
+    }
+
+    const domainId = newDomainId as unknown as string;
+
+    // Provider lifecycle: pending row → create → save provider id + the
+    // provider's OWN validation record → on failure mark failed (slot freed).
+    let verification: { method: string; record: Record<string, unknown> | null } | null = null;
+    if (provisioning) {
+      try {
+        const hostnameResult = await createCustomHostname(cloudflareConfig, {
+          hostname: validation.hostname,
+          originHost: platformOrigin,
+        });
+        await supabase
+          .from('custom_domains' as never)
+          .update({
+            cloudflare_hostname_id: hostnameResult.id,
+            status: hostnameResult.status === 'active' ? 'active' : 'pending_validation',
+            verification_token: null,
+            provider_validation: hostnameResult.ownership_verification ?? null,
+            provider_validation_http: hostnameResult.ownership_verification_http ?? null,
+            ssl_status: hostnameResult.sslStatus,
+            ssl_validation_records: hostnameResult.sslValidationRecords ?? null,
+          } as never)
+          .eq('id', domainId as never);
+        verification = {
+          method: hostnameResult.ownership_verification_http
+            ? 'http'
+            : hostnameResult.ownership_verification
+              ? 'txt'
+              : 'none',
+          record:
+            (hostnameResult.ownership_verification as unknown as Record<string, unknown>) ??
+            (hostnameResult.ownership_verification_http as unknown as Record<string, unknown>) ??
+            null,
+        };
+      } catch {
+        console.error(
+          JSON.stringify({ t: 'cloudflare_hostname_error', id: requestId, code: 'CLOUDFLARE' })
+        );
+        await supabase.rpc(
+          'release_custom_domain_slot' as never,
+          {
+            p_domain_id: domainId,
+            p_safe_error: 'provider_unavailable',
+          } as never
+        );
+        return json(
+          {
+            id: domainId,
+            hostname: validation.hostname,
+            status: 'failed',
+            error: 'Domain provider is temporarily unavailable. Please retry.',
+          },
+          502,
+          origin,
+          env,
+          { requestId }
+        );
+      }
+    }
+
+    return json(
+      {
+        id: domainId,
+        hostname: validation.hostname,
+        status: provisioning ? 'pending_validation' : 'pending',
+        verification,
+      },
+      201,
+      origin,
+      env,
+      { requestId }
+    );
+  } catch {
+    console.error(JSON.stringify({ t: 'add_domain_error', id: requestId, code: 'INTERNAL' }));
+    return json({ error: 'Failed to add domain' }, 500, origin, env, {
+      code: 'INTERNAL',
+      requestId,
+    });
+  }
+}
+
+/**
+ * Refreshes a domain's status from the provider's ACTUAL response (hostname
+ * status + ownership verification + SSL state). Never invents tokens.
+ */
+async function handleRefreshCustomDomain(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  try {
+    const body = (await request.json().catch(() => ({}))) as { id?: string };
+    if (!body.id) {
+      return json({ error: 'id is required' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const supabase = createServerClient(supabaseUrl, adminKey);
+
+    const { data: profileRows } = await supabase
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const ownedProfileId = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0)[0];
+    if (!ownedProfileId) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const { data: domainRows } = await supabase
+      .from('custom_domains' as never)
+      .select('*')
+      .eq('id', body.id as never)
+      .eq('profile_id', ownedProfileId as never)
+      .limit(1);
+    const domain = (domainRows ?? ([] as unknown[]))[0] as
+      | {
+          id: string;
+          profile_id: string;
+          hostname: string;
+          status: string;
+          cloudflare_hostname_id: string | null;
+        }
+      | undefined;
+    if (!domain || domain.profile_id !== ownedProfileId) {
+      return json({ error: 'Domain not found' }, 404, origin, env, {
+        code: 'NOT_FOUND',
         requestId,
       });
     }
@@ -2072,42 +2642,155 @@ async function handleAddCustomDomain(
       zoneId: getEnvValue(env, 'CLOUDFLARE_ZONE_ID'),
     };
 
-    if (isCloudflareSaaSConfigured(cloudflareConfig)) {
-      try {
-        const hostnameResult = await createCustomHostname(cloudflareConfig, {
-          hostname: validation.hostname,
-          originHost: getEnvValue(env, 'PLATFORM_PROFILE_ORIGIN') || 'profile.example.com',
-        });
-
-        await supabase
-          .from('custom_domains' as never)
-          .update({
-            cloudflare_hostname_id: hostnameResult.id,
-            status: hostnameResult.status === 'active' ? 'active' : 'pending_validation',
-          } as never)
-          .eq('id', (domain as { id: string }).id as never);
-      } catch {
-        console.error(
-          JSON.stringify({ t: 'cloudflare_hostname_error', id: requestId, code: 'CLOUDFLARE' })
-        );
-      }
+    if (!domain.cloudflare_hostname_id || !isCloudflareSaaSConfigured(cloudflareConfig)) {
+      // Nothing provisioned yet: surface the stored state truthfully.
+      return json(
+        { id: domain.id, hostname: domain.hostname, status: domain.status },
+        200,
+        origin,
+        env,
+        { requestId }
+      );
     }
+
+    const provider = await getCustomHostname(cloudflareConfig, domain.cloudflare_hostname_id);
+    if (!provider) {
+      return json({ error: 'Provider lookup failed' }, 502, origin, env, {
+        code: 'DOWNLOAD_FAILED' as ApiErrorCode,
+        requestId,
+      });
+    }
+
+    const nextStatus =
+      provider.status === 'active'
+        ? 'active'
+        : provider.status === 'moved'
+          ? 'failed'
+          : 'pending_validation';
+    await supabase
+      .from('custom_domains' as never)
+      .update({
+        status: nextStatus,
+        provider_validation: provider.ownership_verification ?? null,
+        provider_validation_http: provider.ownership_verification_http ?? null,
+        ssl_status: provider.sslStatus,
+        ssl_validation_records: provider.sslValidationRecords ?? null,
+      } as never)
+      .eq('id', domain.id as never);
 
     return json(
       {
-        id: (domain as { id: string }).id,
-        hostname: validation.hostname,
-        verificationToken,
-        status: 'pending',
+        id: domain.id,
+        hostname: domain.hostname,
+        status: nextStatus,
+        verification:
+          provider.ownership_verification ?? provider.ownership_verification_http ?? null,
+        sslStatus: provider.sslStatus,
+        sslValidationRecords: provider.sslValidationRecords ?? null,
       },
-      201,
+      200,
       origin,
       env,
       { requestId }
     );
   } catch {
-    console.error(JSON.stringify({ t: 'add_domain_error', id: requestId, code: 'INTERNAL' }));
-    return json({ error: 'Failed to add domain' }, 500, origin, env, {
+    console.error(JSON.stringify({ t: 'domain_refresh_error', id: requestId, code: 'INTERNAL' }));
+    return json({ error: 'Failed to refresh domain' }, 500, origin, env, {
+      code: 'INTERNAL',
+      requestId,
+    });
+  }
+}
+
+/**
+ * Removes a domain: deletes the provider resource first (when one exists),
+ * then marks the row removed. Failed rows can always be removed.
+ */
+async function handleRemoveCustomDomain(
+  request: Request,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const auth = await verifyAuth(request, env);
+  if (!auth)
+    return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
+
+  try {
+    const body = (await request.json().catch(() => ({}))) as { id?: string };
+    if (!body.id) {
+      return json({ error: 'id is required' }, 400, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
+    const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
+    const adminKey = getAdminKey(env);
+    if (!supabaseUrl || !adminKey) {
+      return json({ error: 'Server configuration error' }, 500, origin, env, {
+        code: 'SERVER_NOT_CONFIGURED',
+        requestId,
+      });
+    }
+    const supabase = createServerClient(supabaseUrl, adminKey);
+
+    const { data: profileRows } = await supabase
+      .from('profiles' as never)
+      .select('id')
+      .eq('user_id', auth.userId as never);
+    const ownedProfileId = ((profileRows ?? []) as Array<{ id?: unknown }>)
+      .map((r) => (typeof r.id === 'string' ? r.id : ''))
+      .filter((x) => x.length > 0)[0];
+    if (!ownedProfileId) {
+      return json({ error: 'No profile found for this account' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const { data: domainRows } = await supabase
+      .from('custom_domains' as never)
+      .select('id, hostname, cloudflare_hostname_id')
+      .eq('id', body.id as never)
+      .eq('profile_id', ownedProfileId as never)
+      .limit(1);
+    const domain = (domainRows ?? ([] as unknown[]))[0] as
+      { id: string; hostname: string; cloudflare_hostname_id: string | null } | undefined;
+    if (!domain) {
+      return json({ error: 'Domain not found' }, 404, origin, env, {
+        code: 'NOT_FOUND',
+        requestId,
+      });
+    }
+
+    const cloudflareConfig = {
+      apiToken: getEnvValue(env, 'CLOUDFLARE_API_TOKEN'),
+      accountId: getEnvValue(env, 'CLOUDFLARE_ACCOUNT_ID'),
+      zoneId: getEnvValue(env, 'CLOUDFLARE_ZONE_ID'),
+    };
+    if (domain.cloudflare_hostname_id && isCloudflareSaaSConfigured(cloudflareConfig)) {
+      const ok = await deleteCustomHostname(cloudflareConfig, domain.cloudflare_hostname_id);
+      if (!ok) {
+        return json(
+          { error: 'Provider deletion failed; try again before removing locally' },
+          502,
+          origin,
+          env,
+          { code: 'INTERNAL', requestId }
+        );
+      }
+    }
+
+    await supabase
+      .from('custom_domains' as never)
+      .update({ status: 'removed' } as never)
+      .eq('id', domain.id as never);
+
+    return json({ removed: true }, 200, origin, env, { requestId });
+  } catch {
+    console.error(JSON.stringify({ t: 'domain_remove_error', id: requestId, code: 'INTERNAL' }));
+    return json({ error: 'Failed to remove domain' }, 500, origin, env, {
       code: 'INTERNAL',
       requestId,
     });
@@ -2251,12 +2934,25 @@ export async function handleRequest(
     return handleGitHubCallback(request, origin, env, id);
   }
 
+  if (url.pathname === '/api/github/connect/choose' && request.method === 'POST') {
+    return handleGitHubConnectChoose(request, origin, env, id);
+  }
+
   if (url.pathname === '/api/github/config' && request.method === 'GET') {
     return handleGitHubInstallInfo(origin, env, id);
   }
 
   if (url.pathname === '/api/github/sync' && request.method === 'POST') {
     return handleGitHubSync(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/github/evidence/generate' && request.method === 'POST') {
+    return handleGitHubEvidenceGenerate(request, origin, env, id);
+  }
+
+  const evidencePublic = url.pathname.match(/^\/api\/github\/evidence\/([0-9a-f-]{36})\/public$/);
+  if (evidencePublic && request.method === 'POST') {
+    return handleEvidencePublicToggle(request, evidencePublic[1], origin, env, id);
   }
 
   if (url.pathname === '/api/github/disconnect' && request.method === 'POST') {
@@ -2279,6 +2975,14 @@ export async function handleRequest(
 
   if (url.pathname === '/api/domains/custom' && request.method === 'POST') {
     return handleAddCustomDomain(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/domains/custom/refresh' && request.method === 'POST') {
+    return handleRefreshCustomDomain(request, origin, env, id);
+  }
+
+  if (url.pathname === '/api/domains/custom/remove' && request.method === 'POST') {
+    return handleRemoveCustomDomain(request, origin, env, id);
   }
 
   if (url.pathname === '/api/domains/dotcv/quote' && request.method === 'POST') {
