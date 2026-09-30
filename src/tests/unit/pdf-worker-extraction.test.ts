@@ -7,6 +7,8 @@ import {
   validatePDFMagicBytes,
   MAX_PAGES,
   MAX_TEXT_LENGTH,
+  MAX_FILE_SIZE,
+  PARSE_TIMEOUT_MS,
 } from '../../lib/resume/pdf';
 import { generatePDFBlob } from '../../lib/resume/pdf-renderer';
 import type { ATSResumeViewModel } from '../../lib/resume/ats-view-model';
@@ -142,6 +144,39 @@ describe('shared PDF extraction boundary (worker path)', () => {
 
   it('keeps the documented text-length bound', () => {
     expect(MAX_TEXT_LENGTH).toBe(100_000);
+  });
+
+  it('enforces the 6 MiB byte bound INSIDE the extraction boundary', async () => {
+    expect(MAX_FILE_SIZE).toBe(6 * 1024 * 1024);
+    // A byte array that passes the magic-byte check but exceeds the size
+    // bound must be rejected with kind 'too_large' BEFORE any parse work.
+    const oversized = new Uint8Array(MAX_FILE_SIZE + 1);
+    oversized[0] = 0x25; // '%'
+    oversized[1] = 0x50; // 'P'
+    oversized[2] = 0x44; // 'D'
+    oversized[3] = 0x46; // 'F'
+    await expect(extractTextFromPDF(oversized.buffer)).rejects.toMatchObject({
+      kind: 'too_large',
+    });
+  });
+
+  it('rejects oversized input deterministically (no parse attempt)', async () => {
+    const start = Date.now();
+    const oversized = new Uint8Array(MAX_FILE_SIZE + 1024);
+    oversized.set([0x25, 0x50, 0x44, 0x46], 0);
+    const err = await extractTextFromPDF(oversized.buffer).catch((e) => e);
+    expect(err).toBeInstanceOf(PDFExtractionError);
+    expect((err as PDFExtractionError).kind).toBe('too_large');
+    // Byte bound is enforced synchronously before pdf.js is involved.
+    expect(Date.now() - start).toBeLessThan(2_000);
+  });
+
+  it('documents the deterministic production parse timeout (10s, not the vitest 30s)', () => {
+    // The 30s timeout on these tests is a TEST harness allowance. The
+    // production parser timeout is a separate, deterministic bound enforced
+    // inside extractTextFromPDF via PARSE_TIMEOUT_MS.
+    expect(PARSE_TIMEOUT_MS).toBe(10_000);
+    expect(PARSE_TIMEOUT_MS).toBeLessThan(30_000);
   });
 
   it('parses a REAL production ATS PDF end-to-end through the same boundary', async () => {

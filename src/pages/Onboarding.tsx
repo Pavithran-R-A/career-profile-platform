@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
-import { ProfileService } from '../lib/profiles/service';
+import { ProfileService, safeProfileErrorMessage } from '../lib/profiles/service';
 import { validateUsername } from '../lib/validators/username';
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
 import { track } from '../lib/analytics/events';
@@ -70,23 +70,36 @@ export default function Onboarding() {
     setError(null);
 
     try {
-      const created = await profileService.createProfile(auth.user.id, username);
-      // Persist the basic information collected in step 2. Without this,
-      // the dashboard completion check never sees a display name.
-      const basics: Record<string, string | null> = {
-        display_name: displayName.trim(),
-        headline: headline.trim() || null,
-        about: about.trim() || null,
-        location: location.trim() || null,
-      };
-      await profileService.updateProfile(created.id, basics);
+      // ATOMIC create: user_id, username, display_name, headline, about and
+      // location persist in ONE statement (RPC). If a previous attempt left a
+      // partial profile, this resumes/updates it instead of duplicating.
+      // null = the username is taken by someone else.
+      const profileId = await profileService.createProfileWithBasics({
+        userId: auth.user.id,
+        username,
+        displayName: displayName.trim(),
+        headline: headline.trim(),
+        about: about.trim(),
+        location: location.trim(),
+      });
+      if (profileId === null) {
+        setError('Username is already taken. Please choose another.');
+        // The alert div renders inside the basics form; going back to the
+        // username step must ALSO surface the reason there, or the customer
+        // sees the step change with no explanation.
+        setUsernameError('Username is already taken. Please choose another.');
+        setUsernameAvailable(false);
+        setStep('username');
+        return;
+      }
       track('profile_created', { source: 'onboarding' });
       setStep('complete');
       setTimeout(() => {
         void navigate('/dashboard');
       }, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create profile');
+      // Customer-safe mapper: raw database error text never reaches the UI.
+      setError(safeProfileErrorMessage(err));
     } finally {
       setLoading(false);
     }

@@ -117,11 +117,8 @@ describe('custom domain quota', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('generateVerificationToken is random per call and URL-safe', () => {
-    const a = generateVerificationToken();
-    const b = generateVerificationToken();
-    expect(a).not.toBe(b);
-    expect(a).toMatch(/^cv-verify-[A-Za-z0-9_-]{43}$/);
-    expect(b).toMatch(/^cv-verify-[A-Za-z0-9_-]{43}$/);
+  it('generateVerificationToken is retired: the app must never invent tokens', () => {
+    // The Cloudflare provider response supplies the real ownership record.
+    expect(() => generateVerificationToken()).toThrow();
   });
 });

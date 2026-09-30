@@ -13,22 +13,22 @@ How the app ships to Cloudflare Workers, and how the stable preview is updated i
   - `/u/*` — published-profile meta + ProfilePage JSON-LD, or noindex for unpublished/unknown
   - `/sitemap.xml` — public pages + published profiles (publishable key only)
   - `/robots.txt` — allow public, disallow app routes, absolute sitemap ref
-- Recruiter AI is protected by the native Cloudflare rate-limit binding `RECRUITER_RATE_LIMITER` (30 requests / 60 s per IP; configured in `wrangler.toml`, namespace `1001`). It is a transport guard, not a product quota.
+- Recruiter AI is protected by the native Cloudflare rate-limit binding `RECRUITER_RATE_LIMITER` (30 requests / 60 s; configured in `wrangler.toml`, namespace `1001`). Keys are HMAC(RATE_LIMIT_KEY_SECRET, username|ip|rotatingMinute) — raw IPs are never stored or logged. Without `RATE_LIMIT_KEY_SECRET` the documented fallback keys on profile identity + rotating period (coarser under shared NAT, still profile-specific). It is a transport guard, not a product quota.
 
 ## Environment variables
 
 Full reference: `.env.example`. Resolution in the worker (`getEnvValue`) falls back from each key to its `VITE_`-prefixed name, so one `.env.local` works for the client build and the worker.
 
-| Key                                                                   | Needed for                                | Required                                                                |
-| --------------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`                  | everything (client + worker public reads) | yes                                                                     |
-| `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`)                | service-role operations                   | no in beta                                                              |
-| `BHARATCODE_API_KEY`                                                  | CV extraction + recruiter AI              | no — routes answer 503 `AI extraction is not configured` until set      |
-| `RAZORPAY_*`                                                          | billing                                   | no — billing shows a truthful disabled state                            |
-| `GITHUB_*`                                                            | GitHub integration                        | no — disabled                                                           |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID` | custom domains (Workers for SaaS)         | no — disabled                                                           |
-| `DOTCV_*`                                                             | `.cv` domain provider                     | no — off by default                                                     |
-| `ENVIRONMENT`                                                         | worker behavior                           | set in `wrangler.toml` (`production` / `preview` via `[previews.vars]`) |
+| Key                                                                                                                                     | Needed for                                | Required                                                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`                                                                                    | everything (client + worker public reads) | yes                                                                                                                                                        |
+| `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`)                                                                                  | service-role operations                   | no in beta                                                                                                                                                 |
+| `BHARATCODE_API_KEY`                                                                                                                    | CV extraction + recruiter AI              | no — routes answer 503 `AI extraction is not configured` until set                                                                                         |
+| `RAZORPAY_*`                                                                                                                            | billing                                   | no — billing shows a truthful disabled state                                                                                                               |
+| `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_STATE_SECRET`, `GITHUB_APP_SLUG` | GitHub integration                        | no — integration truthfully reports "not configured" until the signing identity and slug are set; no webhook endpoint exists, so no webhook secret is used |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`                                                                   | custom domains (Workers for SaaS)         | no — disabled                                                                                                                                              |
+| `DOTCV_*`                                                                                                                               | `.cv` domain provider                     | no — off by default                                                                                                                                        |
+| `ENVIRONMENT`                                                                                                                           | worker behavior                           | set in `wrangler.toml` (`production` / `preview` via `[previews.vars]`)                                                                                    |
 
 Secrets are never written into `dist/`; only `VITE_`-prefixed values are visible to browser code.
 

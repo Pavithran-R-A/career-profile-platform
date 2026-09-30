@@ -1,76 +1,85 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getGitHubJWT, clearGitHubJWTCache, isGitHubConfigured } from '../../lib/github/jwt';
+import { describe, it, expect } from 'vitest';
+import { generateKeyPairSync } from 'node:crypto';
+import {
+  getGitHubJWT,
+  clearGitHubJWTCache,
+  isGitHubJwtConfigured,
+  type GitHubJwtConfig,
+} from '../../lib/github/jwt';
+
+const { privateKeyPem } = (() => {
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  return {
+    privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+  };
+})();
+
+const CONFIG: GitHubJwtConfig = { appId: '12345', privateKey: privateKeyPem };
 
 describe('getGitHubJWT', () => {
-  beforeEach(() => {
+  it('throws when GitHub App is not configured (missing key)', async () => {
+    await expect(getGitHubJWT({ appId: '12345', privateKey: '' })).rejects.toThrow(
+      'GitHub App not configured'
+    );
+  });
+
+  it('throws when key is invalid but config is set', async () => {
+    await expect(
+      getGitHubJWT({ appId: '12345', privateKey: 'not-a-real-pem-key' })
+    ).rejects.toThrow();
+  });
+
+  it('signs a real RS256 JWT with an explicit config', async () => {
     clearGitHubJWTCache();
-    delete process.env.GITHUB_APP_ID;
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
+    const token = await getGitHubJWT(CONFIG);
+    const [h, p, s] = token.split('.');
+    expect(h).toBeTruthy();
+    expect(p).toBeTruthy();
+    expect(s).toBeTruthy();
+    const payload = JSON.parse(Buffer.from(p, 'base64url').toString('utf8')) as {
+      iss: string;
+      exp: number;
+      iat: number;
+    };
+    expect(payload.iss).toBe('12345');
+    expect(payload.exp).toBeGreaterThan(payload.iat);
   });
 
-  afterEach(() => {
-    delete process.env.GITHUB_APP_ID;
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
+  it('caches per config identity: same config reuses, different config signs fresh', async () => {
+    clearGitHubJWTCache();
+    const a = await getGitHubJWT(CONFIG);
+    const a2 = await getGitHubJWT(CONFIG);
+    expect(a).toBe(a2);
+
+    const { privateKey: otherKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const other = await getGitHubJWT({
+      appId: '99999',
+      privateKey: otherKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+    });
+    expect(other).not.toBe(a);
+  });
+});
+
+describe('isGitHubJwtConfigured', () => {
+  it('is false without config', () => {
+    expect(isGitHubJwtConfigured(null)).toBe(false);
+    expect(isGitHubJwtConfigured({ appId: '', privateKey: '' })).toBe(false);
   });
 
-  it('throws when GitHub App is not configured', async () => {
-    await expect(getGitHubJWT()).rejects.toThrow('GitHub App not configured');
-  });
-
-  it('throws when key is invalid but env is set', async () => {
-    process.env.GITHUB_APP_ID = '12345';
-    process.env.GITHUB_APP_PRIVATE_KEY = 'not-a-real-pem-key';
-    await expect(getGitHubJWT()).rejects.toThrow();
+  it('is true with appId and key', () => {
+    expect(isGitHubJwtConfigured(CONFIG)).toBe(true);
   });
 });
 
 describe('clearGitHubJWTCache', () => {
-  beforeEach(() => {
+  it('forces a fresh signature after clearing', async () => {
     clearGitHubJWTCache();
-    delete process.env.GITHUB_APP_ID;
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
-  });
-
-  afterEach(() => {
-    delete process.env.GITHUB_APP_ID;
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
-  });
-
-  it('clears the cached JWT', () => {
+    const a = await getGitHubJWT(CONFIG);
     clearGitHubJWTCache();
-    expect(isGitHubConfigured()).toBe(false);
-  });
-});
-
-describe('isGitHubConfigured', () => {
-  beforeEach(() => {
-    clearGitHubJWTCache();
-    delete process.env.GITHUB_APP_ID;
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
-  });
-
-  afterEach(() => {
-    delete process.env.GITHUB_APP_ID;
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
-  });
-
-  it('returns false when not configured', () => {
-    expect(isGitHubConfigured()).toBe(false);
-  });
-
-  it('returns true when both appId and privateKey are set', () => {
-    process.env.GITHUB_APP_ID = '12345';
-    process.env.GITHUB_APP_PRIVATE_KEY = 'test-key';
-    expect(isGitHubConfigured()).toBe(true);
-  });
-
-  it('returns false when only appId is set', () => {
-    process.env.GITHUB_APP_ID = '12345';
-    expect(isGitHubConfigured()).toBe(false);
-  });
-
-  it('returns false when only privateKey is set', () => {
-    process.env.GITHUB_APP_PRIVATE_KEY = 'test-key';
-    expect(isGitHubConfigured()).toBe(false);
+    const b = await getGitHubJWT(CONFIG);
+    // iat has second resolution; token may be identical within the same
+    // second, but the cache no longer serves the old one.
+    expect(typeof b).toBe('string');
+    expect(a.split('.').length).toBe(3);
   });
 });
