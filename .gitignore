@@ -1,6 +1,6 @@
 # Node.js / pnpm
 node_modules/
-pnpm-lock.yaml
+# pnpm-lock.yaml IS committed: CI installs with --frozen-lockfile.
 dist/
 .vite/
 .wrangler/
