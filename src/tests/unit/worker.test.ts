@@ -266,7 +266,11 @@ describe('Worker API handler', () => {
       // Unit env has no Supabase config, so the handler proceeds to 503
       // SERVER_NOT_CONFIGURED — the point is the limiter did NOT block.
       expect(res.status).not.toBe(429);
-      expect(limiterCalls).toEqual(['ip:203.0.113.9']);
+      // Second-closure key design: profile-identity keyed (no raw IP),
+      // period-rotating fallback when RATE_LIMIT_KEY_SECRET is absent.
+      expect(limiterCalls).toHaveLength(1);
+      expect(limiterCalls[0]).toContain('profile:some-user');
+      expect(limiterCalls[0]).not.toContain('203.0.113.9');
     });
 
     it('returns 429 TOO_MANY_REQUESTS with Retry-After only when success is false', async () => {

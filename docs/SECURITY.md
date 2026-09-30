@@ -68,7 +68,11 @@
 ## File Upload Risks
 
 - Resume uploads validate MIME type and PDF magic bytes
-- File size limits enforced (6 MiB, 20 pages)
+- File/resource bounds enforced in the shared extraction boundary: 6 MiB
+  input, %PDF magic bytes, 20 pages, 100k extracted characters, a
+  deterministic 10-second parse timeout, password-protected PDF rejection,
+  and document cleanup after extraction. The Worker additionally rejects
+  oversized downloads before parsing.
 - Storage bucket is private; access goes through RLS-scoped paths (`{userId}/{fileId}.pdf`)
 - No direct public access to uploaded files
 

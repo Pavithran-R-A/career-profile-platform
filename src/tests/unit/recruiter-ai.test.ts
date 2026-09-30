@@ -212,12 +212,12 @@ describe('classifyCommit (production code)', () => {
     expect(result.description).toBe('Fixed the bug');
   });
 
-  it('falls back to first line for multiline messages without matching convention', () => {
+  it('classifies the header line of a multiline conventional commit', () => {
     const result = classifyCommit('feat: add feature\n\nDetailed description');
-    // The regex uses $ which requires end-of-string, so multiline messages
-    // fall back to non-conventional path returning full first line
-    expect(result.type).toBe('unknown');
-    expect(result.description).toBe('feat: add feature');
+    // The regex now matches line-anchored ($ with m flag), so a standard
+    // multiline conventional commit classifies by its header.
+    expect(result.type).toBe('feat');
+    expect(result.description).toBe('add feature');
   });
 });
 

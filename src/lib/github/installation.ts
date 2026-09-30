@@ -1,4 +1,4 @@
-import { getGitHubJWT } from './jwt';
+import { getGitHubJWT, type GitHubJwtConfig } from './jwt';
 import type { InstallationTokenResult } from './types';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -9,7 +9,9 @@ interface TokenCacheEntry {
 }
 
 // ─── In-Memory Token Cache ────────────────────────────────────
-// Tokens are valid for 60 minutes; we refresh at 50 minutes.
+// Tokens are valid for 60 minutes; we refresh at 50 minutes. The cache is
+// keyed by installation id only — the signing config is a per-deployment
+// constant, so no cross-request config bleed is possible here.
 
 const TOKEN_CACHE_TTL_MS = 50 * 60 * 1000;
 const tokenCache = new Map<number, TokenCacheEntry>();
@@ -22,11 +24,13 @@ function githubApiBase(): string {
 
 /**
  * Requests a fresh installation access token for the given installation ID.
+ * The App JWT is signed with the EXPLICIT config (no process.env reads).
  */
 export async function createInstallationToken(
-  installationId: number
+  installationId: number,
+  jwtConfig: GitHubJwtConfig
 ): Promise<InstallationTokenResult> {
-  const jwt = await getGitHubJWT();
+  const jwt = await getGitHubJWT(jwtConfig);
 
   const response = await fetch(
     `${githubApiBase()}/app/installations/${installationId}/access_tokens`,
@@ -69,7 +73,8 @@ export async function createInstallationToken(
  * when possible to avoid hitting GitHub rate limits.
  */
 export async function getInstallationToken(
-  installationId: number
+  installationId: number,
+  jwtConfig: GitHubJwtConfig
 ): Promise<InstallationTokenResult> {
   const cached = tokenCache.get(installationId);
 
@@ -82,7 +87,7 @@ export async function getInstallationToken(
     };
   }
 
-  const result = await createInstallationToken(installationId);
+  const result = await createInstallationToken(installationId, jwtConfig);
   const expiresAtMs = Date.now() + TOKEN_CACHE_TTL_MS;
 
   tokenCache.set(installationId, {

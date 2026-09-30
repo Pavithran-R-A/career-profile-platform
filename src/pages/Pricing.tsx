@@ -51,7 +51,8 @@ export default function Pricing() {
       <div className="text-center mb-12">
         <h1 className="text-3xl font-bold tracking-tight">Pricing</h1>
         <p className="mt-3 text-[var(--muted-foreground)]">
-          Start free. Upgrade to Pro for higher limits, custom domains, and no branding.
+          Start free. Upgrade to Pro for higher limits, custom domains, and more recruiter AI
+          questions.
         </p>
       </div>
 

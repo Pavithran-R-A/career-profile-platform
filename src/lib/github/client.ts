@@ -1,3 +1,9 @@
+/**
+ * Serverless GitHub REST client.
+ *
+ * The installation access token is resolved through the EXPLICIT jwt config
+ * passed in at construction; no process.env reads anywhere in this module.
+ */
 import type {
   GitHubUser,
   GitHubRepository,
@@ -8,7 +14,8 @@ import type {
   GitHubCodeReview,
   SyncResult,
 } from './types';
-import { getInstallationToken } from './installation';
+import { getInstallationToken, clearInstallationTokenCache } from './installation';
+import type { GitHubJwtConfig } from './jwt';
 
 function githubApiBase(): string {
   return 'https://api.github.com';
@@ -53,13 +60,15 @@ interface PaginatedResponse<T> {
 
 export class GitHubClient {
   private installationId: number;
+  private jwtConfig: GitHubJwtConfig;
 
-  constructor(installationId: number) {
+  constructor(installationId: number, jwtConfig: GitHubJwtConfig) {
     this.installationId = installationId;
+    this.jwtConfig = jwtConfig;
   }
 
   private async getToken(): Promise<string> {
-    const result = await getInstallationToken(this.installationId);
+    const result = await getInstallationToken(this.installationId, this.jwtConfig);
     return result.token;
   }
 
@@ -185,7 +194,20 @@ export class GitHubClient {
     }
   }
 
-  async syncAll(owner: string, name: string): Promise<SyncResult> {
+  /**
+   * Bounded sync of one repository: recent commits, PRs, issues, releases.
+   * Respects the configured per-repository limits — never fetches forever.
+   */
+  async syncAll(
+    owner: string,
+    name: string,
+    limits?: {
+      maxCommits: number;
+      maxPullRequests: number;
+      maxIssues: number;
+      maxReleases: number;
+    }
+  ): Promise<SyncResult> {
     const result: SyncResult = {
       commits: [],
       pullRequests: [],
@@ -196,21 +218,54 @@ export class GitHubClient {
       defaultBranchSha: null,
     };
 
-    try {
-      result.languages = await this.getRepositoryLanguages(owner, name);
-      result.topics = await this.getRepositoryTopics(owner, name);
+    const maxCommits = limits?.maxCommits ?? 100;
+    const maxPullRequests = limits?.maxPullRequests ?? 50;
+    const maxIssues = limits?.maxIssues ?? 50;
+    const maxReleases = limits?.maxReleases ?? 20;
 
+    try {
       const repo = await this.getRepository(owner, name);
       result.defaultBranchSha = await this.getDefaultBranchSha(owner, name, repo.default_branch);
 
-      result.commits = await this.listCommits(owner, name, 1, 30);
-      result.pullRequests = await this.listPullRequests(owner, name, 1, 30);
-      result.issues = await this.listIssues(owner, name, 1, 30);
-      result.releases = await this.listReleases(owner, name, 1, 5);
+      // Bounded pagination: fetch pages until the configured max is reached.
+      const commitPages = Math.ceil(maxCommits / 30);
+      const prPages = Math.ceil(maxPullRequests / 30);
+      const issuePages = Math.ceil(maxIssues / 30);
+      const releasePages = Math.ceil(maxReleases / 5);
+
+      for (let p = 1; p <= commitPages && result.commits.length < maxCommits; p++) {
+        const page = await this.listCommits(owner, name, p, 30);
+        result.commits.push(...page);
+        if (page.length < 30) break;
+      }
+      result.commits = result.commits.slice(0, maxCommits);
+
+      for (let p = 1; p <= prPages && result.pullRequests.length < maxPullRequests; p++) {
+        const page = await this.listPullRequests(owner, name, p, 30);
+        result.pullRequests.push(...page);
+        if (page.length < 30) break;
+      }
+      result.pullRequests = result.pullRequests.slice(0, maxPullRequests);
+
+      for (let p = 1; p <= issuePages && result.issues.length < maxIssues; p++) {
+        const page = await this.listIssues(owner, name, p, 30);
+        result.issues.push(...page);
+        if (page.length < 30) break;
+      }
+      result.issues = result.issues.slice(0, maxIssues);
+
+      for (let p = 1; p <= releasePages && result.releases.length < maxReleases; p++) {
+        const page = await this.listReleases(owner, name, p, 5);
+        result.releases.push(...page);
+        if (page.length < 5) break;
+      }
+      result.releases = result.releases.slice(0, maxReleases);
     } catch {
-      // Sync errors are collected per-repo
+      // Sync errors are surfaced to the caller as an incomplete result.
     }
 
     return result;
   }
 }
+
+export { clearInstallationTokenCache };

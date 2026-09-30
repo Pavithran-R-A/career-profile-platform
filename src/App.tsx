@@ -27,6 +27,7 @@ const JobTailoring = lazy(() => import('./pages/JobTailoring'));
 const DashboardPreview = lazy(() => import('./pages/DashboardPreview'));
 const PublicProfile = lazy(() => import('./pages/PublicProfile'));
 const GitHubDashboard = lazy(() => import('./pages/GitHubDashboard'));
+const GitHubCallback = lazy(() => import('./pages/GitHubCallback'));
 const ATSResumeBuilder = lazy(() => import('./pages/ATSResumeBuilder'));
 const AccountDelete = lazy(() => import('./pages/AccountDelete'));
 
@@ -67,6 +68,8 @@ export function AppRoutes() {
         <Route path="/dashboard/resume/tailor" element={<JobTailoring />} />
         <Route path="/dashboard/preview" element={<DashboardPreview />} />
         <Route path="/dashboard/github" element={<GitHubDashboard />} />
+        <Route path="/dashboard/github/callback" element={<GitHubCallback />} />
+        <Route path="/github/callback" element={<GitHubCallback />} />
         <Route path="/dashboard/billing" element={<Billing />} />
         <Route path="/dashboard/account/delete" element={<AccountDelete />} />
         <Route path="/dashboard/domains" element={<Domains />} />
