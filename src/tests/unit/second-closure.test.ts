@@ -154,21 +154,39 @@ describe('github config endpoint', () => {
     expect(body.installUrl).toBeNull();
   });
 
-  it('builds the install URL from slug + signing identity', async () => {
+  it('builds the install URL only from a COMPLETE Flow-A configuration', async () => {
     const { generateKeyPairSync } = await import('node:crypto');
     const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const full = {
+      GITHUB_APP_ID: '12345',
+      GITHUB_APP_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+      GITHUB_APP_CLIENT_ID: 'Iv1_cid',
+      GITHUB_APP_CLIENT_SECRET: 'cs',
+      GITHUB_STATE_SECRET: 'state-secret',
+      GITHUB_APP_SLUG: 'test-app',
+    };
     const res = await handleRequest(
       makeRequest('/api/github/config'),
-      {
-        GITHUB_APP_ID: '12345',
-        GITHUB_APP_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
-        GITHUB_APP_SLUG: 'test-app',
-      } as never,
+      full as never,
       {} as ExecutionContext
     );
     const body = (await res.json()) as Json;
     expect(body.configured).toBe(true);
     expect(body.installUrl).toBe('https://github.com/apps/test-app/installations/new');
+
+    // A partial configuration (missing ANY of the six) must NOT look ready:
+    // the dashboard shows no Install button when OAuth cannot complete.
+    for (const key of Object.keys(full)) {
+      const partial = { ...full, [key]: undefined } as Record<string, unknown>;
+      const partialRes = await handleRequest(
+        makeRequest('/api/github/config'),
+        partial as never,
+        {} as ExecutionContext
+      );
+      const partialBody = (await partialRes.json()) as Json;
+      expect(partialBody.configured, `missing ${key} must not be configured`).toBe(false);
+      expect(partialBody.installUrl).toBeNull();
+    }
   });
 });
 
