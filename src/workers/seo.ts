@@ -188,7 +188,8 @@ function siteInjection(request: Request, pathname: string, title: string, descri
 export async function handleHtmlPage(
   request: Request,
   assets: Fetcher,
-  env: Env
+  env: Env,
+  cspNonce: string
 ): Promise<Response> {
   const upstream = await assets.fetch(request);
   const contentType = upstream.headers.get('content-type') ?? '';
@@ -202,7 +203,8 @@ export async function handleHtmlPage(
 
   if (url.pathname === '/') {
     injection = `${siteInjection(request, '/', DEFAULT_TITLE, DEFAULT_DESCRIPTION)}\n${jsonLdScript(
-      buildSiteJsonLd(origin)
+      buildSiteJsonLd(origin),
+      cspNonce
     )}`;
   } else if (url.pathname === '/pricing') {
     injection = siteInjection(
@@ -265,7 +267,7 @@ export async function handleHtmlPage(
         education: profile.education,
         skills: profile.skills,
       });
-      injection = `${metaTags(meta)}\n${jsonLdScript(jsonLd)}`;
+      injection = `${metaTags(meta)}\n${jsonLdScript(jsonLd, cspNonce)}`;
     } else {
       // Unknown/draft profile: truthful not-found meta, noindex.
       injection = metaTags({
@@ -283,6 +285,13 @@ export async function handleHtmlPage(
   if (injection) {
     html = replaceStaticTitle(html, injection);
   }
+
+  // The current document nonce lets same-origin SPA code add non-executable
+  // JSON-LD after client-side navigation without weakening script-src.
+  html = html.replace(
+    /<head>/i,
+    `<head>\n<meta name="csp-nonce" content="${cspNonce}" />`
+  );
 
   const headers = new Headers(upstream.headers);
   headers.set('Content-Type', 'text/html; charset=utf-8');
