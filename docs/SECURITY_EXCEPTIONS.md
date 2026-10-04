@@ -70,6 +70,7 @@ This is an explicit temporary exception, not a suppressed or ignored finding.
 ### Staged retirement
 
 The release branch now contains `20261004154500_server_only_public_views.sql`, which retires this exception by:
+
 - moving all browser public-profile reads behind the same-origin Worker API;
 - moving SEO, sitemap, and recruiter projection reads to the Worker server credential;
 - setting all three views to `security_invoker = true`; and

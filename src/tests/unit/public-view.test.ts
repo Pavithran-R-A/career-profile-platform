@@ -35,11 +35,12 @@ describe('anonymous public portfolio lookup', () => {
   });
 
   it('reads through the Worker public-profile endpoint, never Supabase from the browser', async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify(VIEW_ROW), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(VIEW_ROW), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
     );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -55,18 +56,22 @@ describe('anonymous public portfolio lookup', () => {
   });
 
   it('returns null for non-200 Worker responses without leaking details', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not found', { status: 404 }))
+    );
     await expect(getPublicProfileByUsername('draft-user')).resolves.toBeNull();
   });
 
   it('returns null on schema mismatch rather than crashing the page', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        new Response(JSON.stringify({ ...VIEW_ROW, experiences: 'not-an-array' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ...VIEW_ROW, experiences: 'not-an-array' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
       )
     );
     await expect(getPublicProfileByUsername('broken-user')).resolves.toBeNull();

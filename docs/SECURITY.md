@@ -2,12 +2,12 @@
 
 ## Trust Boundaries
 
-| Boundary          | Trust Level | Examples                                 |
-| ----------------- | ----------- | ---------------------------------------- |
-| Browser           | Untrusted   | User input, localStorage                 |
-| Supabase Client   | Trusted     | Uses publishable key only                |
+| Boundary          | Trust Level | Examples                                               |
+| ----------------- | ----------- | ------------------------------------------------------ |
+| Browser           | Untrusted   | User input, localStorage                               |
+| Supabase Client   | Trusted     | Uses publishable key only                              |
 | Cloudflare Worker | Trusted     | API routes, public projection boundary, server secrets |
-| Supabase Database | Trusted     | RLS enforcement, auth.uid() verification |
+| Supabase Database | Trusted     | RLS enforcement, auth.uid() verification               |
 
 ## Threat Model
 
