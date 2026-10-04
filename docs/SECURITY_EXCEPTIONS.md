@@ -4,7 +4,7 @@ Last reviewed: 2026-10-04
 
 This file records intentional security-advisor findings that remain after launch hardening. An item belongs here only when removing the finding would weaken a required product boundary or introduce a materially riskier design.
 
-## Owner-rights public projection views
+## Owner-rights public projection views — temporary production state
 
 Supabase currently reports `security_definer_view` for:
 
@@ -65,7 +65,21 @@ The accepted design is therefore:
 - SELECT-only client grants;
 - regression tests and live release checks.
 
-This is an explicit exception, not a suppressed or ignored finding.
+This is an explicit temporary exception, not a suppressed or ignored finding.
+
+### Staged retirement
+
+The release branch now contains `20261004154500_server_only_public_views.sql`, which retires this exception by:
+- moving all browser public-profile reads behind the same-origin Worker API;
+- moving SEO, sitemap, and recruiter projection reads to the Worker server credential;
+- setting all three views to `security_invoker = true`; and
+- revoking `anon` and `authenticated` access entirely.
+
+A live rollback-only proof on 2026-10-04 confirmed that `service_role` can still read the published projection after those changes.
+
+**Do not apply that migration before the new Worker is deployed with `SUPABASE_SECRET_KEY`.** Doing so would intentionally break the old anonymous database read path. The correct production order is recorded in `docs/PRODUCTION_DEPLOYMENT.md`.
+
+Once the cutover migration is applied and the post-deploy smoke test passes, this exception is considered retired and the three `security_definer_view` advisor findings should disappear.
 
 ### Revisit conditions
 
