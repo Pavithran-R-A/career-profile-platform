@@ -30,11 +30,11 @@ describe('App shell', () => {
 
   it('renders the header with brand link', () => {
     render(<App />);
-    expect(screen.getByRole('link', { name: 'Career Profile home' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'CVentory home' })).toHaveAttribute('href', '/');
   });
 
   it('renders footer', () => {
     render(<App />);
-    expect(screen.getByText(/one profile, built for recruiters/i)).toBeInTheDocument();
+    expect(screen.getByText(/your career, all in one place/i)).toBeInTheDocument();
   });
 });
