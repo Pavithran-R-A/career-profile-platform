@@ -6,9 +6,10 @@ interface Env {
   [key: string]: unknown;
 }
 
-const DOCUMENT_CSP = [
+function documentCsp(nonce: string): string {
+  return [
   "default-src 'self'",
-  "script-src 'self' https://checkout.razorpay.com",
+  `script-src 'self' 'nonce-${nonce}' https://checkout.razorpay.com`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
@@ -19,16 +20,27 @@ const DOCUMENT_CSP = [
   "base-uri 'self'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-].join('; ');
+  ].join('; ');
+}
 
-function finalizeResponse(response: Response, requestId: string, environment: string): Response {
+function newCspNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function finalizeResponse(
+  response: Response,
+  requestId: string,
+  environment: string,
+  cspNonce: string
+): Response {
   const headers = new Headers(response.headers);
   headers.set('X-Request-Id', requestId);
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('X-Frame-Options', 'DENY');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  headers.set('Content-Security-Policy', DOCUMENT_CSP);
+  headers.set('Content-Security-Policy', documentCsp(cspNonce));
 
   if (environment === 'production') {
     headers.set('Strict-Transport-Security', 'max-age=31536000');
@@ -72,6 +84,7 @@ function logRequest(
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const requestId = crypto.randomUUID();
+    const cspNonce = newCspNonce();
     const url = new URL(request.url);
     const started = Date.now();
     const envRecord = env as unknown as Record<string, string>;
@@ -99,16 +112,16 @@ export default {
       } else if (url.pathname === '/robots.txt') {
         response = handleRobots(request);
       } else if (isHtmlPagePath(url.pathname)) {
-        response = await handleHtmlPage(request, env.ASSETS, envRecord);
+        response = await handleHtmlPage(request, env.ASSETS, envRecord, cspNonce);
       } else if ((request.headers.get('accept') ?? '').includes('text/html')) {
         // Unknown SPA routes: serve the shell through the same meta pipeline
         // so they get a truthful not-found title + noindex (SEO defect fix).
-        response = await handleHtmlPage(request, env.ASSETS, envRecord);
+        response = await handleHtmlPage(request, env.ASSETS, envRecord, cspNonce);
       } else {
         response = await env.ASSETS.fetch(request);
       }
 
-      response = finalizeResponse(response, requestId, environment);
+      response = finalizeResponse(response, requestId, environment, cspNonce);
       log(response.status);
       return response;
     } catch {
@@ -121,7 +134,8 @@ export default {
           headers: { 'Content-Type': 'application/json' },
         }),
         requestId,
-        environment
+        environment,
+        cspNonce
       );
     }
   },
