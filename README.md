@@ -32,12 +32,14 @@ pnpm dev
 ### Supabase Configuration
 
 1. Create a Supabase project at https://supabase.com
-2. Get your project URL and publishable key from Settings > API
+2. Get your project URL, publishable key, and a server-side secret key from Settings > API.
 3. Add them to `.env`:
    ```
    VITE_SUPABASE_URL=https://your-project.supabase.co
    VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+   SUPABASE_SECRET_KEY=your-server-only-secret
    ```
+   Never expose `SUPABASE_SECRET_KEY` to browser code or commit it.
 4. Apply the database migrations (all files in `supabase/migrations/`, in
    filename order). With the Supabase CLI linked to your project:
    `supabase db push`
