@@ -20,6 +20,8 @@ function injectProfileJsonLd(data: Record<string, unknown> | null): void {
   const script = document.createElement('script');
   script.id = JSONLD_ID;
   script.type = 'application/ld+json';
+  const nonce = document.querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')?.content;
+  if (nonce) script.nonce = nonce;
   script.textContent = JSON.stringify(data).replace(/</g, '\\u003c');
   document.head.appendChild(script);
 }
