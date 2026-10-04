@@ -1,6 +1,6 @@
 # GitHub App Setup Guide
 
-This guide walks through creating and configuring a GitHub App for the CVentory.
+This guide walks through creating and configuring a GitHub App for CVentory.
 
 ## Prerequisites
 
