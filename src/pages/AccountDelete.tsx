@@ -17,7 +17,7 @@ type Phase = 'confirm' | 'reauth' | 'deleting' | 'done';
  * where the previous attempt stopped.
  */
 export default function AccountDelete() {
-  useNoindexMeta('Delete account — Career Profile');
+  useNoindexMeta('Delete account — CVentory');
   const auth = useAuth();
   const navigate = useNavigate();
 
