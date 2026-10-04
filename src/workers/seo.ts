@@ -21,7 +21,7 @@ import {
   profileMeta,
   siteMeta,
 } from '../lib/seo/meta';
-import { buildProfileJsonLd, jsonLdScript } from '../lib/seo/jsonld';
+import { buildProfileJsonLd, buildSiteJsonLd, jsonLdScript } from '../lib/seo/jsonld';
 import {
   SITEMAP_MAX_PROFILE_ENTRIES,
   buildSitemapXml,
@@ -133,7 +133,7 @@ export function isHtmlPagePath(pathname: string): boolean {
 function notFoundInjection(request: Request) {
   const origin = originOf(request);
   const meta = {
-    title: 'Page not found — Career Profile',
+    title: 'Page not found — CVentory',
     description: 'The page you requested does not exist.',
     canonical: `${origin}${new URL(request.url).pathname}`,
     noindex: true,
@@ -186,12 +186,14 @@ export async function handleHtmlPage(
   let injection = '';
 
   if (url.pathname === '/') {
-    injection = siteInjection(request, '/', DEFAULT_TITLE, DEFAULT_DESCRIPTION);
+    injection = `${siteInjection(request, '/', DEFAULT_TITLE, DEFAULT_DESCRIPTION)}\n${jsonLdScript(
+      buildSiteJsonLd(origin)
+    )}`;
   } else if (url.pathname === '/pricing') {
     injection = siteInjection(
       request,
       '/pricing',
-      'Pricing — Career Profile',
+      'Pricing — CVentory',
       'Free to build your career profile, portfolio, and ATS resume. Pro adds higher limits.'
     );
   } else if (url.pathname.startsWith('/u/')) {
@@ -224,7 +226,7 @@ export async function handleHtmlPage(
     } else {
       // Unknown/draft profile: truthful not-found meta, noindex.
       injection = metaTags({
-        title: 'Profile not found — Career Profile',
+        title: 'Profile not found — CVentory',
         description: 'This profile does not exist or is not published.',
         canonical: `${origin}/u/${encodeURIComponent(username)}`,
         noindex: true,
