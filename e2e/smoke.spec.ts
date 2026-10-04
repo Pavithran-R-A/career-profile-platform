@@ -26,6 +26,17 @@ test.describe('smoke: pages load with correct head metadata', () => {
     );
   });
 
+  test('public policy and contact pages render with canonical metadata', async ({ page }) => {
+    for (const path of ['/privacy', '/terms', '/refund-policy', '/contact']) {
+      const response = await page.goto(path);
+      expect(response?.status()).toBe(200);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      const origin = new URL(page.url()).origin;
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${origin}${path}`);
+      expect(await page.title()).toMatch(/CVentory/);
+    }
+  });
+
   test('unknown route renders the 404 page', async ({ page }) => {
     await page.goto('/definitely-not-a-route');
     await expect(page.getByText('404')).toBeVisible();
