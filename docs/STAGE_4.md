@@ -2,7 +2,7 @@
 
 ## Overview
 
-Stage 4 connects GitHub accounts to the Career Profile Platform, enabling users to derive evidence-based profile content from their open-source contributions, commits, pull requests, and releases.
+Stage 4 connects GitHub accounts to the CVentory, enabling users to derive evidence-based profile content from their open-source contributions, commits, pull requests, and releases.
 
 ## Architecture
 
