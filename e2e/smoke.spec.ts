@@ -11,7 +11,7 @@ test.describe('smoke: pages load with correct head metadata', () => {
     expect(await page.title()).toMatch(/CVentory/);
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
       'content',
-      /recruiters/
+      /CVentory — AI CV, ATS Resume & Career Profile Builder/
     );
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
       'content',
