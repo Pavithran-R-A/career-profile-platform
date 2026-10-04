@@ -8,7 +8,7 @@ import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 type SessionState = 'checking' | 'recovery' | 'none';
 
 export default function ResetPassword() {
-  useNoindexMeta('Reset password — Career Profile');
+  useNoindexMeta('Reset password — CVentory');
 
   const [sessionState, setSessionState] = useState<SessionState>('checking');
   const [password, setPassword] = useState('');
