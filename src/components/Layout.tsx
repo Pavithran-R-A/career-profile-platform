@@ -303,6 +303,18 @@ export default function Layout() {
               <Link to="/pricing" className="link-quiet">
                 Pricing
               </Link>
+              <Link to="/privacy" className="link-quiet">
+                Privacy
+              </Link>
+              <Link to="/terms" className="link-quiet">
+                Terms
+              </Link>
+              <Link to="/refund-policy" className="link-quiet">
+                Refunds
+              </Link>
+              <Link to="/contact" className="link-quiet">
+                Contact
+              </Link>
             </nav>
           )}
         </div>
