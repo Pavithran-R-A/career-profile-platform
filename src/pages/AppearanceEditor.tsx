@@ -20,7 +20,7 @@ import AppearanceControls from '../components/AppearanceControls';
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
 export default function AppearanceEditor() {
-  useNoindexMeta('Appearance — Career Profile');
+  useNoindexMeta('Appearance — CVentory');
   const auth = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
