@@ -97,3 +97,42 @@ export function buildProfileJsonLd(input: JsonLdProfileInput): Record<string, un
 export function jsonLdScript(data: Record<string, unknown>): string {
   return `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 }
+
+
+const CVENTORY_DESCRIPTION =
+  'CVentory is an AI career profile platform that turns your CV, projects and GitHub work into a recruiter-ready profile, ATS resume and shareable portfolio.';
+
+export function buildSiteJsonLd(originInput: string): Record<string, unknown> {
+  const origin = originInput.replace(/\\/+$/, '');
+  const organizationId = `${origin}/#organization`;
+  const websiteId = `${origin}/#website`;
+
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': organizationId,
+        name: 'CVentory',
+        alternateName: 'CVentory AI Career Profile Platform',
+        url: `${origin}/`,
+        description: CVENTORY_DESCRIPTION,
+        logo: {
+          '@type': 'ImageObject',
+          url: `${origin}/logo.svg`,
+          contentUrl: `${origin}/logo.svg`,
+          width: 512,
+          height: 512,
+        },
+      },
+      {
+        '@type': 'WebSite',
+        '@id': websiteId,
+        name: 'CVentory',
+        url: `${origin}/`,
+        description: CVENTORY_DESCRIPTION,
+        publisher: { '@id': organizationId },
+      },
+    ],
+  };
+}
