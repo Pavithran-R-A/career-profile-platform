@@ -35,6 +35,8 @@ describe('App shell', () => {
 
   it('renders footer', () => {
     render(<App />);
-    expect(screen.getByRole('contentinfo')).toHaveTextContent(/CVentory — your career, all in one place/i);
+    expect(screen.getByRole('contentinfo')).toHaveTextContent(
+      /CVentory — your career, all in one place/i
+    );
   });
 });
