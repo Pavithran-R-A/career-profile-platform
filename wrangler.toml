@@ -13,6 +13,11 @@ VITE_SUPABASE_URL = "https://yxrbytzhiilnzlamqpqz.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_MP5rlIreXdLslDRO52Vr2g_5cVnG076"
 SUPABASE_URL = "https://yxrbytzhiilnzlamqpqz.supabase.co"
 
+# Deployment must fail closed if the core server boundary is missing.
+# Optional feature-provider secrets remain feature-gated and are not listed here.
+[secrets]
+required = ["SUPABASE_SECRET_KEY", "RATE_LIMIT_KEY_SECRET"]
+
 [previews.vars]
 ENVIRONMENT = "preview"
 
