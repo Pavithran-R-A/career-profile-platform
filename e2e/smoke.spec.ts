@@ -32,7 +32,10 @@ test.describe('smoke: pages load with correct head metadata', () => {
       expect(response?.status()).toBe(200);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const origin = new URL(page.url()).origin;
-      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${origin}${path}`);
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+        'href',
+        `${origin}${path}`
+      );
       expect(await page.title()).toMatch(/CVentory/);
     }
   });

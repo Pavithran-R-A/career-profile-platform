@@ -98,7 +98,6 @@ export function jsonLdScript(data: Record<string, unknown>): string {
   return `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 }
 
-
 const CVENTORY_DESCRIPTION =
   'CVentory is an AI career profile platform that turns your CV, projects and GitHub work into a recruiter-ready profile, ATS resume and shareable portfolio.';
 
