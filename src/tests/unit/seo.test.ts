@@ -9,7 +9,12 @@ import {
   MAX_TITLE_LENGTH,
   MAX_DESCRIPTION_LENGTH,
 } from '../../lib/seo/meta';
-import { buildProfileJsonLd, safeSameAsLinks, jsonLdScript } from '../../lib/seo/jsonld';
+import {
+  buildProfileJsonLd,
+  buildSiteJsonLd,
+  safeSameAsLinks,
+  jsonLdScript,
+} from '../../lib/seo/jsonld';
 import { buildSitemapXml, toLastmodDate, escapeXml } from '../../lib/seo/sitemap';
 import { buildRobotsTxt } from '../../lib/seo/robots';
 
@@ -52,7 +57,7 @@ describe('meta builders', () => {
       ogImageAbsolute: 'https://example.com/og-cover.png',
     });
     expect(fallback.ogImage).toBe('https://example.com/og-cover.png');
-    expect(fallback.title).toBe('Engineer — Career Profile');
+    expect(fallback.title).toBe('Engineer — CVentory');
   });
 
   it('siteMeta truncates long titles and descriptions', () => {
@@ -154,6 +159,22 @@ describe('JSON-LD', () => {
       { '@type': 'EducationalOrganization', name: 'University of London' },
     ]);
     expect(data.mainEntity.knowsAbout).toEqual(['TypeScript']);
+  });
+
+  it('buildSiteJsonLd identifies CVentory as the Organization and WebSite', () => {
+    const data = buildSiteJsonLd('https://cventory.example/') as {
+      '@graph': Array<Record<string, unknown>>;
+    };
+    expect(data['@graph'][0]).toMatchObject({
+      '@type': 'Organization',
+      name: 'CVentory',
+      url: 'https://cventory.example/',
+    });
+    expect(data['@graph'][1]).toMatchObject({
+      '@type': 'WebSite',
+      name: 'CVentory',
+      url: 'https://cventory.example/',
+    });
   });
 
   it('jsonLdScript escapes < to prevent script breakout', () => {
