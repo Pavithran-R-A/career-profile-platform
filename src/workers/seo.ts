@@ -91,7 +91,14 @@ export function handleRobots(request: Request): Response {
 
 export async function handleSitemap(request: Request, env: Env): Promise<Response> {
   const origin = originOf(request);
-  const entries: SitemapEntry[] = [{ loc: `${origin}/` }, { loc: `${origin}/pricing` }];
+  const entries: SitemapEntry[] = [
+    { loc: `${origin}/` },
+    { loc: `${origin}/pricing` },
+    { loc: `${origin}/privacy` },
+    { loc: `${origin}/terms` },
+    { loc: `${origin}/refund-policy` },
+    { loc: `${origin}/contact` },
+  ];
 
   try {
     const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
@@ -126,7 +133,15 @@ export async function handleSitemap(request: Request, env: Env): Promise<Respons
 }
 
 export function isHtmlPagePath(pathname: string): boolean {
-  return pathname === '/' || pathname === '/pricing' || pathname.startsWith('/u/');
+  return (
+    pathname === '/' ||
+    pathname === '/pricing' ||
+    pathname === '/privacy' ||
+    pathname === '/terms' ||
+    pathname === '/refund-policy' ||
+    pathname === '/contact' ||
+    pathname.startsWith('/u/')
+  );
 }
 
 /** Unknown SPA routes still get truthful not-found meta (QA SEO defects). */
@@ -195,6 +210,34 @@ export async function handleHtmlPage(
       '/pricing',
       'Pricing — CVentory',
       'Free to build your career profile, portfolio, and ATS resume. Pro adds higher limits.'
+    );
+  } else if (url.pathname === '/privacy') {
+    injection = siteInjection(
+      request,
+      '/privacy',
+      'Privacy Policy — CVentory',
+      'How CVentory collects, uses, protects, publishes, and deletes account and career-profile data.'
+    );
+  } else if (url.pathname === '/terms') {
+    injection = siteInjection(
+      request,
+      '/terms',
+      'Terms of Service — CVentory',
+      'Terms governing use of CVentory career profiles, resumes, portfolios, integrations, and paid features.'
+    );
+  } else if (url.pathname === '/refund-policy') {
+    injection = siteInjection(
+      request,
+      '/refund-policy',
+      'Refund & Cancellation Policy — CVentory',
+      'Refund, cancellation, duplicate-charge, and annual Pro access terms for CVentory.'
+    );
+  } else if (url.pathname === '/contact') {
+    injection = siteInjection(
+      request,
+      '/contact',
+      'Contact — CVentory',
+      'Contact CVentory for account, privacy, billing, security, or product support.'
     );
   } else if (url.pathname.startsWith('/u/')) {
     const username = decodeURIComponent(url.pathname.slice(3)).replace(/\/+$/, '');
