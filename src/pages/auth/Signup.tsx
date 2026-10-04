@@ -101,7 +101,8 @@ export default function Signup() {
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              Use at least {NEW_PASSWORD_MIN_LENGTH} characters with upper/lowercase letters, a number, and a symbol.
+              Use at least {NEW_PASSWORD_MIN_LENGTH} characters with upper/lowercase letters, a
+              number, and a symbol.
             </p>
           </div>
 

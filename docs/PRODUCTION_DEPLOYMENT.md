@@ -48,14 +48,14 @@ Start from `.env.example`.
 
 ### Required base application values
 
-| Variable | Purpose |
-| --- | --- |
-| `VITE_SUPABASE_URL` | Browser and Worker public Supabase URL |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser-safe publishable key |
-| `SUPABASE_SECRET_KEY` | Server-only privileged operations; preferred over the legacy service-role key |
-| `RATE_LIMIT_KEY_SECRET` | Stable HMAC secret for recruiter anti-abuse keys |
-| `ALLOWED_ORIGINS` | Comma-separated production origins accepted by CORS |
-| `VITE_SUPPORT_EMAIL` | Public support/privacy/billing contact shown on launch pages |
+| Variable                        | Purpose                                                                       |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`             | Browser and Worker public Supabase URL                                        |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser-safe publishable key                                                  |
+| `SUPABASE_SECRET_KEY`           | Server-only privileged operations; preferred over the legacy service-role key |
+| `RATE_LIMIT_KEY_SECRET`         | Stable HMAC secret for recruiter anti-abuse keys                              |
+| `ALLOWED_ORIGINS`               | Comma-separated production origins accepted by CORS                           |
+| `VITE_SUPPORT_EMAIL`            | Public support/privacy/billing contact shown on launch pages                  |
 
 `VITE_SUPPORT_PHONE`, `VITE_OPERATOR_NAME`, and `VITE_OPERATOR_ADDRESS` are optional public contact fields.
 
@@ -63,13 +63,13 @@ Start from `.env.example`.
 
 Optional external features are explicit opt-ins. Missing or false flags stay disabled even in production.
 
-| Feature | Enable flag | Credentials required before enabling |
-| --- | --- | --- |
-| Recruiter AI | `RECRUITER_AI_ENABLED=true` | `BHARATCODE_API_KEY` |
-| Billing | `BILLING_ENABLED=true` | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` |
-| GitHub App | configured automatically when complete | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_STATE_SECRET`, `GITHUB_APP_SLUG` |
-| Custom domains | `DOMAINS_ENABLED=true` | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, `PLATFORM_PROFILE_ORIGIN` |
-| .cv provider | `DOTCV_ENABLED=true` | provider URL/key; purchases additionally require `DOTCV_PURCHASE_ENABLED=true` |
+| Feature        | Enable flag                            | Credentials required before enabling                                                                                                    |
+| -------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Recruiter AI   | `RECRUITER_AI_ENABLED=true`            | `BHARATCODE_API_KEY`                                                                                                                    |
+| Billing        | `BILLING_ENABLED=true`                 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`                                                                     |
+| GitHub App     | configured automatically when complete | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_STATE_SECRET`, `GITHUB_APP_SLUG` |
+| Custom domains | `DOMAINS_ENABLED=true`                 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, `PLATFORM_PROFILE_ORIGIN`                                        |
+| .cv provider   | `DOTCV_ENABLED=true`                   | provider URL/key; purchases additionally require `DOTCV_PURCHASE_ENABLED=true`                                                          |
 
 Never enable a feature flag before its full credential set is present and verified.
 
