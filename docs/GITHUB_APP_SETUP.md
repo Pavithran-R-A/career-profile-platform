@@ -1,6 +1,6 @@
 # GitHub App Setup Guide
 
-This guide walks through creating and configuring a GitHub App for the Career Profile Platform.
+This guide walks through creating and configuring a GitHub App for the CVentory.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ The platform uses FLOW A — OAuth during installation — and ONLY this flow.
 
 1. Go to **GitHub Settings > Developer settings > GitHub Apps > New GitHub App**
 2. Fill in:
-   - **GitHub App name**: `Career Profile App` (must be unique)
+   - **GitHub App name**: `CVentory App` (must be unique)
    - **Homepage URL**: `https://your-domain.com`
    - **Callback URL**: `https://your-domain.com/dashboard/github/callback`
    - **Request user authorization (OAuth) during installation**: **ENABLED**
