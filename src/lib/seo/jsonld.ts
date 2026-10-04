@@ -9,7 +9,7 @@
  *   - sameAs only contains safe absolute http(s) links the profile published
  */
 
-import { isAbsoluteHttpUrl } from './meta';
+import { escapeHtml, isAbsoluteHttpUrl } from './meta';
 
 export interface JsonLdExperienceLike {
   role: string;
@@ -94,8 +94,9 @@ export function buildProfileJsonLd(input: JsonLdProfileInput): Record<string, un
   };
 }
 
-export function jsonLdScript(data: Record<string, unknown>): string {
-  return `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
+export function jsonLdScript(data: Record<string, unknown>, nonce?: string): string {
+  const nonceAttribute = nonce ? ` nonce="${escapeHtml(nonce)}"` : '';
+  return `<script type="application/ld+json"${nonceAttribute}>${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 }
 
 const CVENTORY_DESCRIPTION =
