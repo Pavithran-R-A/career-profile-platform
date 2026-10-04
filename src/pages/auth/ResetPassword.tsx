@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/auth/context';
 import { getSupabaseClient } from '../../lib/supabase/client';
 import { toSafeAuthMessage } from '../../lib/auth/errors';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
+import { newPasswordError, NEW_PASSWORD_MIN_LENGTH } from '../../lib/auth/password';
 
 type SessionState = 'checking' | 'recovery' | 'none';
 
@@ -51,8 +52,9 @@ export default function ResetPassword() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    const passwordError = newPasswordError(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
 
@@ -136,6 +138,7 @@ export default function ResetPassword() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                minLength={NEW_PASSWORD_MIN_LENGTH}
                 autoComplete="new-password"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent pr-10"
               />
@@ -146,6 +149,9 @@ export default function ResetPassword() {
                 {showPassword ? 'Hide' : 'Show'}
               </button>
             </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Use at least {NEW_PASSWORD_MIN_LENGTH} characters with upper/lowercase letters, a number, and a symbol.
+            </p>
           </div>
 
           <div>
@@ -158,6 +164,7 @@ export default function ResetPassword() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
+              minLength={NEW_PASSWORD_MIN_LENGTH}
               autoComplete="new-password"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
             />
