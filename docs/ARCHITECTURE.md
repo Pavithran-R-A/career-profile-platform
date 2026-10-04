@@ -15,7 +15,7 @@ Browser <-> Cloudflare Worker (API + static assets)
 ### Rendering model (truthful description)
 
 This is **server-rendered metadata with a client-rendered application
-body** — not full React SSR. For crawler-visible routes (`/`, `/pricing`,
+body** — not full React SSR. For crawler-visible routes (`/`, `/pricing`, legal/contact routes,
 `/u/:username`, unknown routes) the worker injects a complete, route-accurate
 `<head>` (exactly one `title`, description, canonical, OG/Twitter tags,
 JSON-LD, and `noindex` where appropriate) into the static HTML shell before
@@ -39,6 +39,11 @@ responding. The visible body is then hydrated by React in the browser.
 - `/forgot-password` - Password reset request
 - `/reset-password` - Password reset form
 - `/pricing` - Plan comparison and upgrade CTA
+- `/privacy` - Privacy policy
+- `/terms` - Terms of service
+- `/refund-policy` - Refund and cancellation policy
+- `/contact` - Production support/contact details
+- `/u/:username` - Published career profile
 
 ### Protected Routes (require authentication)
 
@@ -76,8 +81,9 @@ responding. The visible body is then hydrated by React in the browser.
 - Supabase provides PostgreSQL, authentication, and storage
 - Row Level Security (RLS) enforced on all tables
 - Explicit GRANT statements for authenticated role
-- No service-role key in browser code
-- Publishable key used for client-side operations
+- No service-role/secret key in browser code
+- Publishable key used for authenticated client-side RLS operations
+- Server-only public profile projections are read by the Worker using the Supabase secret and returned as a constrained DTO
 
 ## Security Model
 
@@ -85,14 +91,14 @@ responding. The visible body is then hydrated by React in the browser.
 
 - **Browser:** Untrusted user input
 - **Supabase Client:** Uses publishable key only
-- **Cloudflare Worker:** API routes, no secrets
+- **Cloudflare Worker:** Trusted server boundary; holds only required server secrets
 - **Supabase Database:** RLS enforces access control
 
 ### Access Control
 
 - **Profiles:** Owner-only CRUD via RLS
 - **Child tables:** Ownership verified through parent profile
-- **Anonymous:** No application-table access
+- **Anonymous:** No direct application-table or public-projection-view access after production cutover; public profiles are served through the Worker
 
 ## Wildcard Subdomain Routing
 
