@@ -5,7 +5,7 @@ test.describe('smoke: pages load with correct head metadata', () => {
     const response = await page.goto('/');
     expect(response?.status()).toBe(200);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    expect(await page.title()).toMatch(/Career Profile/);
+    expect(await page.title()).toMatch(/CVentory/);
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
       'content',
       /recruiters/
