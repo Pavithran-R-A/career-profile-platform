@@ -2,20 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getPublicProfileByUsername, PublicPortfolioSchema } from '../../lib/profiles/public';
 import realViewRow from '../fixtures/public-view-row.json';
 
-const { fromMock, singleMock } = vi.hoisted(() => ({
-  fromMock: vi.fn(),
-  singleMock: vi.fn(),
-}));
-
-vi.mock('../../lib/supabase/client', () => ({
-  getSupabaseClient: () => ({
-    from: (table: string) => {
-      fromMock(table);
-      return { select: () => ({ eq: () => ({ single: singleMock, maybeSingle: singleMock }) }) };
-    },
-  }),
-}));
-
 const EMPTY = '[]';
 const VIEW_ROW = {
   id: '550e8400-e29b-41d4-a716-446655440000',
@@ -45,32 +31,44 @@ const VIEW_ROW = {
 
 describe('anonymous public portfolio lookup', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
-  it('reads the anon-safe public_profiles view, never the base table', async () => {
-    singleMock.mockResolvedValue({ data: VIEW_ROW, error: null });
+  it('reads through the Worker public-profile endpoint, never Supabase from the browser', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify(VIEW_ROW), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
     const result = await getPublicProfileByUsername('published-user');
-    expect(fromMock).toHaveBeenCalledWith('public_profiles');
-    expect(fromMock).not.toHaveBeenCalledWith('profiles');
+    expect(fetchMock).toHaveBeenCalledWith('/api/public/profile/published-user', {
+      headers: { Accept: 'application/json' },
+    });
     expect(result).not.toBeNull();
     expect(result!.profile.username).toBe('published-user');
-    // never leaks the account owner
     expect(result!.profile).not.toHaveProperty('user_id');
     expect(result!.preferences.template_key).toBe('editorial');
     expect(result!.profile.experiences).toEqual([]);
   });
 
-  it('returns null when the view has no row instead of leaking errors', async () => {
-    singleMock.mockResolvedValue({ data: null, error: { message: 'No rows', code: 'PGRST116' } });
+  it('returns null for non-200 Worker responses without leaking details', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('not found', { status: 404 })));
     await expect(getPublicProfileByUsername('draft-user')).resolves.toBeNull();
   });
 
   it('returns null on schema mismatch rather than crashing the page', async () => {
-    singleMock.mockResolvedValue({
-      data: { ...VIEW_ROW, experiences: 'not-an-array' },
-      error: null,
-    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ ...VIEW_ROW, experiences: 'not-an-array' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    );
     await expect(getPublicProfileByUsername('broken-user')).resolves.toBeNull();
   });
 });
