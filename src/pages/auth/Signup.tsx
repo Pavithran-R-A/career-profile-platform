@@ -5,7 +5,7 @@ import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 import { track } from '../../lib/analytics/events';
 
 export default function Signup() {
-  useNoindexMeta('Create your account — Career Profile');
+  useNoindexMeta('Create your account — CVentory');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
