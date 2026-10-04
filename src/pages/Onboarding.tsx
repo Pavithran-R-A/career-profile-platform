@@ -9,7 +9,7 @@ import { track } from '../lib/analytics/events';
 type OnboardingStep = 'username' | 'basics' | 'complete';
 
 export default function Onboarding() {
-  useNoindexMeta('Set up your profile — Career Profile');
+  useNoindexMeta('Set up your profile — CVentory');
   const auth = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState<OnboardingStep>('username');
