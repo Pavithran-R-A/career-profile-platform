@@ -6,6 +6,41 @@ interface Env {
   [key: string]: unknown;
 }
 
+const DOCUMENT_CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://checkout.razorpay.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.razorpay.com",
+  "frame-src https://*.razorpay.com",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join('; ');
+
+function finalizeResponse(response: Response, requestId: string, environment: string): Response {
+  const headers = new Headers(response.headers);
+  headers.set('X-Request-Id', requestId);
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('X-Frame-Options', 'DENY');
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  headers.set('Content-Security-Policy', DOCUMENT_CSP);
+
+  if (environment === 'production') {
+    headers.set('Strict-Transport-Security', 'max-age=31536000');
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 /**
  * Structured request logging: one JSON line per request with safe fields
  * only (method, path without query, status class, duration, request id,
@@ -73,17 +108,21 @@ export default {
         response = await env.ASSETS.fetch(request);
       }
 
-      response.headers.set('X-Request-Id', requestId);
+      response = finalizeResponse(response, requestId, environment);
       log(response.status);
       return response;
     } catch {
       const code = 'INTERNAL';
       log(500, code);
       console.error(JSON.stringify({ t: 'request_error', id: requestId, code }));
-      return new Response(JSON.stringify({ error: 'Internal server error', code, requestId }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return finalizeResponse(
+        new Response(JSON.stringify({ error: 'Internal server error', code, requestId }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+        requestId,
+        environment
+      );
     }
   },
 };
