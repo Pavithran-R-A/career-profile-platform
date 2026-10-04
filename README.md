@@ -1,6 +1,6 @@
-# Career Profile Platform
+# CVentory
 
-> Turn your CV and GitHub into a professional identity recruiters can understand and verify.
+> Your career. All in one place — from CV and GitHub work to a recruiter-ready profile, ATS resume, and shareable portfolio.
 
 ## Tech Stack
 
