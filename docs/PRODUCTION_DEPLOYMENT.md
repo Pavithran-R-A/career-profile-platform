@@ -86,12 +86,13 @@ These steps can be completed before selecting the final public domain:
 
 1. Confirm the release PR is green on its exact head SHA.
 2. Confirm the Supabase project is healthy and all checked-in migrations are applied.
-3. Keep the three intentionally owner-rights public views constrained to SELECT-only client grants; see `docs/SECURITY_EXCEPTIONS.md`.
-4. Configure a strong Supabase Auth password policy in Authentication settings.
-5. Configure production SMTP before relying on auth email delivery at public scale.
-6. Create/verify external provider credentials for only the features intended at launch.
-7. Leave feature flags false for integrations that are not fully configured.
-8. Prepare Cloudflare Worker secrets/vars without committing them.
+3. Configure `SUPABASE_SECRET_KEY` on the production Worker. The release Worker requires it for server-only public-profile, sitemap, SEO, recruiter, deletion, billing, GitHub, and domain operations.
+4. Keep the current owner-rights public views unchanged until the release Worker is deployed; see `docs/SECURITY_EXCEPTIONS.md`.
+5. Configure a strong Supabase Auth password policy in Authentication settings.
+6. Configure production SMTP before relying on auth email delivery at public scale.
+7. Create/verify external provider credentials for only the features intended at launch.
+8. Leave feature flags false for integrations that are not fully configured.
+9. Prepare Cloudflare Worker secrets/vars without committing them.
 
 Supabase leaked-password protection is a paid-plan feature. If the project remains on a plan that does not provide it, the advisor warning is expected; do not fake or suppress the finding.
 
@@ -111,7 +112,10 @@ Domain selection is intentionally last. After the production domain is chosen:
 6. Update the GitHub App homepage/callback URLs if GitHub integration launches.
 7. Configure Cloudflare DNS/routes/custom hostnames.
 8. Rebuild after all `VITE_*` public values are final.
-9. Deploy and run the live smoke checks below.
+9. Deploy and smoke-test `GET /api/public/profile/<published-username>` while the old view grants still exist.
+10. Apply `20261004154500_server_only_public_views.sql` only after that Worker smoke test succeeds.
+11. Re-run the public-profile smoke test plus the Supabase security advisors; the three `security_definer_view` findings must be gone.
+12. Run the remaining live smoke checks below.
 
 ## Build and deploy
 
