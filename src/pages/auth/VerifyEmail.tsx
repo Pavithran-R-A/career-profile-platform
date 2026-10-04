@@ -6,7 +6,7 @@ import { toSafeAuthMessage } from '../../lib/auth/errors';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 
 export default function VerifyEmail() {
-  useNoindexMeta('Verify your email — Career Profile');
+  useNoindexMeta('Verify your email — CVentory');
 
   const auth = useAuth();
   const navigate = useNavigate();
