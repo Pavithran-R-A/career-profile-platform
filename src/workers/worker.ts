@@ -8,18 +8,18 @@ interface Env {
 
 function documentCsp(nonce: string): string {
   return [
-  "default-src 'self'",
-  `script-src 'self' 'nonce-${nonce}' https://checkout.razorpay.com`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.razorpay.com",
-  'frame-src https://*.razorpay.com',
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' https://checkout.razorpay.com`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.razorpay.com",
+    'frame-src https://*.razorpay.com',
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
   ].join('; ');
 }
 

@@ -288,10 +288,7 @@ export async function handleHtmlPage(
 
   // The current document nonce lets same-origin SPA code add non-executable
   // JSON-LD after client-side navigation without weakening script-src.
-  html = html.replace(
-    /<head>/i,
-    `<head>\n<meta name="csp-nonce" content="${cspNonce}" />`
-  );
+  html = html.replace(/<head>/i, `<head>\n<meta name="csp-nonce" content="${cspNonce}" />`);
 
   const headers = new Headers(upstream.headers);
   headers.set('Content-Type', 'text/html; charset=utf-8');
