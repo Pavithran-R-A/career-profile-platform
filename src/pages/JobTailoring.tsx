@@ -48,7 +48,7 @@ function SectionBlock({ title, children }: { title: string; children: React.Reac
 }
 
 export default function JobTailoring() {
-  useNoindexMeta('Job tailoring — Career Profile');
+  useNoindexMeta('Job tailoring — CVentory');
   const auth = useAuth();
   const navigate = useNavigate();
   const [state, setState] = useState<TailoringState>('input');
