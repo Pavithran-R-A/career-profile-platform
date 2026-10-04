@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { getSupabaseClient } from '../supabase/client';
 import type { PortfolioProfile } from '../templates/types';
 
 const ts = z.string().datetime({ offset: true });
@@ -106,9 +105,9 @@ export const PublicPreferencesSchema = z.object({
 export type PublicPreferences = z.infer<typeof PublicPreferencesSchema>;
 
 /**
- * Public-safe portfolio shape served by the anon-granted `public_profiles`
- * view: basics + presentation relations + saved preferences. Never contains
- * `user_id` or any other internal column. Drafts are excluded by the view.
+ * Public-safe portfolio shape returned by the Worker public-profile endpoint.
+ * The Worker reads a server-only projection; browser code never receives a
+ * privileged Supabase credential or direct access to the source view.
  */
 export const PublicPortfolioSchema = z.object({
   id: uuid,
@@ -149,25 +148,24 @@ function toPortfolio(row: PublicPortfolio): PublicPortfolioResult {
 }
 
 /**
- * Anonymous-safe portfolio lookup: reads the `public_profiles` view
- * (granted to anon, published-only, no user_id) and maps it into the
- * template-facing profile shape.
+ * Anonymous-safe portfolio lookup through the same-origin Worker API.
+ * Database projection views remain server-only.
  */
 export async function getPublicProfileByUsername(
   username: string
 ): Promise<PublicPortfolioResult | null> {
-  const supabase = getSupabaseClient();
+  try {
+    const response = await fetch(`/api/public/profile/${encodeURIComponent(username)}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) return null;
 
-  const { data, error } = await supabase
-    .from('public_profiles')
-    .select('*')
-    .eq('username', username)
-    .maybeSingle();
+    const data: unknown = await response.json();
+    const parsed = PublicPortfolioSchema.safeParse(data);
+    if (!parsed.success) return null;
 
-  if (error || !data) return null;
-
-  const parsed = PublicPortfolioSchema.safeParse(data);
-  if (!parsed.success) return null;
-
-  return toPortfolio(parsed.data);
+    return toPortfolio(parsed.data);
+  } catch {
+    return null;
+  }
 }
