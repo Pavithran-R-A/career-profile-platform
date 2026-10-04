@@ -225,7 +225,7 @@ type EditingKey = `${EditSection}:${string}`;
 export default function ProfileEditor() {
   const auth = useAuth();
   const navigate = useNavigate();
-  useNoindexMeta('Edit profile — Career Profile');
+  useNoindexMeta('Edit profile — CVentory');
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [achievements, setAchievements] = useState<AchievementRow[]>([]);
   const [loading, setLoading] = useState(true);
