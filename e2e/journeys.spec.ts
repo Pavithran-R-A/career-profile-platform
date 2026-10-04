@@ -35,11 +35,12 @@ test.describe('guest journeys', () => {
     await page.goto('/signup');
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
 
-    // Native validation passes (valid email shape, required filled); the
-    // app-level password-length rule must then surface a visible error.
+    // Native validation passes (valid email shape, required filled, 12+
+    // characters); the app-level complexity rule must then surface a
+    // visible error before any auth request is attempted.
     await page.getByLabel(/email/i).fill('guest-e2e@example.com');
-    await page.getByLabel(/^password$/i).fill('short');
-    await page.getByLabel(/confirm password/i).fill('short');
+    await page.getByLabel(/^password$/i).fill('alllowercase12');
+    await page.getByLabel(/confirm password/i).fill('alllowercase12');
     await page.getByRole('button', { name: /create account/i }).click();
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(page).toHaveURL(/\/signup$/);
