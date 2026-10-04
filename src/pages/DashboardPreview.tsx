@@ -9,7 +9,7 @@ import type { ProfileWithRelations } from '../lib/profiles/repository';
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
 export default function DashboardPreview() {
-  useNoindexMeta('Preview — Career Profile');
+  useNoindexMeta('Preview — CVentory');
   const auth = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
