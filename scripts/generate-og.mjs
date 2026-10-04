@@ -7,7 +7,10 @@ await mkdir(dirname(output), { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
 try {
-  const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
+  const page = await browser.newPage({
+    viewport: { width: 1200, height: 630 },
+    deviceScaleFactor: 1,
+  });
   await page.setContent(`<!doctype html>
 <html>
 <head>

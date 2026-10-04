@@ -293,7 +293,9 @@ export default function Layout() {
             &copy; {new Date().getFullYear()} CVentory — your career, all in one place.
           </p>
           {!isAuthed && (
-            <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2" aria-label="Footer">
+            <nav
+              className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2"
+              aria-label="Footer">
               <Link to="/#features" className="link-quiet">
                 Features
               </Link>
