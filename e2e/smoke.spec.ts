@@ -4,6 +4,9 @@ test.describe('smoke: pages load with correct head metadata', () => {
   test('landing page renders hero and site meta', async ({ page }) => {
     const response = await page.goto('/');
     expect(response?.status()).toBe(200);
+    expect(response?.headers()['x-content-type-options']).toBe('nosniff');
+    expect(response?.headers()['x-frame-options']).toBe('DENY');
+    expect(response?.headers()['content-security-policy']).toContain("default-src 'self'");
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(await page.title()).toMatch(/CVentory/);
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
