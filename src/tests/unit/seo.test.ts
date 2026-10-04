@@ -177,11 +177,14 @@ describe('JSON-LD', () => {
     });
   });
 
-  it('jsonLdScript escapes < to prevent script breakout', () => {
-    const html = jsonLdScript({ name: 'a<b' });
-    expect(html.startsWith('<script type="application/ld+json">')).toBe(true);
+  it('jsonLdScript escapes < and carries an escaped CSP nonce when provided', () => {
+    const html = jsonLdScript({ name: 'a<b' }, 'nonce-value');
+    expect(html.startsWith('<script type="application/ld+json" nonce="nonce-value">')).toBe(true);
     expect(html).not.toContain('a<b');
     expect(html).toContain('a\\u003cb');
+
+    const escaped = jsonLdScript({ ok: true }, 'a"b');
+    expect(escaped).toContain('nonce="a&quot;b"');
   });
 });
 
