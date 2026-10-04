@@ -103,7 +103,7 @@ const CVENTORY_DESCRIPTION =
   'CVentory is an AI career profile platform that turns your CV, projects and GitHub work into a recruiter-ready profile, ATS resume and shareable portfolio.';
 
 export function buildSiteJsonLd(originInput: string): Record<string, unknown> {
-  const origin = originInput.replace(/\\/+$/, '');
+  const origin = originInput.replace(/\/+$/, '');
   const organizationId = `${origin}/#organization`;
   const websiteId = `${origin}/#website`;
 
