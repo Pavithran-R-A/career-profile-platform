@@ -507,6 +507,88 @@ describe('POST /api/github/callback (Flow A: code + state, no installation id)',
   });
 });
 
+// ─── 3c. Public profile Worker boundary ────────────────────────────────
+
+describe('GET /api/public/profile/:username', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(createServerClient).mockClear();
+  });
+
+  it('requires the server-side Supabase credential and returns 503 without it', async () => {
+    const res = await handleRequest(
+      makeRequest('/api/public/profile/ada'),
+      {
+        SUPABASE_URL: 'https://sb.example.com',
+        SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+      } as never,
+      {} as ExecutionContext
+    );
+    expect(res.status).toBe(503);
+  });
+
+  it('returns only the published projection obtained by the server client', async () => {
+    const publicRow = {
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      username: 'ada',
+      display_name: 'Ada',
+      headline: 'Engineer',
+      about: null,
+      location: null,
+      avatar_url: null,
+      visibility: 'published',
+      published_at: null,
+      created_at: '2026-09-23T13:24:07.853253+00:00',
+      updated_at: '2026-09-23T13:24:30.248715+00:00',
+      experiences: [],
+      education: [],
+      skills: [],
+      projects: [],
+      links: [],
+      evidence: [],
+      achievements: [],
+      preferences: {
+        template_key: 'minimal',
+        accent_key: 'blue',
+        section_order: ['basics', 'experience', 'education', 'projects', 'skills', 'links'],
+        hidden_sections: [],
+      },
+    };
+    const admin = makeAdminClient({
+      public_profiles: () => ({ single: publicRow, error: null }),
+    });
+    vi.mocked(createServerClient).mockReturnValue(admin as never);
+
+    const res = await handleRequest(
+      makeRequest('/api/public/profile/ada'),
+      AUTH_ENV as never,
+      {} as ExecutionContext
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toContain('max-age=60');
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.username).toBe('ada');
+    expect(body).not.toHaveProperty('user_id');
+    expect(admin.from).toHaveBeenCalledWith('public_profiles');
+  });
+
+  it('returns a generic 404 when the projection has no published row', async () => {
+    const admin = makeAdminClient({
+      public_profiles: () => ({ single: null, error: null }),
+    });
+    vi.mocked(createServerClient).mockReturnValue(admin as never);
+
+    const res = await handleRequest(
+      makeRequest('/api/public/profile/draft-user'),
+      AUTH_ENV as never,
+      {} as ExecutionContext
+    );
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as Json;
+    expect(body.code).toBe('PROFILE_NOT_FOUND');
+  });
+});
+
 // ─── 4. Recruiter rate limit key: HMAC + privacy (unit-level) ───────────
 
 describe('recruiter rate-limit key design', () => {
