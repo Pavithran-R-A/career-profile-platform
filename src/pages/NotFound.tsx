@@ -1,7 +1,7 @@
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
 
 export default function NotFound() {
-  useNoindexMeta('Page not found — Career Profile');
+  useNoindexMeta('Page not found — CVentory');
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-24 text-center">
