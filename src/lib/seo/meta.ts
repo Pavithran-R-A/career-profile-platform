@@ -5,10 +5,10 @@
  * and what a visitor sees can never drift apart.
  */
 
-export const SITE_NAME = 'Career Profile';
-export const DEFAULT_TITLE = 'Career Profile — One profile, built for recruiters';
+export const SITE_NAME = 'CVentory';
+export const DEFAULT_TITLE = 'CVentory — AI CV, ATS Resume & Career Profile Builder';
 export const DEFAULT_DESCRIPTION =
-  'Turn your CV into a structured career profile, an ATS-ready resume, and a portfolio recruiters can scan in seconds.';
+  'Turn your CV, projects and GitHub work into a recruiter-ready career profile, ATS resume and shareable portfolio.';
 
 export const MAX_TITLE_LENGTH = 60;
 export const MAX_DESCRIPTION_LENGTH = 155;
