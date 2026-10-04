@@ -1,0 +1,46 @@
+name: One-time attribution cleanup
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  rewrite-attribution:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Rewrite authorship and co-author trailers
+        shell: bash
+        env:
+          FILTER_BRANCH_SQUELCH_WARNING: "1"
+        run: |
+          set -euo pipefail
+
+          git config user.name "Pavithran-R-A"
+          git config user.email "92867708+Pavithran-R-A@users.noreply.github.com"
+
+          git filter-branch -f \
+            --env-filter '
+              export GIT_AUTHOR_NAME="Pavithran-R-A"
+              export GIT_AUTHOR_EMAIL="92867708+Pavithran-R-A@users.noreply.github.com"
+              export GIT_COMMITTER_NAME="Pavithran-R-A"
+              export GIT_COMMITTER_EMAIL="92867708+Pavithran-R-A@users.noreply.github.com"
+            ' \
+            --msg-filter 'sed -E "/^[[:space:]]*Co-[Aa]uthored-[Bb]y:/Id; /Generated with Codebuff/Id"' \
+            -- master
+
+          git push --force origin master
+
+          git rm .github/workflows/one-time-attribution-cleanup.yml
+          git commit -m "chore: remove temporary attribution cleanup workflow"
+          git push origin master
