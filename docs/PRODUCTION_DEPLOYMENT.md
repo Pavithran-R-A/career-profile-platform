@@ -40,7 +40,7 @@ The pull-request pipeline must pass all of these on the exact candidate SHA:
 - bundle budget
 - Playwright desktop and mobile E2E
 
-The release branch also contains the Supabase launch-hardening migrations and the audited public-view exception documented in `docs/SECURITY_EXCEPTIONS.md`.
+The release branch contains the applied Supabase launch-hardening migrations. The former public-view exception has been retired; see `docs/SECURITY_EXCEPTIONS.md`.
 
 ## Environment contract
 
@@ -87,7 +87,7 @@ These steps can be completed before selecting the final public domain:
 1. Confirm the release PR is green on its exact head SHA.
 2. Confirm the Supabase project is healthy and all checked-in migrations are applied.
 3. Configure `SUPABASE_SECRET_KEY` on the production Worker. The release Worker requires it for server-only public-profile, sitemap, SEO, recruiter, deletion, billing, GitHub, and domain operations.
-4. Keep the current owner-rights public views unchanged until the release Worker is deployed; see `docs/SECURITY_EXCEPTIONS.md`.
+4. Confirm `20261004170512_server_only_public_views.sql` is applied and the Supabase advisor has no `security_definer_view` findings.
 5. Configure a strong Supabase Auth password policy in Authentication settings.
 6. Configure production SMTP before relying on auth email delivery at public scale.
 7. Create/verify external provider credentials for only the features intended at launch.
@@ -112,9 +112,9 @@ Domain selection is intentionally last. After the production domain is chosen:
 6. Update the GitHub App homepage/callback URLs if GitHub integration launches.
 7. Configure Cloudflare DNS/routes/custom hostnames.
 8. Rebuild after all `VITE_*` public values are final.
-9. Deploy and smoke-test `GET /api/public/profile/<published-username>` while the old view grants still exist.
-10. Apply `20261004154500_server_only_public_views.sql` only after that Worker smoke test succeeds.
-11. Re-run the public-profile smoke test plus the Supabase security advisors; the three `security_definer_view` findings must be gone.
+9. Deploy the final-domain build.
+10. Re-run `GET /api/public/profile/<published-username>` and the public `/u/<username>` page.
+11. Re-run the Supabase security advisors; no `security_definer_view` findings should return.
 12. Run the remaining live smoke checks below.
 
 ## Build and deploy
