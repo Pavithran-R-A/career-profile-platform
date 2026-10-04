@@ -8,8 +8,9 @@
  *   /sitemap.xml → published profiles + public static pages
  *   /robots.txt  → allow public, disallow app routes, absolute sitemap ref
  *
- * Profile reads use the publishable (anon-equivalent) key against the
- * anon-granted `public_profiles` view — no service key, no private data.
+ * Public projection views are server-only. The Worker uses the server-side
+ * Supabase secret to read the published-only projection; the credential is
+ * never exposed to browser code.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -50,11 +51,11 @@ function originOf(request: Request): string {
 
 async function fetchPublishedProfile(username: string, env: Env): Promise<SeoProfileRow | null> {
   const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
-  const publishableKey = env.SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (!supabaseUrl || !publishableKey || !username) return null;
+  const adminKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !adminKey || !username) return null;
 
   try {
-    const supabase = createClient(supabaseUrl, publishableKey);
+    const supabase = createClient(supabaseUrl, adminKey);
     const { data, error } = await supabase
       .from('public_profiles' as never)
       .select(
@@ -102,10 +103,10 @@ export async function handleSitemap(request: Request, env: Env): Promise<Respons
 
   try {
     const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
-    const publishableKey = env.SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const adminKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (supabaseUrl && publishableKey) {
-      const supabase = createClient(supabaseUrl, publishableKey);
+    if (supabaseUrl && adminKey) {
+      const supabase = createClient(supabaseUrl, adminKey);
       const { data, error } = await supabase
         .from('public_profiles' as never)
         .select('username, updated_at')
