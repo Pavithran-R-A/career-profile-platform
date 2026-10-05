@@ -58,7 +58,7 @@ export default function GitHubConnectionCard({
           ) : installUrl ? (
             <>
               <p className="text-gray-600 mb-3">
-                Install the CVentory GitHub App on your account to get started.
+                Install the CareerProfile Go GitHub App on your account to get started.
               </p>
               <button
                 type="button"
