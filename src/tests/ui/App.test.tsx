@@ -30,7 +30,10 @@ describe('App shell', () => {
 
   it('renders the header with brand link', () => {
     render(<App />);
-    expect(screen.getByRole('link', { name: 'CareerProfile Go home' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'CareerProfile Go home' })).toHaveAttribute(
+      'href',
+      '/'
+    );
   });
 
   it('renders footer', () => {
