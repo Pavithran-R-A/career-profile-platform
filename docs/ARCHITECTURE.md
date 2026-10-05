@@ -9,7 +9,7 @@ Browser <-> Cloudflare Worker (API + static assets)
          Supabase (PostgreSQL + Auth + Storage)
                 |
                 v
-         AI Provider (abstracted, future)
+         AI Provider (optional, server-side, fail-closed)
 ```
 
 ### Rendering model (truthful description)
@@ -49,8 +49,18 @@ responding. The visible body is then hydrated by React in the browser.
 
 - `/dashboard` - User dashboard
 - `/dashboard/profile` - Profile editor
+- `/dashboard/appearance` - Portfolio appearance studio
+- `/dashboard/resume` - CV/resume import
+- `/dashboard/resume/ats` - ATS resume builder/export
+- `/dashboard/resume/tailor` - Job-description tailoring workflow
+- `/dashboard/preview` - Owner preview
+- `/dashboard/github` - GitHub connection/repository controls
+- `/dashboard/github/callback` and `/github/callback` - GitHub App callback handling
 - `/dashboard/billing` - Subscription, usage, and upgrade
+- `/dashboard/account/delete` - Account-deletion flow
 - `/dashboard/domains` - Custom domains and .cv quotes
+- `/onboarding` - Authenticated first-run profile setup
+- `/dashboard/ats` - compatibility redirect to `/dashboard/resume/ats`
 
 ### Guest-Only Routes (redirect to dashboard if authenticated)
 
