@@ -24,7 +24,7 @@ declare global {
 }
 
 export default function Billing() {
-  useNoindexMeta('Billing — CVentory');
+  useNoindexMeta('Billing — CareerProfile Go');
   const auth = useAuth();
   const navigate = useNavigate();
   const [status, setStatus] = useState<BillingStatus | null>(null);
@@ -110,7 +110,7 @@ export default function Billing() {
         key: order.keyId,
         amount: order.amountPaise,
         currency: order.currency,
-        name: 'CVentory',
+        name: 'CareerProfile Go',
         description: 'Pro — one year of access (one-time payment)',
         order_id: order.razorpayOrderId,
         prefill: { email: auth.user.email },
