@@ -9,7 +9,7 @@ import { newPasswordError, NEW_PASSWORD_MIN_LENGTH } from '../../lib/auth/passwo
 type SessionState = 'checking' | 'recovery' | 'none';
 
 export default function ResetPassword() {
-  useNoindexMeta('Reset password — CVentory');
+  useNoindexMeta('Reset password — CareerProfile Go');
 
   const [sessionState, setSessionState] = useState<SessionState>('checking');
   const [password, setPassword] = useState('');
