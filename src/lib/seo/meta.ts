@@ -6,7 +6,7 @@
  */
 
 export const SITE_NAME = 'CareerProfile Go';
-export const DEFAULT_TITLE = 'CareerProfile Go — Career Profile, ATS Resume & Portfolio Builder';
+export const DEFAULT_TITLE = 'CareerProfile Go — Career Profile, ATS Resume & Portfolio';
 export const DEFAULT_DESCRIPTION =
   'Turn your CV, experience, projects and GitHub into a reusable professional profile, ATS-ready resumes, tailored applications and a shareable portfolio.';
 
