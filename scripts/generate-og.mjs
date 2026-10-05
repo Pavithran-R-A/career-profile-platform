@@ -70,7 +70,7 @@ try {
   .b2 { height: 90px; background: #1688ff; }
   .b3 { height: 128px; background: #17c193; }
   .copy { position: relative; z-index: 2; width: 650px; }
-  .brand { font-size: 100px; font-weight: 800; line-height: .94; letter-spacing: -4px; white-space: nowrap; }
+  .brand { font-size: 68px; font-weight: 800; line-height: .94; letter-spacing: -2px; white-space: nowrap; }
   .brand .cv { color: #286bff; }
   .tagline { margin-top: 28px; font-size: 38px; font-weight: 750; line-height: 1.1; letter-spacing: .2px; }
   .features { margin-top: 26px; font-size: 31px; color: #b7c7df; white-space: nowrap; }
