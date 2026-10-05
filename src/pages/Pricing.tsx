@@ -22,7 +22,7 @@ export default function Pricing() {
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   usePageMeta({
-    title: 'Pricing — CVentory',
+    title: 'Pricing — CareerProfile Go',
     description:
       'Free to build your career profile, portfolio, and ATS resume. Pro adds higher limits for active job seekers.',
     canonical: `${origin}/pricing`,
