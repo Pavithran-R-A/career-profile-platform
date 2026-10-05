@@ -15,6 +15,6 @@ describe('new password policy', () => {
   });
 
   it('accepts a strong password', () => {
-    expect(newPasswordError('CVentory!2026Secure')).toBeNull();
+    expect(newPasswordError('CareerProfile Go!2026Secure')).toBeNull();
   });
 });
