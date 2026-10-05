@@ -102,15 +102,18 @@ responding. The visible body is then hydrated by React in the browser.
 
 ## Wildcard Subdomain Routing
 
-Future architecture for `username.ourdomain.com`:
+The application-side routing and custom-domain adapters are implemented. Activation is intentionally
+deferred until the final production domain is selected:
 
-1. Wildcard DNS configured at domain registrar pointing to Cloudflare
-2. Cloudflare Worker receives requests for `*.ourdomain.com`
-3. Worker extracts username from Host header
-4. Worker looks up published profile by username
-5. Worker renders the profile using a template or returns JSON for a frontend SPA route
+1. Configure wildcard DNS for the final platform domain in Cloudflare.
+2. Route `*.final-domain` to the CareerProfile Go Worker.
+3. Set `PUBLIC_BASE_HOST` to the final base host.
+4. The hostname resolver extracts a one-label username subdomain.
+5. The Worker serves only the published profile projection through its server-side Supabase boundary.
 
-Not implemented in Stage 1. Reserved in architecture documentation.
+Customer custom domains use the Cloudflare-for-SaaS adapter and remain fail-closed unless the full
+Cloudflare credential set, `PLATFORM_PROFILE_ORIGIN`, and `DOMAINS_ENABLED=true` are present.
+No placeholder hostname is treated as production configuration.
 
 ## AI Abstraction
 
