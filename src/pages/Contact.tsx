@@ -9,7 +9,8 @@ export default function Contact() {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   usePageMeta({
     title: 'Contact — CareerProfile Go',
-    description: 'Contact CareerProfile Go for account, privacy, billing, security, or product support.',
+    description:
+      'Contact CareerProfile Go for account, privacy, billing, security, or product support.',
     canonical: `${origin}/contact`,
   });
 
