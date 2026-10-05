@@ -21,9 +21,10 @@ export default function Terms() {
         <section>
           <h2 className="text-xl font-semibold text-[var(--ink)]">Using CareerProfile Go</h2>
           <p className="mt-3">
-            CareerProfile Go helps you organize career information, build public profiles and portfolios,
-            generate ATS-oriented resumes, tailor career materials, and use optional integrations.
-            You are responsible for keeping your account secure and for the information you submit
+            CareerProfile Go helps you organize career information, build public profiles and
+            portfolios, generate ATS-oriented resumes, tailor career materials, and use optional
+            integrations. You are responsible for keeping your account secure and for the
+            information you submit
             or publish.
           </p>
         </section>
@@ -32,14 +33,15 @@ export default function Terms() {
           <h2 className="text-xl font-semibold text-[var(--ink)]">Your content</h2>
           <p className="mt-3">
             You retain ownership of the career information, documents, project descriptions, links,
-            and other content you submit. You give CareerProfile Go the limited permission needed to store,
-            process, transform, display, and transmit that content solely to operate the features
-            you request.
+            and other content you submit. You give CareerProfile Go the limited permission needed
+            to store, process, transform, display, and transmit that content solely to operate the
+            features you request.
           </p>
           <p className="mt-3">
             You must have the right to upload and publish the content you provide. Do not use
-            CareerProfile Go to impersonate another person, misrepresent credentials, upload unlawful
-            material, attack the service, bypass quotas or authorization, or expose information you
+            CareerProfile Go to impersonate another person, misrepresent credentials, upload
+            unlawful material, attack the service, bypass quotas or authorization, or expose
+            information you
             are not entitled to disclose.
           </p>
         </section>
@@ -67,9 +69,10 @@ export default function Terms() {
         <section>
           <h2 className="text-xl font-semibold text-[var(--ink)]">Paid access</h2>
           <p className="mt-3">
-            When Pro purchasing is enabled, CareerProfile Go sells a one-time period of annual Pro access.
-            It does not automatically renew. The price and included limits shown at checkout are the
-            controlling commercial terms for that purchase. Access begins or extends only after the
+            When Pro purchasing is enabled, CareerProfile Go sells a one-time period of annual Pro
+            access. It does not automatically renew. The price and included limits shown at checkout
+            are the controlling commercial terms for that purchase. Access begins or extends only
+            after the
             server confirms payment.
           </p>
           <p className="mt-3">
@@ -80,8 +83,8 @@ export default function Terms() {
         <section>
           <h2 className="text-xl font-semibold text-[var(--ink)]">Availability and changes</h2>
           <p className="mt-3">
-            We work to keep CareerProfile Go available and secure, but uninterrupted operation is not
-            guaranteed. Features may change when required for security, provider compatibility,
+            We work to keep CareerProfile Go available and secure, but uninterrupted operation is
+            not guaranteed. Features may change when required for security, provider compatibility,
             legal compliance, or product improvement. Material changes to these terms will be
             reflected by an updated effective date.
           </p>
