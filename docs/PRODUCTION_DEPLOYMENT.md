@@ -1,16 +1,16 @@
-# CVentory Production Deployment
+# CareerProfile Go Production Deployment
 
-This runbook describes the production release path for CVentory on Cloudflare Workers.
+This runbook describes the production release path for CareerProfile Go on Cloudflare Workers.
 
 ## Verified build layout
 
 `pnpm build` runs `tsc -b && vite build`. The current release pipeline verifies these outputs:
 
 - `dist/client/` — the static React application and lazy-loaded route assets.
-- `dist/cventory/` — the bundled Cloudflare Worker.
-- `dist/cventory/wrangler.json` — the generated deploy configuration. This is the canonical Cloudflare deploy config.
+- `dist/careerprofilego/` — the bundled Cloudflare Worker.
+- `dist/careerprofilego/wrangler.json` — the generated deploy configuration. This is the canonical Cloudflare deploy config.
 
-Do not deploy the root `wrangler.toml` directly. The Cloudflare Vite plugin generates the production asset paths and merged Worker configuration in `dist/cventory/wrangler.json`.
+Do not deploy the root `wrangler.toml` directly. The Cloudflare Vite plugin generates the production asset paths and merged Worker configuration in `dist/careerprofilego/wrangler.json`.
 
 The Worker runs before static assets for:
 
@@ -125,19 +125,19 @@ With the final production environment available locally to Wrangler:
 pnpm install --frozen-lockfile
 pnpm build
 npx wrangler deploy \
-  --config dist/cventory/wrangler.json \
+  --config dist/careerprofilego/wrangler.json \
   --secrets-file .env.local \
-  --message "CVentory production release"
+  --message "CareerProfile Go production release"
 ```
 
-The Worker name comes from the generated configuration and release `wrangler.toml` (`cventory`). Avoid overriding it with the legacy `career-profile-platform` name.
+The Worker name comes from the generated configuration and release `wrangler.toml` (`careerprofilego`). Avoid overriding it with the legacy `career-profile-platform` name.
 
 ## Post-deploy smoke checks
 
 Verify against the actual production origin:
 
-1. `GET /` returns 200 with the CVentory title, canonical, Organization/WebSite JSON-LD, absolute Open Graph image, CSP, `nosniff`, frame denial, referrer policy, permissions policy, and HSTS.
-2. `GET /og-cover.png` returns the generated 1200×630 CVentory social image.
+1. `GET /` returns 200 with the CareerProfile Go title, canonical, Organization/WebSite JSON-LD, absolute Open Graph image, CSP, `nosniff`, frame denial, referrer policy, permissions policy, and HSTS.
+2. `GET /og-cover.png` returns the generated 1200×630 CareerProfile Go social image.
 3. `GET /privacy`, `/terms`, `/refund-policy`, and `/contact` return 200 with correct canonicals.
 4. `GET /robots.txt` and `GET /sitemap.xml` return 200 with the production origin.
 5. A published `/u/<username>` returns public profile metadata; an unknown/unpublished username returns noindex metadata.
@@ -150,18 +150,18 @@ Verify against the actual production origin:
 
 ## Rollback
 
-For the CVentory Worker:
+For the CareerProfile Go Worker:
 
 ```bash
-npx wrangler deployments list --name cventory
-npx wrangler deployments rollback --name cventory
+npx wrangler deployments list --name careerprofilego
+npx wrangler deployments rollback --name careerprofilego
 ```
 
 If a rollback is caused by a database migration, do not blindly reverse production data changes. First classify whether the application can be rolled back while keeping the forward-compatible schema.
 
 ## Release rule
 
-Do not merge the release PR or point the final domain at CVentory until:
+Do not merge the release PR or point the final domain at CareerProfile Go until:
 
 - the exact head SHA is green;
 - required provider credentials are configured;
