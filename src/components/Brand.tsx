@@ -7,7 +7,10 @@ import { Link } from 'react-router';
  */
 export function BrandMark({ size = 32 }: { size?: number }) {
   return (
-    <span aria-hidden="true" className="inline-flex shrink-0" style={{ width: size, height: size }}>
+    <span
+      aria-hidden="true"
+      className="inline-flex shrink-0"
+      style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
         <rect x="0.5" y="0.5" width="31" height="31" rx="8" fill="#0B1628" />
         <path
@@ -38,7 +41,9 @@ export function BrandMark({ size = 32 }: { size?: number }) {
 export function BrandWordmark({ light = false }: { light?: boolean }) {
   const base = light ? '#ffffff' : 'var(--ink)';
   return (
-    <span className="text-[15px] font-bold tracking-[-0.03em]" style={{ color: base }}>
+    <span
+      className="text-[15px] font-bold tracking-[-0.03em]"
+      style={{ color: base }}>
       <span>CareerProfile</span>
       <span style={{ color: light ? '#ffffff' : 'var(--accent)' }}>Go</span>
     </span>
