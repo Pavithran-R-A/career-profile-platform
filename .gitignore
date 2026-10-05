@@ -42,3 +42,6 @@ supabase/.temp/
 
 # Freebuff workspace-internal state (agent metadata; never commit)
 .freebuff/
+
+# Generated deterministic social preview
+public/og-cover.png
