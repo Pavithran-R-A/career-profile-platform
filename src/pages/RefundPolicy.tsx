@@ -22,8 +22,9 @@ export default function RefundPolicy() {
         <section>
           <h2 className="text-xl font-semibold text-[var(--ink)]">No automatic renewal</h2>
           <p className="mt-3">
-            CareerProfile Go Pro is designed as a one-time purchase for a stated annual access period. There
-            is no automatic recurring renewal to cancel. A later purchase, if you choose to make
+            CareerProfile Go Pro is designed as a one-time purchase for a stated annual access
+            period. There is no automatic recurring renewal to cancel. A later purchase, if you
+            choose to make
             one, extends access according to the checkout terms shown at that time.
           </p>
         </section>
@@ -64,9 +65,9 @@ export default function RefundPolicy() {
         <section>
           <h2 className="text-xl font-semibold text-[var(--ink)]">Account deletion</h2>
           <p className="mt-3">
-            Deleting your CareerProfile Go account stops your use of the service and starts the account-data
-            deletion flow, but it does not automatically cancel or refund a completed one-time
-            purchase.
+            Deleting your CareerProfile Go account stops your use of the service and starts the
+            account-data deletion flow, but it does not automatically cancel or refund a completed
+            one-time purchase.
           </p>
         </section>
 
