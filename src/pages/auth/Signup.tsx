@@ -6,7 +6,7 @@ import { newPasswordError, NEW_PASSWORD_MIN_LENGTH } from '../../lib/auth/passwo
 import { track } from '../../lib/analytics/events';
 
 export default function Signup() {
-  useNoindexMeta('Create your account — CVentory');
+  useNoindexMeta('Create your account — CareerProfile Go');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

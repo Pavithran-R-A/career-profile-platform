@@ -647,7 +647,7 @@ const SELECTION_TTL_S = 600; // 10 minutes
 
 export interface InstallationSelectionPayload {
   i: number; // installation id
-  u: string; // CVentory user id
+  u: string; // CareerProfile Go user id
   e: number; // expiry (epoch seconds)
 }
 

@@ -5,7 +5,7 @@ import { isSafeRedirect } from '../../lib/validators/url';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 
 export default function Login() {
-  useNoindexMeta('Sign in — CVentory');
+  useNoindexMeta('Sign in — CareerProfile Go');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

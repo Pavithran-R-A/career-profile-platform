@@ -124,7 +124,7 @@ function nextBestAction(
 export default function Dashboard() {
   const auth = useAuth();
   const navigate = useNavigate();
-  useNoindexMeta('Dashboard — CVentory');
+  useNoindexMeta('Dashboard — CareerProfile Go');
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [templateKey, setTemplateKey] = useState<string>('minimal');
   const [templateIsDefault, setTemplateIsDefault] = useState(true);

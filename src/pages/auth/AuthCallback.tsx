@@ -5,7 +5,7 @@ import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 import { track } from '../../lib/analytics/events';
 
 export default function AuthCallback() {
-  useNoindexMeta('Signing in — CVentory');
+  useNoindexMeta('Signing in — CareerProfile Go');
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

@@ -149,7 +149,7 @@ export function isHtmlPagePath(pathname: string): boolean {
 function notFoundInjection(request: Request) {
   const origin = originOf(request);
   const meta = {
-    title: 'Page not found — CVentory',
+    title: 'Page not found — CareerProfile Go',
     description: 'The page you requested does not exist.',
     canonical: `${origin}${new URL(request.url).pathname}`,
     noindex: true,
@@ -211,36 +211,36 @@ export async function handleHtmlPage(
     injection = siteInjection(
       request,
       '/pricing',
-      'Pricing — CVentory',
+      'Pricing — CareerProfile Go',
       'Free to build your career profile, portfolio, and ATS resume. Pro adds higher limits.'
     );
   } else if (url.pathname === '/privacy') {
     injection = siteInjection(
       request,
       '/privacy',
-      'Privacy Policy — CVentory',
-      'How CVentory collects, uses, protects, publishes, and deletes account and career-profile data.'
+      'Privacy Policy — CareerProfile Go',
+      'How CareerProfile Go collects, uses, protects, publishes, and deletes account and career-profile data.'
     );
   } else if (url.pathname === '/terms') {
     injection = siteInjection(
       request,
       '/terms',
-      'Terms of Service — CVentory',
-      'Terms governing use of CVentory career profiles, resumes, portfolios, integrations, and paid features.'
+      'Terms of Service — CareerProfile Go',
+      'Terms governing use of CareerProfile Go career profiles, resumes, portfolios, integrations, and paid features.'
     );
   } else if (url.pathname === '/refund-policy') {
     injection = siteInjection(
       request,
       '/refund-policy',
-      'Refund & Cancellation Policy — CVentory',
-      'Refund, cancellation, duplicate-charge, and annual Pro access terms for CVentory.'
+      'Refund & Cancellation Policy — CareerProfile Go',
+      'Refund, cancellation, duplicate-charge, and annual Pro access terms for CareerProfile Go.'
     );
   } else if (url.pathname === '/contact') {
     injection = siteInjection(
       request,
       '/contact',
-      'Contact — CVentory',
-      'Contact CVentory for account, privacy, billing, security, or product support.'
+      'Contact — CareerProfile Go',
+      'Contact CareerProfile Go for account, privacy, billing, security, or product support.'
     );
   } else if (url.pathname.startsWith('/u/')) {
     const username = decodeURIComponent(url.pathname.slice(3)).replace(/\/+$/, '');
@@ -272,7 +272,7 @@ export async function handleHtmlPage(
     } else {
       // Unknown/draft profile: truthful not-found meta, noindex.
       injection = metaTags({
-        title: 'Profile not found — CVentory',
+        title: 'Profile not found — CareerProfile Go',
         description: 'This profile does not exist or is not published.',
         canonical: `${origin}/u/${encodeURIComponent(username)}`,
         noindex: true,

@@ -290,7 +290,7 @@ export default function Layout() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--faint-foreground)]">
           <p className="flex items-center gap-2">
             <BrandMark size={16} />
-            &copy; {new Date().getFullYear()} CVentory — your career, all in one place.
+            &copy; {new Date().getFullYear()} CareerProfile Go — your career, ready to go.
           </p>
           {!isAuthed && (
             <nav

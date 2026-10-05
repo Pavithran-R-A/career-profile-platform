@@ -8,15 +8,15 @@ const operatorAddress = import.meta.env.VITE_OPERATOR_ADDRESS?.trim();
 export default function Contact() {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   usePageMeta({
-    title: 'Contact — CVentory',
-    description: 'Contact CVentory for account, privacy, billing, security, or product support.',
+    title: 'Contact — CareerProfile Go',
+    description: 'Contact CareerProfile Go for account, privacy, billing, security, or product support.',
     canonical: `${origin}/contact`,
   });
 
   return (
     <article className="page-shell max-w-3xl">
       <p className="t-eyebrow">Support</p>
-      <h1 className="t-display mt-3">Contact CVentory</h1>
+      <h1 className="t-display mt-3">Contact CareerProfile Go</h1>
       <p className="t-lead mt-5">
         Get help with your account, billing, privacy, security, profile, resume, or integrations.
       </p>

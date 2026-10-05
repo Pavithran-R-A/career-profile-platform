@@ -80,7 +80,7 @@ function buildATSData(profile: ProfileWithRelations): ATSResumeData {
 }
 
 export default function ATSResumeBuilder() {
-  useNoindexMeta('ATS resume — CVentory');
+  useNoindexMeta('ATS resume — CareerProfile Go');
   const auth = useAuth();
   const navigate = useNavigate();
   const [state, setState] = useState<BuilderState>('loading');

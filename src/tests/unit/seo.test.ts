@@ -57,7 +57,7 @@ describe('meta builders', () => {
       ogImageAbsolute: 'https://example.com/og-cover.png',
     });
     expect(fallback.ogImage).toBe('https://example.com/og-cover.png');
-    expect(fallback.title).toBe('Engineer — CVentory');
+    expect(fallback.title).toBe('Engineer — CareerProfile Go');
   });
 
   it('siteMeta truncates long titles and descriptions', () => {
@@ -161,19 +161,19 @@ describe('JSON-LD', () => {
     expect(data.mainEntity.knowsAbout).toEqual(['TypeScript']);
   });
 
-  it('buildSiteJsonLd identifies CVentory as the Organization and WebSite', () => {
-    const data = buildSiteJsonLd('https://cventory.example/') as {
+  it('buildSiteJsonLd identifies CareerProfile Go as the Organization and WebSite', () => {
+    const data = buildSiteJsonLd('https://careerprofilego.example/') as {
       '@graph': Array<Record<string, unknown>>;
     };
     expect(data['@graph'][0]).toMatchObject({
       '@type': 'Organization',
-      name: 'CVentory',
-      url: 'https://cventory.example/',
+      name: 'CareerProfile Go',
+      url: 'https://careerprofilego.example/',
     });
     expect(data['@graph'][1]).toMatchObject({
       '@type': 'WebSite',
-      name: 'CVentory',
-      url: 'https://cventory.example/',
+      name: 'CareerProfile Go',
+      url: 'https://careerprofilego.example/',
     });
   });
 

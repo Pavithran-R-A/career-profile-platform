@@ -1,6 +1,6 @@
-# CVentory
+# CareerProfile Go
 
-> Your career. All in one place — from CV and GitHub work to a recruiter-ready profile, ATS resume, and shareable portfolio.
+> Build your career once. Use it everywhere — from your CV, experience, projects and GitHub to ATS-ready resumes, tailored applications and a shareable professional profile.
 
 ## Tech Stack
 

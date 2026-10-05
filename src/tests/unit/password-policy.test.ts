@@ -15,6 +15,6 @@ describe('new password policy', () => {
   });
 
   it('accepts a strong password', () => {
-    expect(newPasswordError('CVentory!2026Secure')).toBeNull();
+    expect(newPasswordError('Str0ng!Passphrase2026')).toBeNull();
   });
 });
