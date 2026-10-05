@@ -28,7 +28,7 @@ export function Hero() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-14 sm:pt-20 pb-20 sm:pb-28">
         <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_1fr] gap-12 lg:gap-14 items-center">
           <div>
-            <p className="t-eyebrow rise">CVentory — your career, all in one place</p>
+            <p className="t-eyebrow rise">CareerProfile Go — your career, ready to go</p>
             <h1 className="t-hero mt-5 rise rise-1">
               Your career, turned into a profile{' '}
               <span className="t-accent-phrase">recruiters remember.</span>
