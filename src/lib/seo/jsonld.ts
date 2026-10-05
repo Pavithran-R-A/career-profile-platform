@@ -99,8 +99,8 @@ export function jsonLdScript(data: Record<string, unknown>, nonce?: string): str
   return `<script type="application/ld+json"${nonceAttribute}>${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 }
 
-const CVENTORY_DESCRIPTION =
-  'CVentory is an AI career profile platform that turns your CV, projects and GitHub work into a recruiter-ready profile, ATS resume and shareable portfolio.';
+const CAREERPROFILEGO_DESCRIPTION =
+  'CareerProfile Go is a career profile platform that turns your CV, experience, projects and GitHub into a reusable professional profile, ATS-ready resumes, tailored applications and a shareable portfolio.';
 
 export function buildSiteJsonLd(originInput: string): Record<string, unknown> {
   const origin = originInput.replace(/\/+$/, '');
@@ -113,10 +113,10 @@ export function buildSiteJsonLd(originInput: string): Record<string, unknown> {
       {
         '@type': 'Organization',
         '@id': organizationId,
-        name: 'CVentory',
-        alternateName: 'CVentory AI Career Profile Platform',
+        name: 'CareerProfile Go',
+        alternateName: 'CareerProfileGo',
         url: `${origin}/`,
-        description: CVENTORY_DESCRIPTION,
+        description: CAREERPROFILEGO_DESCRIPTION,
         logo: {
           '@type': 'ImageObject',
           url: `${origin}/logo.svg`,
@@ -128,9 +128,9 @@ export function buildSiteJsonLd(originInput: string): Record<string, unknown> {
       {
         '@type': 'WebSite',
         '@id': websiteId,
-        name: 'CVentory',
+        name: 'CareerProfile Go',
         url: `${origin}/`,
-        description: CVENTORY_DESCRIPTION,
+        description: CAREERPROFILEGO_DESCRIPTION,
         publisher: { '@id': organizationId },
       },
     ],
