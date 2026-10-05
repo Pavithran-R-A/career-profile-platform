@@ -24,8 +24,7 @@ export default function RefundPolicy() {
           <p className="mt-3">
             CareerProfile Go Pro is designed as a one-time purchase for a stated annual access
             period. There is no automatic recurring renewal to cancel. A later purchase, if you
-            choose to make
-            one, extends access according to the checkout terms shown at that time.
+            choose to make one, extends access according to the checkout terms shown at that time.
           </p>
         </section>
 
