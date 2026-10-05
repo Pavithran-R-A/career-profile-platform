@@ -1,43 +1,56 @@
 import { Link } from 'react-router';
 
 /**
- * CVentory identity: a career document + rising signal bars.
- * Designed to remain recognizable at favicon size.
+ * CareerProfile Go identity: one professional profile that can move upward
+ * into every career output. The mark combines a career-profile silhouette,
+ * an open C, and a forward/upward arrow, and remains readable at favicon size.
  */
 export function BrandMark({ size = 32 }: { size?: number }) {
   return (
     <span aria-hidden="true" className="inline-flex shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
         <rect x="0.5" y="0.5" width="31" height="31" rx="8" fill="#0B1628" />
-        <path d="M6.5 6.25h9.2l4.3 4.3V24H6.5V6.25Z" fill="#F8FAFC" />
-        <path d="M15.7 6.25v4.3H20l-4.3-4.3Z" fill="#246BFD" />
-        <circle cx="11.25" cy="12.25" r="1.7" fill="#0B1628" />
         <path
-          d="M8.65 17.2c.4-1.65 1.35-2.45 2.6-2.45 1.26 0 2.2.8 2.61 2.45H8.65Z"
-          fill="#0B1628"
+          d="M23.1 8.2A9.6 9.6 0 1 0 23.2 23.8"
+          stroke="#246BFD"
+          strokeWidth="3.2"
+          strokeLinecap="round"
         />
-        <rect x="8.6" y="19.1" width="6.3" height="1.35" rx=".675" fill="#728096" />
-        <rect x="18.1" y="20.1" width="2.8" height="5.65" rx="1.4" fill="#246BFD" />
-        <rect x="21.95" y="16.65" width="2.8" height="9.1" rx="1.4" fill="#0F88FF" />
-        <rect x="25.8" y="12.55" width="2.8" height="13.2" rx="1.4" fill="#13B88A" />
+        <circle cx="13.25" cy="12.6" r="2.25" fill="#F8FAFC" />
+        <path
+          d="M8.9 20.25c.9-2.95 2.45-4.4 4.35-4.4s3.45 1.45 4.35 4.4"
+          stroke="#F8FAFC"
+          strokeWidth="2.1"
+          strokeLinecap="round"
+        />
+        <path
+          d="M17.7 20.7 26 12.4M21.35 12.4H26v4.65"
+          stroke="#13B88A"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     </span>
   );
 }
 
 export function BrandWordmark({ light = false }: { light?: boolean }) {
+  const base = light ? '#ffffff' : 'var(--ink)';
   return (
-    <span
-      className="text-[15px] font-bold tracking-[-0.025em]"
-      style={{ color: light ? '#ffffff' : 'var(--ink)' }}>
-      <span style={{ color: light ? '#ffffff' : 'var(--accent)' }}>CV</span>entory
+    <span className="text-[15px] font-bold tracking-[-0.03em]" style={{ color: base }}>
+      <span>CareerProfile</span>
+      <span style={{ color: light ? '#ffffff' : 'var(--accent)' }}>Go</span>
     </span>
   );
 }
 
 export function BrandLink({ to = '/', light = false }: { to?: string; light?: boolean }) {
   return (
-    <Link to={to} className="flex items-center gap-2.5 shrink-0" aria-label="CVentory home">
+    <Link
+      to={to}
+      className="flex items-center gap-2.5 shrink-0"
+      aria-label="CareerProfile Go home">
       <BrandMark />
       <BrandWordmark light={light} />
     </Link>
