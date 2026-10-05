@@ -6,6 +6,7 @@ const clientEnvSchema = z.object({
 });
 
 const serverEnvSchema = z.object({
+  SUPABASE_SECRET_KEY: z.string().min(1).optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 });
 
