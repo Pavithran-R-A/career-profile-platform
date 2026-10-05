@@ -20,6 +20,7 @@ mean that an external provider, paid integration, or final public domain is live
 - [x] Email-verification flow
 - [x] Password-reset flow
 - [x] Strong client-side password policy
+- [x] Supabase Auth production policy verified: 12-character minimum, lowercase + uppercase + digit + symbol required, Confirm Email ON
 - [x] Profile creation and editing
 - [x] Experience, education, projects, skills, links, and achievements
 - [x] Publish/draft controls
