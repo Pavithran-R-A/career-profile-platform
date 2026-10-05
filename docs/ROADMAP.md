@@ -24,8 +24,10 @@ mean that an external provider, paid integration, or final public domain is live
 - [x] Experience, education, projects, skills, links, and achievements
 - [x] Publish/draft controls
 - [x] Account deletion flow
-- [ ] Production SMTP / branded sender configured
-- [ ] Supabase leaked-password protection enabled
+- [ ] Production SMTP / branded sender configured — final-domain launch gate
+- Supabase leaked-password protection: **plan-gated enhancement**, not available on the current
+  Free project. The application already enforces its 12+ character mixed-character policy; enable
+  leaked-password screening if/when the Supabase plan is upgraded.
 
 ## Stage 2 — Resume Ingestion
 
@@ -111,8 +113,28 @@ mean that an external provider, paid integration, or final public domain is live
 - [ ] Search-engine launch checks on robots.txt, sitemap.xml, canonicals, structured data, and social preview
 - [ ] Merge release branch to `master` and tag the public release
 
+## Pre-domain closure — 2026-10-05
+
+The pre-domain engineering/database release boundary is closed:
+
+- repository and live Supabase migration history are in exact parity through
+  `20261005140042_pre_domain_least_privilege_grants`;
+- all public base tables have RLS enabled;
+- `anon` has no direct grants on public application tables;
+- authenticated table grants are limited to application DML (SELECT/INSERT/UPDATE/DELETE), with
+  TRUNCATE/REFERENCES/TRIGGER removed;
+- the `resumes` Storage bucket is private and its object policies are authenticated-owner scoped;
+- the live public-profile projection metadata uses the CareerProfile Go brand;
+- generated live Supabase database schema types match the checked-in `Database` type definition;
+- the exact release head is required to pass dependency audit, formatting, lint, TypeScript,
+  unit tests, production build, bundle budget, and desktop/mobile Playwright before advancing.
+
+Anything left unchecked above is an **external launch gate**, a deliberately disabled optional
+integration, or final-domain configuration. Do not weaken a fail-closed feature merely to make a
+checkbox green.
+
 ## Release rule
 
-Do not call CareerProfile Go **100% public-live** until every applicable unchecked item in
+Do not call CareerProfile Go **100% public-live** until every applicable unchecked external item in
 Stages 1, 3–5, 7–9 has either passed or is deliberately disabled/fail-closed for launch.
-The public domain remains the final infrastructure decision, after the code release candidate is green.
+The public domain remains the final infrastructure decision, after the pre-domain release candidate is green.
