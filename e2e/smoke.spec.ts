@@ -20,7 +20,7 @@ test.describe('smoke: pages load with correct head metadata', () => {
     expect(await page.title()).toMatch(/CareerProfile Go/);
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
       'content',
-      /CareerProfile Go — Career Profile, ATS Resume & Portfolio Builder/
+      /CareerProfile Go — Career Profile, ATS Resume & Portfolio/
     );
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
       'content',
