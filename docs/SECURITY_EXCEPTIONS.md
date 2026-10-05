@@ -1,4 +1,4 @@
-# Security Exceptions — CVentory
+# Security Exceptions — CareerProfile Go
 
 Last reviewed: 2026-10-04
 
