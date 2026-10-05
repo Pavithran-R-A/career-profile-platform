@@ -19,18 +19,22 @@ export default function Privacy() {
 
       <div className="mt-10 space-y-8 text-[15px] leading-7 text-[var(--foreground)]">
         <section>
-          <h2 className="text-xl font-semibold text-[var(--ink)]">What CareerProfile Go processes</h2>
+          <h2 className="text-xl font-semibold text-[var(--ink)]">
+            What CareerProfile Go processes
+          </h2>
           <p className="mt-3">
-            CareerProfile Go processes the information you provide to create and operate your account and
-            career profile. This can include your sign-in email, CV or resume files, profile basics,
+            CareerProfile Go processes the information you provide to create and operate your
+            account and career profile. This can include your sign-in email, CV or resume files,
+            profile basics,
             experience, education, projects, skills, achievements, links, profile preferences, and
             content you choose to publish.
           </p>
           <p className="mt-3">
-            If you connect GitHub, CareerProfile Go can process repository and activity data needed for the
-            features you choose to use. If paid features are enabled, CareerProfile Go stores billing status
-            and payment/order identifiers required to provide access; payment-card details are
-            handled by the payment provider and are not stored by CareerProfile Go.
+            If you connect GitHub, CareerProfile Go can process repository and activity data needed
+            for the features you choose to use. If paid features are enabled, CareerProfile Go
+            stores billing status and payment/order identifiers required to provide access;
+            payment-card details are handled by the payment provider and are not stored by
+            CareerProfile Go.
           </p>
         </section>
 
@@ -43,9 +47,9 @@ export default function Privacy() {
             and provide support.
           </p>
           <p className="mt-3">
-            CareerProfile Go also records limited first-party product events for service improvement and
-            funnel debugging. These events are designed not to contain CV document text or other
-            document content.
+            CareerProfile Go also records limited first-party product events for service improvement
+            and funnel debugging. These events are designed not to contain CV document text or
+            other document content.
           </p>
         </section>
 
@@ -62,8 +66,9 @@ export default function Privacy() {
         <section>
           <h2 className="text-xl font-semibold text-[var(--ink)]">Service providers</h2>
           <p className="mt-3">
-            CareerProfile Go uses infrastructure and service providers to operate the product, including
-            database/authentication and storage services, hosting/CDN services, GitHub when you
+            CareerProfile Go uses infrastructure and service providers to operate the product,
+            including database/authentication and storage services, hosting/CDN services, GitHub
+            when you
             connect it, a payment processor when paid features are enabled, and an AI provider when
             AI features are enabled. Providers receive only the information required for the
             relevant service and process it under their own terms and privacy obligations.
@@ -106,8 +111,8 @@ export default function Privacy() {
               </a>
             ) : (
               <>
-                use the CareerProfile Go support contact published on the Contact page once production
-                support is configured
+                use the CareerProfile Go support contact published on the Contact page once
+                production support is configured
               </>
             )}
             .
