@@ -67,7 +67,7 @@ export default function PublicProfile() {
   const notFoundMeta = useMemo(() => {
     if (!error || !username) return null;
     return {
-      title: 'Profile not found — CVentory',
+      title: 'Profile not found — CareerProfile Go',
       description: 'This profile does not exist or is not published.',
       canonical: `${window.location.origin}/u/${encodeURIComponent(username)}`,
       noindex: true,
@@ -194,7 +194,7 @@ export default function PublicProfile() {
             <p className="text-xs text-[var(--faint-foreground)]">
               Career profile on{' '}
               <Link to="/" className="underline underline-offset-2">
-                CVentory
+                CareerProfile Go
               </Link>
             </p>
             <ShareControls
