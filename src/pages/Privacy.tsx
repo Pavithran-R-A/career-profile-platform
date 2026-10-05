@@ -25,9 +25,8 @@ export default function Privacy() {
           <p className="mt-3">
             CareerProfile Go processes the information you provide to create and operate your
             account and career profile. This can include your sign-in email, CV or resume files,
-            profile basics,
-            experience, education, projects, skills, achievements, links, profile preferences, and
-            content you choose to publish.
+            profile basics, experience, education, projects, skills, achievements, links, profile
+            preferences, and content you choose to publish.
           </p>
           <p className="mt-3">
             If you connect GitHub, CareerProfile Go can process repository and activity data needed
@@ -48,8 +47,8 @@ export default function Privacy() {
           </p>
           <p className="mt-3">
             CareerProfile Go also records limited first-party product events for service improvement
-            and funnel debugging. These events are designed not to contain CV document text or
-            other document content.
+            and funnel debugging. These events are designed not to contain CV document text or other
+            document content.
           </p>
         </section>
 
@@ -68,19 +67,18 @@ export default function Privacy() {
           <p className="mt-3">
             CareerProfile Go uses infrastructure and service providers to operate the product,
             including database/authentication and storage services, hosting/CDN services, GitHub
-            when you
-            connect it, a payment processor when paid features are enabled, and an AI provider when
-            AI features are enabled. Providers receive only the information required for the
-            relevant service and process it under their own terms and privacy obligations.
+            when you connect it, a payment processor when paid features are enabled, and an AI
+            provider when AI features are enabled. Providers receive only the information required
+            for the relevant service and process it under their own terms and privacy obligations.
           </p>
         </section>
 
         <section>
           <h2 className="text-xl font-semibold text-[var(--ink)]">Security and retention</h2>
           <p className="mt-3">
-            CareerProfile Go uses row-level access controls, server-side authorization, scoped public
-            projections, transport encryption, and other technical controls intended to protect
-            account data. No online service can promise absolute security.
+            CareerProfile Go uses row-level access controls, server-side authorization, scoped
+            public projections, transport encryption, and other technical controls intended to
+            protect account data. No online service can promise absolute security.
           </p>
           <p className="mt-3">
             Data is retained while your account is active and as needed to operate the service,
