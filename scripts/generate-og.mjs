@@ -95,9 +95,9 @@ try {
       </div>
     </div>
     <section class="copy">
-      <div class="brand"><span class="cv">CV</span>entory</div>
-      <div class="tagline">Your career. All in one place.</div>
-      <div class="features">AI CV • ATS Resume • Career Profile • Portfolio</div>
+      <div class="brand">CareerProfile <span class="cv">Go</span></div>
+      <div class="tagline">Your career, ready to go.</div>
+      <div class="features">Career Profile • ATS Resume • Portfolio • Tailoring</div>
       <div class="rule"></div>
     </section>
   </main>
