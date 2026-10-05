@@ -4,7 +4,7 @@ import { useAuth } from '../../lib/auth/context';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 
 export default function ForgotPassword() {
-  useNoindexMeta('Forgot password — CVentory');
+  useNoindexMeta('Forgot password — CareerProfile Go');
 
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
