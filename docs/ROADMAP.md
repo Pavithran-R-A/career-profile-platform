@@ -93,7 +93,7 @@ mean that an external provider, paid integration, or final public domain is live
 - [x] Security headers and per-response CSP nonce
 - [x] Database security hardening and least-privilege public projections
 - [x] First-party funnel/product event model
-- [ ] CareerProfile Go rebrand CI green on the final release head
+- [x] CareerProfile Go rebrand CI green on the final release head
 - [ ] Final live signup → verify → reset-password → account-delete smoke suite
 - [ ] Enabled optional integrations live-smoke-tested
 - [ ] Real-user beta/launch feedback pass
