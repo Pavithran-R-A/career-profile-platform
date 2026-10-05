@@ -17,10 +17,10 @@ test.describe('smoke: pages load with correct head metadata', () => {
       .evaluate((node) => (node as HTMLScriptElement).nonce);
     expect(jsonLdNonce).toBe(nonce);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    expect(await page.title()).toMatch(/CVentory/);
+    expect(await page.title()).toMatch(/CareerProfile Go/);
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
       'content',
-      /CVentory — AI CV, ATS Resume & Career Profile Builder/
+      /CareerProfile Go — Career Profile, ATS Resume & Portfolio Builder/
     );
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
       'content',
@@ -48,7 +48,7 @@ test.describe('smoke: pages load with correct head metadata', () => {
         'href',
         `${origin}${path}`
       );
-      expect(await page.title()).toMatch(/CVentory/);
+      expect(await page.title()).toMatch(/CareerProfile Go/);
     }
   });
 
