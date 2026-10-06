@@ -161,7 +161,7 @@ If a rollback is caused by a database migration, do not blindly reverse producti
 
 ## Release rule
 
-Do not merge the release PR or point the final domain at CareerProfile Go until:
+The verified pre-domain release is now on `master`. Do not point the final domain at CareerProfile Go or tag the public release until:
 
 - the exact head SHA is green;
 - required provider credentials are configured;
