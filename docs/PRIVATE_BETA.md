@@ -1,7 +1,9 @@
 # Private Beta
 
 Status: in progress (as of 2026-09-27).
-Stable preview: <https://core-qualification-career-profile-platform.memrae-staging.workers.dev>
+Legacy preview (historical only; do not use as current release evidence): <https://core-qualification-career-profile-platform.memrae-staging.workers.dev>
+
+Current customer-ready preview must be redeployed from the latest `master` SHA before review.
 
 Joining: sign up at the preview URL with a real email inbox (email confirmation
 is ON — Supabase rejects reserved domains such as `example.com`).
