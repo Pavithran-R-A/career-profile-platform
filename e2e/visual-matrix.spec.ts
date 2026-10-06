@@ -38,9 +38,11 @@ test.describe('visual matrix', () => {
   test('pricing: plan cards render without overflow', async ({ page }) => {
     await page.goto('/pricing');
     await page.getByRole('heading', { level: 1 }).waitFor();
+    // Plan cards arrive from the public billing endpoint after first paint.
+    // Wait for actual plan content instead of racing an immediate h2 count.
+    await expect(page.getByRole('heading', { level: 2, name: /free/i })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: /pro/i })).toBeVisible();
     await expectNoHorizontalOverflow(page);
-    const h2s = await page.getByRole('heading', { level: 2 }).count();
-    expect(h2s).toBeGreaterThan(0);
   });
 
   test('login: form is compact and centered-ish, no overflow', async ({ page }) => {
