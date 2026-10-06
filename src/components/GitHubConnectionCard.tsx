@@ -69,9 +69,7 @@ export default function GitHubConnectionCard({
               </button>
             </>
           ) : (
-            <p className="text-gray-600">
-              GitHub evidence isn’t available in this preview yet.
-            </p>
+            <p className="text-gray-600">GitHub evidence isn’t available in this preview yet.</p>
           )}
         </div>
       </div>
