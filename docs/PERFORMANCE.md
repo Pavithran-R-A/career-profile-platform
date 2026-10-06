@@ -35,7 +35,7 @@ thresholds to catch catastrophic regressions, not to certify a score:
 - CLS < 0.25 on the landing page
 
 Local numbers vary with machine load; for the reference baseline, measure on
-the stable preview with Chrome DevTools (Performance) or Lighthouse and record
+the freshly deployed preview from the latest `master` SHA with Chrome DevTools (Performance) or Lighthouse and record
 the result here after significant layout or bundle changes.
 
 ## Practices that keep it fast
@@ -65,6 +65,6 @@ pnpm test:e2e               # includes CWV baseline (local build)
 ```
 
 On the deployed preview: Chrome DevTools → Performance/Lighthouse at
-<https://core-qualification-career-profile-platform.memrae-staging.workers.dev>;
+the current latest-SHA preview URL (the old `core-qualification-career-profile-platform` URL is historical and may be stale);
 compare against the thresholds above and update this file when the baseline
 moves.
