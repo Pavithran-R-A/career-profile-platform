@@ -160,7 +160,7 @@ describe('production routes (actual AppRoutes)', () => {
   it('unknown routes render the 404 page', async () => {
     renderAt('/definitely-not-a-route');
     // 404 is now route-level lazy; wait for the chunk to resolve.
-    expect(await screen.findByText('404')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '404' })).toBeInTheDocument();
   });
 });
 
@@ -184,11 +184,11 @@ describe('dashboard discoverability (actual Dashboard)', () => {
     { timeout: 20_000 },
     async () => {
       renderAt('/dashboard');
-      const ats = await screen.findByRole('link', { name: /ATS resume/ });
-      const tailor = await screen.findByRole('link', { name: /Job tailoring/ });
-      const preview = await screen.findByRole('link', { name: /Preview portfolio/ });
-      const profile = await screen.findByRole('link', { name: /Edit profile/ });
-      const resume = await screen.findByRole('link', { name: /Import resume/ });
+      const ats = await screen.findByRole('link', { name: /ATS resume/i });
+      const tailor = await screen.findByRole('link', { name: /Job tailoring/i });
+      const preview = await screen.findByRole('link', { name: /Preview portfolio/i });
+      const profile = await screen.findByRole('link', { name: /Edit profile/i });
+      const resume = await screen.findByRole('link', { name: /Import resume/i });
       expect(ats).toHaveAttribute('href', '/dashboard/resume/ats');
       expect(tailor).toHaveAttribute('href', '/dashboard/resume/tailor');
       expect(preview).toHaveAttribute('href', '/dashboard/preview');
