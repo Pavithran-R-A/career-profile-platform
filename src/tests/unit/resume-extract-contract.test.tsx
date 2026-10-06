@@ -97,7 +97,9 @@ describe('ResumeImport extract contract', () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     expect(await screen.findByText('Resume saved.')).toBeInTheDocument();
-    expect(screen.getByText(/Automatic extraction.*available in this preview/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Automatic extraction.*available in this preview/i)
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Something went wrong/)).not.toBeInTheDocument();
     vi.unstubAllGlobals();
   });
