@@ -438,7 +438,7 @@ export default function ResumeImport() {
           role="status">
           <p className="font-medium">Resume saved.</p>
           <p className="text-sm mt-1">
-            Automatic extraction isn't available on this environment. Your file is safe on your
+            Automatic extraction isn’t available in this preview. Your file is safe on your
             account — add the details manually, or retry extraction later.
           </p>
           <div className="flex flex-wrap gap-3 mt-3">

@@ -70,8 +70,7 @@ export default function GitHubConnectionCard({
             </>
           ) : (
             <p className="text-gray-600">
-              GitHub integration is not configured in this environment. Ask the operator to set the
-              GitHub App credentials to enable evidence sync.
+              GitHub evidence isn’t available in this preview yet.
             </p>
           )}
         </div>

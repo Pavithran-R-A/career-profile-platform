@@ -31,8 +31,7 @@ export default function Contact() {
             </a>
           ) : (
             <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-              Production support email is not configured yet. This is a release gate and must be
-              configured before public launch.
+              Support contact details will be published when CareerProfile Go opens for public access.
             </p>
           )}
         </div>

@@ -256,7 +256,7 @@ export default function Billing() {
             </div>
             {!status.razorpayConfigured && (
               <p className="text-xs text-amber-600 mt-2">
-                Payment provider is not configured on this environment.
+                Pro checkout isn’t available in this preview yet.
               </p>
             )}
           </div>

@@ -185,7 +185,7 @@ export default function GitHubDashboard() {
         if (!result.ok) {
           setNotice(
             result.status === 503
-              ? 'GitHub integration is not configured in this environment.'
+              ? 'GitHub evidence isn’t available in this preview yet.'
               : 'Could not start the GitHub install. Please retry.'
           );
           return;

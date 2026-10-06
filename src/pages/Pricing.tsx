@@ -5,7 +5,7 @@ import { OG_IMAGE_PATH } from '../lib/seo/meta';
 import { usePageMeta } from '../lib/seo/usePageMeta';
 
 function formatPrice(pricePaise: number | null, currency: string): string {
-  if (pricePaise === null) return 'Contact sales';
+  if (pricePaise === null) return 'Available at launch';
   if (pricePaise === 0) return 'Free';
   const amount = pricePaise / 100;
   return new Intl.NumberFormat('en-IN', {
@@ -95,15 +95,23 @@ export default function Pricing() {
                 )}
               </ul>
 
-              <Link
-                to={plan.planId === 'pro' ? '/dashboard/billing' : '/signup'}
-                className={`block w-full text-center py-2 px-4 rounded-md text-sm ${
-                  plan.planId === 'pro'
-                    ? 'bg-gray-900 text-white hover:bg-gray-800'
-                    : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}>
-                {plan.planId === 'pro' ? 'Upgrade to Pro' : 'Get started'}
-              </Link>
+              {plan.planId === 'pro' && plan.pricePaise === null ? (
+                <div
+                  aria-disabled="true"
+                  className="block w-full text-center py-2 px-4 rounded-md text-sm bg-gray-100 text-gray-500 cursor-not-allowed">
+                  Pro available at launch
+                </div>
+              ) : (
+                <Link
+                  to={plan.planId === 'pro' ? '/dashboard/billing' : '/signup'}
+                  className={`block w-full text-center py-2 px-4 rounded-md text-sm ${
+                    plan.planId === 'pro'
+                      ? 'bg-gray-900 text-white hover:bg-gray-800'
+                      : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}>
+                  {plan.planId === 'pro' ? 'Upgrade to Pro' : 'Get started'}
+                </Link>
+              )}
             </div>
           ))}
         </div>
