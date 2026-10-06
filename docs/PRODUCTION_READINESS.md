@@ -322,4 +322,4 @@ Critical defects fixed and browser-verified with Playwright + system Chrome
   not-configured state was needed; Billing/Domains keep their existing
   truthful disabled UX.
 - Gates: format / lint / typecheck / 524 tests / build / `pnpm audit` all clean.
-- Preview updated in place: https://core-qualification-career-profile-platform.memrae-staging.workers.dev
+- Historical qualification preview: `core-qualification-career-profile-platform.memrae-staging.workers.dev`. This URL is not release-authoritative after the CareerProfile Go rebrand; redeploy the latest `master` SHA before customer review.
