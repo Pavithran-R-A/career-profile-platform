@@ -31,7 +31,8 @@ export default function Contact() {
             </a>
           ) : (
             <p className="mt-2 text-sm text-[var(--muted-foreground)]">
-              Support contact details will be published when CareerProfile Go opens for public access.
+              Support contact details will be published when CareerProfile Go opens for public
+              access.
             </p>
           )}
         </div>
