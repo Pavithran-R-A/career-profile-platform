@@ -81,7 +81,7 @@ async function loadPendingReview(profileId: string): Promise<StuckReview | null>
 
 export default function ResumeImport() {
   const auth = useAuth();
-  useNoindexMeta('Import resume — Career Profile');
+  useNoindexMeta('Import resume — CareerProfile Go');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<ResumeState>('empty');
   const [error, setError] = useState<string | null>(null);

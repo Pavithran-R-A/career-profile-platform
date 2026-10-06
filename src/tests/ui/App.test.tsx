@@ -30,11 +30,16 @@ describe('App shell', () => {
 
   it('renders the header with brand link', () => {
     render(<App />);
-    expect(screen.getByRole('link', { name: 'Career Profile home' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'CareerProfile Go home' })).toHaveAttribute(
+      'href',
+      '/'
+    );
   });
 
   it('renders footer', () => {
     render(<App />);
-    expect(screen.getByText(/one profile, built for recruiters/i)).toBeInTheDocument();
+    expect(screen.getByRole('contentinfo')).toHaveTextContent(
+      /CareerProfile Go — your career, ready to go/i
+    );
   });
 });

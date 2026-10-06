@@ -36,7 +36,7 @@ function safeErrorMessage(status: number, fallback: string): string {
 }
 
 export default function GitHubDashboard() {
-  useNoindexMeta('GitHub evidence — Career Profile');
+  useNoindexMeta('GitHub evidence — CareerProfile Go');
   const auth = useAuth();
   const navigate = useNavigate();
   const profileServiceRef = useRef<ProfileService | null>(null);

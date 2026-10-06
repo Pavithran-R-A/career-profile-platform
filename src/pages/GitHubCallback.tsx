@@ -38,7 +38,7 @@ type CallbackOutcome =
  *   6. redirects to /dashboard/github with a success/failure flag.
  */
 export default function GitHubCallback() {
-  useNoindexMeta('GitHub connection — Career Profile');
+  useNoindexMeta('GitHub connection — CareerProfile Go');
   const auth = useAuth();
   const navigate = useNavigate();
   const [outcome, setOutcome] = useState<CallbackOutcome>({ state: 'processing' });

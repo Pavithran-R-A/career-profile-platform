@@ -226,7 +226,7 @@ function VerificationInstructions({ domain }: { domain: CustomDomainItem }) {
 }
 
 export default function Domains() {
-  useNoindexMeta('Custom domain — Career Profile');
+  useNoindexMeta('Custom domain — CareerProfile Go');
   const auth = useAuth();
   const navigate = useNavigate();
   // Stable across renders: constructing inside render and using it as an

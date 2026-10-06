@@ -5,10 +5,10 @@
  * and what a visitor sees can never drift apart.
  */
 
-export const SITE_NAME = 'Career Profile';
-export const DEFAULT_TITLE = 'Career Profile — One profile, built for recruiters';
+export const SITE_NAME = 'CareerProfile Go';
+export const DEFAULT_TITLE = 'CareerProfile Go — Career Profile, ATS Resume & Portfolio';
 export const DEFAULT_DESCRIPTION =
-  'Turn your CV into a structured career profile, an ATS-ready resume, and a portfolio recruiters can scan in seconds.';
+  'Turn your CV, experience, projects and GitHub into a reusable professional profile, ATS-ready resumes, tailored applications and a shareable portfolio.';
 
 export const MAX_TITLE_LENGTH = 60;
 export const MAX_DESCRIPTION_LENGTH = 155;

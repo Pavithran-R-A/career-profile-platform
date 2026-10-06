@@ -324,6 +324,7 @@ describe('Worker API handler', () => {
     const backendEnv = (extra: Record<string, string> = {}) => ({
       SUPABASE_URL: 'https://supabase.example.com',
       SUPABASE_PUBLISHABLE_KEY: 'anon-key',
+      SUPABASE_SECRET_KEY: 'test-only-server-secret',
       ...extra,
     });
 
@@ -332,8 +333,8 @@ describe('Worker API handler', () => {
         from: vi.fn(() => anonChain({ data: null })),
       };
       vi.mocked(createServerClient).mockReturnValue(client as never);
-      // Backend reachable (URL+anon key) but NO BHARATCODE_API_KEY: the
-      // profile lookup must answer 404 before the AI gate can 503.
+      // Backend reachable (URL + server secret) but NO BHARATCODE_API_KEY:
+      // the profile lookup must answer 404 before the AI gate can 503.
       const res = await handleRequest(askRequest(), backendEnv(), {} as ExecutionContext);
       expect(res.status).toBe(404);
       const body = (await res.json()) as { code?: string; error?: string };

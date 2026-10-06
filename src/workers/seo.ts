@@ -8,8 +8,9 @@
  *   /sitemap.xml → published profiles + public static pages
  *   /robots.txt  → allow public, disallow app routes, absolute sitemap ref
  *
- * Profile reads use the publishable (anon-equivalent) key against the
- * anon-granted `public_profiles` view — no service key, no private data.
+ * Public projection views are server-only. The Worker uses the server-side
+ * Supabase secret to read the published-only projection; the credential is
+ * never exposed to browser code.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -21,7 +22,7 @@ import {
   profileMeta,
   siteMeta,
 } from '../lib/seo/meta';
-import { buildProfileJsonLd, jsonLdScript } from '../lib/seo/jsonld';
+import { buildProfileJsonLd, buildSiteJsonLd, jsonLdScript } from '../lib/seo/jsonld';
 import {
   SITEMAP_MAX_PROFILE_ENTRIES,
   buildSitemapXml,
@@ -50,11 +51,11 @@ function originOf(request: Request): string {
 
 async function fetchPublishedProfile(username: string, env: Env): Promise<SeoProfileRow | null> {
   const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
-  const publishableKey = env.SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (!supabaseUrl || !publishableKey || !username) return null;
+  const adminKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !adminKey || !username) return null;
 
   try {
-    const supabase = createClient(supabaseUrl, publishableKey);
+    const supabase = createClient(supabaseUrl, adminKey);
     const { data, error } = await supabase
       .from('public_profiles' as never)
       .select(
@@ -91,14 +92,21 @@ export function handleRobots(request: Request): Response {
 
 export async function handleSitemap(request: Request, env: Env): Promise<Response> {
   const origin = originOf(request);
-  const entries: SitemapEntry[] = [{ loc: `${origin}/` }, { loc: `${origin}/pricing` }];
+  const entries: SitemapEntry[] = [
+    { loc: `${origin}/` },
+    { loc: `${origin}/pricing` },
+    { loc: `${origin}/privacy` },
+    { loc: `${origin}/terms` },
+    { loc: `${origin}/refund-policy` },
+    { loc: `${origin}/contact` },
+  ];
 
   try {
     const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
-    const publishableKey = env.SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const adminKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (supabaseUrl && publishableKey) {
-      const supabase = createClient(supabaseUrl, publishableKey);
+    if (supabaseUrl && adminKey) {
+      const supabase = createClient(supabaseUrl, adminKey);
       const { data, error } = await supabase
         .from('public_profiles' as never)
         .select('username, updated_at')
@@ -126,14 +134,22 @@ export async function handleSitemap(request: Request, env: Env): Promise<Respons
 }
 
 export function isHtmlPagePath(pathname: string): boolean {
-  return pathname === '/' || pathname === '/pricing' || pathname.startsWith('/u/');
+  return (
+    pathname === '/' ||
+    pathname === '/pricing' ||
+    pathname === '/privacy' ||
+    pathname === '/terms' ||
+    pathname === '/refund-policy' ||
+    pathname === '/contact' ||
+    pathname.startsWith('/u/')
+  );
 }
 
 /** Unknown SPA routes still get truthful not-found meta (QA SEO defects). */
 function notFoundInjection(request: Request) {
   const origin = originOf(request);
   const meta = {
-    title: 'Page not found — Career Profile',
+    title: 'Page not found — CareerProfile Go',
     description: 'The page you requested does not exist.',
     canonical: `${origin}${new URL(request.url).pathname}`,
     noindex: true,
@@ -173,7 +189,8 @@ function siteInjection(request: Request, pathname: string, title: string, descri
 export async function handleHtmlPage(
   request: Request,
   assets: Fetcher,
-  env: Env
+  env: Env,
+  cspNonce: string
 ): Promise<Response> {
   const upstream = await assets.fetch(request);
   const contentType = upstream.headers.get('content-type') ?? '';
@@ -186,13 +203,44 @@ export async function handleHtmlPage(
   let injection = '';
 
   if (url.pathname === '/') {
-    injection = siteInjection(request, '/', DEFAULT_TITLE, DEFAULT_DESCRIPTION);
+    injection = `${siteInjection(request, '/', DEFAULT_TITLE, DEFAULT_DESCRIPTION)}\n${jsonLdScript(
+      buildSiteJsonLd(origin),
+      cspNonce
+    )}`;
   } else if (url.pathname === '/pricing') {
     injection = siteInjection(
       request,
       '/pricing',
-      'Pricing — Career Profile',
+      'Pricing — CareerProfile Go',
       'Free to build your career profile, portfolio, and ATS resume. Pro adds higher limits.'
+    );
+  } else if (url.pathname === '/privacy') {
+    injection = siteInjection(
+      request,
+      '/privacy',
+      'Privacy Policy — CareerProfile Go',
+      'How CareerProfile Go collects, uses, protects, publishes, and deletes account and career-profile data.'
+    );
+  } else if (url.pathname === '/terms') {
+    injection = siteInjection(
+      request,
+      '/terms',
+      'Terms of Service — CareerProfile Go',
+      'Terms governing use of CareerProfile Go career profiles, resumes, portfolios, integrations, and paid features.'
+    );
+  } else if (url.pathname === '/refund-policy') {
+    injection = siteInjection(
+      request,
+      '/refund-policy',
+      'Refund & Cancellation Policy — CareerProfile Go',
+      'Refund, cancellation, duplicate-charge, and annual Pro access terms for CareerProfile Go.'
+    );
+  } else if (url.pathname === '/contact') {
+    injection = siteInjection(
+      request,
+      '/contact',
+      'Contact — CareerProfile Go',
+      'Contact CareerProfile Go for account, privacy, billing, security, or product support.'
     );
   } else if (url.pathname.startsWith('/u/')) {
     const username = decodeURIComponent(url.pathname.slice(3)).replace(/\/+$/, '');
@@ -220,11 +268,11 @@ export async function handleHtmlPage(
         education: profile.education,
         skills: profile.skills,
       });
-      injection = `${metaTags(meta)}\n${jsonLdScript(jsonLd)}`;
+      injection = `${metaTags(meta)}\n${jsonLdScript(jsonLd, cspNonce)}`;
     } else {
       // Unknown/draft profile: truthful not-found meta, noindex.
       injection = metaTags({
-        title: 'Profile not found — Career Profile',
+        title: 'Profile not found — CareerProfile Go',
         description: 'This profile does not exist or is not published.',
         canonical: `${origin}/u/${encodeURIComponent(username)}`,
         noindex: true,
@@ -238,6 +286,10 @@ export async function handleHtmlPage(
   if (injection) {
     html = replaceStaticTitle(html, injection);
   }
+
+  // The current document nonce lets same-origin SPA code add non-executable
+  // JSON-LD after client-side navigation without weakening script-src.
+  html = html.replace(/<head>/i, `<head>\n<meta name="csp-nonce" content="${cspNonce}" />`);
 
   const headers = new Headers(upstream.headers);
   headers.set('Content-Type', 'text/html; charset=utf-8');

@@ -20,6 +20,8 @@ function injectProfileJsonLd(data: Record<string, unknown> | null): void {
   const script = document.createElement('script');
   script.id = JSONLD_ID;
   script.type = 'application/ld+json';
+  const nonce = document.querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')?.content;
+  if (nonce) script.nonce = nonce;
   script.textContent = JSON.stringify(data).replace(/</g, '\\u003c');
   document.head.appendChild(script);
 }
@@ -65,7 +67,7 @@ export default function PublicProfile() {
   const notFoundMeta = useMemo(() => {
     if (!error || !username) return null;
     return {
-      title: 'Profile not found — Career Profile',
+      title: 'Profile not found — CareerProfile Go',
       description: 'This profile does not exist or is not published.',
       canonical: `${window.location.origin}/u/${encodeURIComponent(username)}`,
       noindex: true,
@@ -192,7 +194,7 @@ export default function PublicProfile() {
             <p className="text-xs text-[var(--faint-foreground)]">
               Career profile on{' '}
               <Link to="/" className="underline underline-offset-2">
-                Career Profile
+                CareerProfile Go
               </Link>
             </p>
             <ShareControls

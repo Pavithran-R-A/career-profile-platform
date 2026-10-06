@@ -9,7 +9,12 @@ import {
   MAX_TITLE_LENGTH,
   MAX_DESCRIPTION_LENGTH,
 } from '../../lib/seo/meta';
-import { buildProfileJsonLd, safeSameAsLinks, jsonLdScript } from '../../lib/seo/jsonld';
+import {
+  buildProfileJsonLd,
+  buildSiteJsonLd,
+  safeSameAsLinks,
+  jsonLdScript,
+} from '../../lib/seo/jsonld';
 import { buildSitemapXml, toLastmodDate, escapeXml } from '../../lib/seo/sitemap';
 import { buildRobotsTxt } from '../../lib/seo/robots';
 
@@ -52,7 +57,7 @@ describe('meta builders', () => {
       ogImageAbsolute: 'https://example.com/og-cover.png',
     });
     expect(fallback.ogImage).toBe('https://example.com/og-cover.png');
-    expect(fallback.title).toBe('Engineer — Career Profile');
+    expect(fallback.title).toBe('Engineer — CareerProfile Go');
   });
 
   it('siteMeta truncates long titles and descriptions', () => {
@@ -156,11 +161,30 @@ describe('JSON-LD', () => {
     expect(data.mainEntity.knowsAbout).toEqual(['TypeScript']);
   });
 
-  it('jsonLdScript escapes < to prevent script breakout', () => {
-    const html = jsonLdScript({ name: 'a<b' });
-    expect(html.startsWith('<script type="application/ld+json">')).toBe(true);
+  it('buildSiteJsonLd identifies CareerProfile Go as the Organization and WebSite', () => {
+    const data = buildSiteJsonLd('https://careerprofilego.example/') as {
+      '@graph': Array<Record<string, unknown>>;
+    };
+    expect(data['@graph'][0]).toMatchObject({
+      '@type': 'Organization',
+      name: 'CareerProfile Go',
+      url: 'https://careerprofilego.example/',
+    });
+    expect(data['@graph'][1]).toMatchObject({
+      '@type': 'WebSite',
+      name: 'CareerProfile Go',
+      url: 'https://careerprofilego.example/',
+    });
+  });
+
+  it('jsonLdScript escapes < and carries an escaped CSP nonce when provided', () => {
+    const html = jsonLdScript({ name: 'a<b' }, 'nonce-value');
+    expect(html.startsWith('<script type="application/ld+json" nonce="nonce-value">')).toBe(true);
     expect(html).not.toContain('a<b');
     expect(html).toContain('a\\u003cb');
+
+    const escaped = jsonLdScript({ ok: true }, 'a"b');
+    expect(escaped).toContain('nonce="a&quot;b"');
   });
 });
 

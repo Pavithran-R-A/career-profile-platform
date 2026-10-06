@@ -30,6 +30,10 @@ const GitHubDashboard = lazy(() => import('./pages/GitHubDashboard'));
 const GitHubCallback = lazy(() => import('./pages/GitHubCallback'));
 const ATSResumeBuilder = lazy(() => import('./pages/ATSResumeBuilder'));
 const AccountDelete = lazy(() => import('./pages/AccountDelete'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const Terms = lazy(() => import('./pages/Terms'));
+const RefundPolicy = lazy(() => import('./pages/RefundPolicy'));
+const Contact = lazy(() => import('./pages/Contact'));
 
 function RouteFallback() {
   return (
@@ -75,6 +79,10 @@ export function AppRoutes() {
         <Route path="/dashboard/domains" element={<Domains />} />
         <Route path="/dashboard/ats" element={<Navigate to="/dashboard/resume/ats" replace />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/refund-policy" element={<RefundPolicy />} />
+        <Route path="/contact" element={<Contact />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/u/:username" element={<PublicProfile />} />
         <Route path="*" element={<NotFound />} />

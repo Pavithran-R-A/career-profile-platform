@@ -9,7 +9,7 @@
  *   - sameAs only contains safe absolute http(s) links the profile published
  */
 
-import { isAbsoluteHttpUrl } from './meta';
+import { escapeHtml, isAbsoluteHttpUrl } from './meta';
 
 export interface JsonLdExperienceLike {
   role: string;
@@ -94,6 +94,45 @@ export function buildProfileJsonLd(input: JsonLdProfileInput): Record<string, un
   };
 }
 
-export function jsonLdScript(data: Record<string, unknown>): string {
-  return `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
+export function jsonLdScript(data: Record<string, unknown>, nonce?: string): string {
+  const nonceAttribute = nonce ? ` nonce="${escapeHtml(nonce)}"` : '';
+  return `<script type="application/ld+json"${nonceAttribute}>${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
+}
+
+const CAREERPROFILEGO_DESCRIPTION =
+  'CareerProfile Go is a career profile platform that turns your CV, experience, projects and GitHub into a reusable professional profile, ATS-ready resumes, tailored applications and a shareable portfolio.';
+
+export function buildSiteJsonLd(originInput: string): Record<string, unknown> {
+  const origin = originInput.replace(/\/+$/, '');
+  const organizationId = `${origin}/#organization`;
+  const websiteId = `${origin}/#website`;
+
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': organizationId,
+        name: 'CareerProfile Go',
+        alternateName: 'CareerProfileGo',
+        url: `${origin}/`,
+        description: CAREERPROFILEGO_DESCRIPTION,
+        logo: {
+          '@type': 'ImageObject',
+          url: `${origin}/logo.svg`,
+          contentUrl: `${origin}/logo.svg`,
+          width: 512,
+          height: 512,
+        },
+      },
+      {
+        '@type': 'WebSite',
+        '@id': websiteId,
+        name: 'CareerProfile Go',
+        url: `${origin}/`,
+        description: CAREERPROFILEGO_DESCRIPTION,
+        publisher: { '@id': organizationId },
+      },
+    ],
+  };
 }

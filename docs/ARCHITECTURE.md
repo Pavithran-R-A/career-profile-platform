@@ -9,13 +9,13 @@ Browser <-> Cloudflare Worker (API + static assets)
          Supabase (PostgreSQL + Auth + Storage)
                 |
                 v
-         AI Provider (abstracted, future)
+         AI Provider (optional, server-side, fail-closed)
 ```
 
 ### Rendering model (truthful description)
 
 This is **server-rendered metadata with a client-rendered application
-body** — not full React SSR. For crawler-visible routes (`/`, `/pricing`,
+body** — not full React SSR. For crawler-visible routes (`/`, `/pricing`, legal/contact routes,
 `/u/:username`, unknown routes) the worker injects a complete, route-accurate
 `<head>` (exactly one `title`, description, canonical, OG/Twitter tags,
 JSON-LD, and `noindex` where appropriate) into the static HTML shell before
@@ -39,13 +39,28 @@ responding. The visible body is then hydrated by React in the browser.
 - `/forgot-password` - Password reset request
 - `/reset-password` - Password reset form
 - `/pricing` - Plan comparison and upgrade CTA
+- `/privacy` - Privacy policy
+- `/terms` - Terms of service
+- `/refund-policy` - Refund and cancellation policy
+- `/contact` - Production support/contact details
+- `/u/:username` - Published career profile
 
 ### Protected Routes (require authentication)
 
 - `/dashboard` - User dashboard
 - `/dashboard/profile` - Profile editor
+- `/dashboard/appearance` - Portfolio appearance studio
+- `/dashboard/resume` - CV/resume import
+- `/dashboard/resume/ats` - ATS resume builder/export
+- `/dashboard/resume/tailor` - Job-description tailoring workflow
+- `/dashboard/preview` - Owner preview
+- `/dashboard/github` - GitHub connection/repository controls
+- `/dashboard/github/callback` and `/github/callback` - GitHub App callback handling
 - `/dashboard/billing` - Subscription, usage, and upgrade
+- `/dashboard/account/delete` - Account-deletion flow
 - `/dashboard/domains` - Custom domains and .cv quotes
+- `/onboarding` - Authenticated first-run profile setup
+- `/dashboard/ats` - compatibility redirect to `/dashboard/resume/ats`
 
 ### Guest-Only Routes (redirect to dashboard if authenticated)
 
@@ -76,8 +91,9 @@ responding. The visible body is then hydrated by React in the browser.
 - Supabase provides PostgreSQL, authentication, and storage
 - Row Level Security (RLS) enforced on all tables
 - Explicit GRANT statements for authenticated role
-- No service-role key in browser code
-- Publishable key used for client-side operations
+- No service-role/secret key in browser code
+- Publishable key used for authenticated client-side RLS operations
+- Server-only public profile projections are read by the Worker using the Supabase secret and returned as a constrained DTO
 
 ## Security Model
 
@@ -85,26 +101,29 @@ responding. The visible body is then hydrated by React in the browser.
 
 - **Browser:** Untrusted user input
 - **Supabase Client:** Uses publishable key only
-- **Cloudflare Worker:** API routes, no secrets
+- **Cloudflare Worker:** Trusted server boundary; holds only required server secrets
 - **Supabase Database:** RLS enforces access control
 
 ### Access Control
 
 - **Profiles:** Owner-only CRUD via RLS
 - **Child tables:** Ownership verified through parent profile
-- **Anonymous:** No application-table access
+- **Anonymous:** No direct application-table or public-projection-view access after production cutover; public profiles are served through the Worker
 
 ## Wildcard Subdomain Routing
 
-Future architecture for `username.ourdomain.com`:
+The application-side routing and custom-domain adapters are implemented. Activation is intentionally
+deferred until the final production domain is selected:
 
-1. Wildcard DNS configured at domain registrar pointing to Cloudflare
-2. Cloudflare Worker receives requests for `*.ourdomain.com`
-3. Worker extracts username from Host header
-4. Worker looks up published profile by username
-5. Worker renders the profile using a template or returns JSON for a frontend SPA route
+1. Configure wildcard DNS for the final platform domain in Cloudflare.
+2. Route `*.final-domain` to the CareerProfile Go Worker.
+3. Set `PUBLIC_BASE_HOST` to the final base host.
+4. The hostname resolver extracts a one-label username subdomain.
+5. The Worker serves only the published profile projection through its server-side Supabase boundary.
 
-Not implemented in Stage 1. Reserved in architecture documentation.
+Customer custom domains use the Cloudflare-for-SaaS adapter and remain fail-closed unless the full
+Cloudflare credential set, `PLATFORM_PROFILE_ORIGIN`, and `DOMAINS_ENABLED=true` are present.
+No placeholder hostname is treated as production configuration.
 
 ## AI Abstraction
 

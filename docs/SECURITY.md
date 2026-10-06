@@ -2,12 +2,12 @@
 
 ## Trust Boundaries
 
-| Boundary          | Trust Level | Examples                                 |
-| ----------------- | ----------- | ---------------------------------------- |
-| Browser           | Untrusted   | User input, localStorage                 |
-| Supabase Client   | Trusted     | Uses publishable key only                |
-| Cloudflare Worker | Trusted     | API routes, health endpoint              |
-| Supabase Database | Trusted     | RLS enforcement, auth.uid() verification |
+| Boundary          | Trust Level | Examples                                               |
+| ----------------- | ----------- | ------------------------------------------------------ |
+| Browser           | Untrusted   | User input, localStorage                               |
+| Supabase Client   | Trusted     | Uses publishable key only                              |
+| Cloudflare Worker | Trusted     | API routes, public projection boundary, server secrets |
+| Supabase Database | Trusted     | RLS enforcement, auth.uid() verification               |
 
 ## Threat Model
 
@@ -26,7 +26,7 @@
 ### Mitigations
 
 - **RLS-first Supabase design:** Every table has owner-only policies
-- **Explicit GRANT statements:** Authenticated role receives only intended operations
+- **Explicit GRANT statements:** Client roles receive only intended operations; production public projection views are server-only after cutover
 - **Environment validation:** Fail fast on missing config
 - **Input validation via Zod:** At system boundaries
 - **URL scheme validation:** Rejects javascript:, data:, vbscript:, blob:
@@ -56,7 +56,14 @@
 ### Child Tables
 
 - All operations verify parent profile ownership via EXISTS check
-- Anonymous users cannot access any application data
+- Anonymous users cannot access private application tables
+
+### Published profile boundary
+
+- Browser public-profile reads use `GET /api/public/profile/:username`.
+- The Worker holds the server-side Supabase credential; it is never returned to the browser.
+- The database projection still contains the published-only predicates and safe-column projection.
+- Production cutover sets those views to `security_invoker=true` and revokes `anon`/`authenticated` grants, removing direct public Data API access.
 
 ## OAuth Considerations
 

@@ -1409,6 +1409,50 @@ function toRecruiterProfileData(row: Record<string, unknown>): RecruiterProfileD
   };
 }
 
+async function handlePublicProfile(
+  usernameInput: string,
+  origin: string | null,
+  env: Env,
+  requestId: string
+): Promise<Response> {
+  const username = normalizeUsername(usernameInput);
+  const usernameCheck = validateUsername(username);
+  if (!usernameCheck.valid) {
+    return json({ error: 'Profile not found' }, 404, origin, env, {
+      code: 'PROFILE_NOT_FOUND',
+      requestId,
+    });
+  }
+
+  const supabaseUrl = getEnvValue(env, 'SUPABASE_URL') || getEnvValue(env, 'VITE_SUPABASE_URL');
+  const adminKey = getAdminKey(env);
+  if (!supabaseUrl || !adminKey) {
+    return json({ error: 'Public profiles are not configured' }, 503, origin, env, {
+      code: 'SERVER_NOT_CONFIGURED',
+      requestId,
+    });
+  }
+
+  const admin = createServerClient(supabaseUrl, adminKey);
+  const { data, error } = await admin
+    .from('public_profiles' as never)
+    .select('*')
+    .eq('username', username as never)
+    .maybeSingle();
+
+  if (error || !data) {
+    return json({ error: 'Profile not found' }, 404, origin, env, {
+      code: 'PROFILE_NOT_FOUND',
+      requestId,
+    });
+  }
+
+  return json(data, 200, origin, env, {
+    requestId,
+    headers: { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=300' },
+  });
+}
+
 async function handleRecruiterAsk(
   request: Request,
   origin: string | null,
@@ -1478,23 +1522,22 @@ async function handleRecruiterAsk(
     }
   }
 
-  const supabaseUrl = getEnvValue(env, 'SUPABASE_URL');
-  const publishable =
-    getEnvValue(env, 'SUPABASE_PUBLISHABLE_KEY') ||
-    getEnvValue(env, 'VITE_SUPABASE_PUBLISHABLE_KEY');
-  if (!supabaseUrl || !publishable) {
+  const supabaseUrl = getEnvValue(env, 'SUPABASE_URL') || getEnvValue(env, 'VITE_SUPABASE_URL');
+  const adminKey = getAdminKey(env);
+  if (!supabaseUrl || !adminKey) {
     return json({ error: 'Recruiter AI is not configured' }, 503, origin, env, {
       code: 'SERVER_NOT_CONFIGURED',
       requestId,
     });
   }
 
-  // Publishable key only: the public_profiles view is anon-readable by design.
-  const supabase = createServerClient(supabaseUrl, publishable);
-  const { data: row } = await supabase
+  // Public projection views are server-only. The privileged credential never
+  // leaves the Worker; the view itself still enforces published-only fields.
+  const adminClient = createServerClient(supabaseUrl, adminKey);
+  const { data: row } = await adminClient
     .from('public_profiles' as never)
     .select('*')
-    .eq('username', username)
+    .eq('username', username as never)
     .maybeSingle();
 
   if (!row) {
@@ -1522,14 +1565,6 @@ async function handleRecruiterAsk(
   // Subscription quota (distinct from the anti-abuse rate limiter above):
   // the PROFILE OWNER's plan decides the daily AI budget, consumed
   // atomically in the DB so concurrent requests cannot exceed the limit.
-  const adminKey = getAdminKey(env);
-  if (!adminKey) {
-    return json({ error: 'Recruiter AI is not configured' }, 503, origin, env, {
-      code: 'SERVER_NOT_CONFIGURED',
-      requestId,
-    });
-  }
-  const adminClient = createServerClient(supabaseUrl, adminKey);
   const { data: ownerRow } = await adminClient
     .from('profiles' as never)
     .select('user_id')
@@ -2991,6 +3026,20 @@ export async function handleRequest(
 
   if (url.pathname === '/api/resume/extract' && request.method === 'POST') {
     return handleResumeExtract(request, origin, env, id);
+  }
+
+  const publicProfileMatch = url.pathname.match(/^\/api\/public\/profile\/([^/]+)$/);
+  if (publicProfileMatch && request.method === 'GET') {
+    let username: string;
+    try {
+      username = decodeURIComponent(publicProfileMatch[1]);
+    } catch {
+      return json({ error: 'Profile not found' }, 404, origin, env, {
+        code: 'PROFILE_NOT_FOUND',
+        requestId: id || undefined,
+      });
+    }
+    return handlePublicProfile(username, origin, env, id);
   }
 
   if (url.pathname === '/api/recruiter/config' && request.method === 'GET') {

@@ -1,17 +1,22 @@
-name = "career-profile-platform"
+name = "careerprofilego"
 main = "./src/workers/worker.ts"
 compatibility_date = "2026-09-20"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENVIRONMENT = "production"
-# Public, non-secret runtime values. The publishable (anon) key is designed
-# to be public — it ships inside the client bundle — and RLS enforces all
-# authorization server-side. Supplying them as Worker vars lets server routes
-# (recruiter ask profile lookup, SSR meta) reach the anon-readable view.
+# Public, non-secret runtime values. The publishable key ships inside the
+# client bundle and is used for authenticated browser/RLS flows. Public
+# portfolio projections are served by the Worker with SUPABASE_SECRET_KEY;
+# that server secret is configured at deploy time and never committed.
 VITE_SUPABASE_URL = "https://yxrbytzhiilnzlamqpqz.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_MP5rlIreXdLslDRO52Vr2g_5cVnG076"
 SUPABASE_URL = "https://yxrbytzhiilnzlamqpqz.supabase.co"
+
+# Deployment must fail closed if the core server boundary is missing.
+# Optional feature-provider secrets remain feature-gated and are not listed here.
+[secrets]
+required = ["SUPABASE_SECRET_KEY", "RATE_LIMIT_KEY_SECRET"]
 
 [previews.vars]
 ENVIRONMENT = "preview"
@@ -20,7 +25,7 @@ ENVIRONMENT = "preview"
 directory = "./dist/assets"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-  run_worker_first = ["/api/*", "/", "/pricing", "/u/*", "/sitemap.xml", "/robots.txt"]
+  run_worker_first = ["/api/*", "/", "/pricing", "/privacy", "/terms", "/refund-policy", "/contact", "/u/*", "/sitemap.xml", "/robots.txt"]
 
 # Native Cloudflare Rate Limiting binding (Worker-side).
 # Applied to recruiter AI / public API routes; not a product quota.

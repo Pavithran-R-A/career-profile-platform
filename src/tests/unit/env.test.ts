@@ -30,7 +30,11 @@ describe('validateServerEnv', () => {
     expect(validateServerEnv({})).toBeDefined();
   });
 
-  it('accepts service role key', () => {
+  it('accepts preferred Supabase secret key', () => {
+    expect(validateServerEnv({ SUPABASE_SECRET_KEY: 'sb_secret_test' })).toBeDefined();
+  });
+
+  it('accepts legacy service role key', () => {
     expect(validateServerEnv({ SUPABASE_SERVICE_ROLE_KEY: 'service-key' })).toBeDefined();
   });
 });

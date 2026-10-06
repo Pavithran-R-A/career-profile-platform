@@ -1,76 +1,170 @@
-# Production Deployment
+# CareerProfile Go Production Deployment
 
-How the app ships to Cloudflare Workers, and how the stable preview is updated in place.
+This runbook describes the production release path for CareerProfile Go on Cloudflare Workers.
 
-## Architecture
+## Verified build layout
 
-- `pnpm build` runs `tsc -b && vite build`. The Cloudflare Vite plugin produces:
-  - `dist/client/` — static SPA (`index.html` + `assets/`)
-  - `dist/career_profile_platform/` — bundled worker (`index.js`) plus a generated `wrangler.json` that merges the repo `wrangler.toml` (assets dir `../client`, `run_worker_first`, rate-limit bindings).
-- The worker (`src/workers/worker.ts` + `src/workers/handler.ts`) serves the assets with `not_found_handling = "single-page-app"` and runs before static serving for (see `wrangler.toml`):
-  - `/api/*` — JSON API (auth helpers, billing, domains, resume, recruiter AI) with error sanitizer + `X-Request-Id`
-  - `/` and `/pricing` — SEO meta injection (canonical, OG, Twitter) with absolute URLs
-  - `/u/*` — published-profile meta + ProfilePage JSON-LD, or noindex for unpublished/unknown
-  - `/sitemap.xml` — public pages + published profiles (publishable key only)
-  - `/robots.txt` — allow public, disallow app routes, absolute sitemap ref
-- Recruiter AI is protected by the native Cloudflare rate-limit binding `RECRUITER_RATE_LIMITER` (30 requests / 60 s; configured in `wrangler.toml`, namespace `1001`). Keys are HMAC(RATE_LIMIT_KEY_SECRET, username|ip|rotatingMinute) — raw IPs are never stored or logged. Without `RATE_LIMIT_KEY_SECRET` the documented fallback keys on profile identity + rotating period (coarser under shared NAT, still profile-specific). It is a transport guard, not a product quota.
+`pnpm build` runs `tsc -b && vite build`. The current release pipeline verifies these outputs:
 
-## Environment variables
+- `dist/client/` — the static React application and lazy-loaded route assets.
+- `dist/careerprofilego/` — the bundled Cloudflare Worker.
+- `dist/careerprofilego/wrangler.json` — the generated deploy configuration. This is the canonical Cloudflare deploy config.
 
-Full reference: `.env.example`. Resolution in the worker (`getEnvValue`) falls back from each key to its `VITE_`-prefixed name, so one `.env.local` works for the client build and the worker.
+Do not deploy the root `wrangler.toml` directly. The Cloudflare Vite plugin generates the production asset paths and merged Worker configuration in `dist/careerprofilego/wrangler.json`.
 
-| Key                                                                                                                                     | Needed for                                | Required                                                                                                                                                                                                                                                                                     |
-| --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`                                                                                    | everything (client + worker public reads) | yes                                                                                                                                                                                                                                                                                          |
-| `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`)                                                                                  | service-role operations                   | no in beta                                                                                                                                                                                                                                                                                   |
-| `BHARATCODE_API_KEY`                                                                                                                    | CV extraction + recruiter AI              | no — routes answer 503 `AI extraction is not configured` until set                                                                                                                                                                                                                           |
-| `RAZORPAY_*`                                                                                                                            | billing                                   | no — billing shows a truthful disabled state                                                                                                                                                                                                                                                 |
-| `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_STATE_SECRET`, `GITHUB_APP_SLUG` | GitHub integration (Flow A)               | no — ALL SIX are required for the Install flow; a partial set truthfully reports "not configured" and the dashboard shows no Install button. `GITHUB_STATE_SECRET` is an independent secret (never derived from the client secret). No webhook endpoint exists, so no webhook secret is used |     | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID` | custom domains (Workers for SaaS) | no — disabled |
-| `BILLING_ENABLED`, `DOMAINS_ENABLED`, `RECRUITER_AI_ENABLED`                                                                            | optional external features                | explicit opt-in: missing/false = disabled in EVERY environment (including production). Set true only after the corresponding credentials are ready                                                                                                                                           |
-| `DOTCV_*`                                                                                                                               | `.cv` domain provider                     | no — off by default                                                                                                                                                                                                                                                                          |
-| `ENVIRONMENT`                                                                                                                           | worker behavior                           | set in `wrangler.toml` (`production` / `preview` via `[previews.vars]`)                                                                                                                                                                                                                      |
+The Worker runs before static assets for:
 
-Secrets are never written into `dist/`; only `VITE_`-prefixed values are visible to browser code.
+- `/api/*`
+- `/`
+- `/pricing`
+- `/privacy`
+- `/terms`
+- `/refund-policy`
+- `/contact`
+- `/u/*`
+- `/sitemap.xml`
+- `/robots.txt`
 
-## Local development
+This allows server-visible SEO metadata and security headers to be applied consistently.
 
-- `pnpm dev` — Vite dev server; the Cloudflare plugin runs the worker locally, so API routes and server-rendered metadata behave like production (port 5173, strict).
-- `pnpm preview` (or `pnpm exec vite preview --port 4173`) — serves the production build with the worker; this is what the E2E suite runs against.
-- Local worker env: the plugin copies `.env.local` into `dist/career_profile_platform/.dev.vars` at build time.
+## Release gates already enforced by CI
 
-## Stable preview (in-place update)
+The pull-request pipeline must pass all of these on the exact candidate SHA:
 
-Stable URL: <https://core-qualification-career-profile-platform.memrae-staging.workers.dev>
+- production dependency audit at `high` severity
+- Prettier format check
+- ESLint
+- TypeScript typecheck
+- unit tests
+- production build
+- bundle budget
+- Playwright desktop and mobile E2E
 
-This is a **named preview deployment** (`core-qualification`) of the worker
-`career-profile-platform` on the account subdomain `memrae-staging`
-(`wrangler preview`, open beta). Re-deploying with the same name keeps the URL
-unchanged — do not create a new preview name.
+The release branch contains the applied Supabase launch-hardening migrations. The former public-view exception has been retired; see `docs/SECURITY_EXCEPTIONS.md`.
+
+## Environment contract
+
+Start from `.env.example`.
+
+### Required base application values
+
+| Variable                        | Purpose                                                                       |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`             | Browser and Worker public Supabase URL                                        |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser-safe publishable key                                                  |
+| `SUPABASE_SECRET_KEY`           | Server-only privileged operations; preferred over the legacy service-role key |
+| `RATE_LIMIT_KEY_SECRET`         | Stable HMAC secret for recruiter anti-abuse keys                              |
+| `ALLOWED_ORIGINS`               | Comma-separated production origins accepted by CORS                           |
+| `VITE_SUPPORT_EMAIL`            | Public support/privacy/billing contact shown on launch pages                  |
+
+`VITE_SUPPORT_PHONE`, `VITE_OPERATOR_NAME`, and `VITE_OPERATOR_ADDRESS` are optional public contact fields.
+
+### Optional product integrations
+
+Optional external features are explicit opt-ins. Missing or false flags stay disabled even in production.
+
+| Feature        | Enable flag                            | Credentials required before enabling                                                                                                    |
+| -------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Recruiter AI   | `RECRUITER_AI_ENABLED=true`            | `BHARATCODE_API_KEY`                                                                                                                    |
+| Billing        | `BILLING_ENABLED=true`                 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`                                                                     |
+| GitHub App     | configured automatically when complete | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_STATE_SECRET`, `GITHUB_APP_SLUG` |
+| Custom domains | `DOMAINS_ENABLED=true`                 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ZONE_ID`, `PLATFORM_PROFILE_ORIGIN`                                        |
+| .cv provider   | `DOTCV_ENABLED=true`                   | provider URL/key; purchases additionally require `DOTCV_PURCHASE_ENABLED=true`                                                          |
+
+Never enable a feature flag before its full credential set is present and verified.
+
+## Secret handling
+
+- Never commit `.env.local`, private keys, API secrets, or service-role credentials.
+- Only `VITE_*` values are intentionally visible to browser code.
+- `SUPABASE_SECRET_KEY`, Razorpay secrets, GitHub private keys/secrets, Cloudflare tokens, AI keys, and rate-limit secrets are server-only.
+- Rotate a secret immediately if it appears in a commit, issue, log, screenshot, or public chat.
+
+## Pre-domain production preparation
+
+These steps can be completed before selecting the final public domain:
+
+1. Confirm the release PR is green on its exact head SHA.
+2. Confirm the Supabase project is healthy and all checked-in migrations are applied.
+3. Configure `SUPABASE_SECRET_KEY` on the production Worker. The release Worker requires it for server-only public-profile, sitemap, SEO, recruiter, deletion, billing, GitHub, and domain operations.
+4. Confirm `20261004170512_server_only_public_views.sql` is applied and the Supabase advisor has no `security_definer_view` findings.
+5. Configure a strong Supabase Auth password policy in Authentication settings.
+6. Configure production SMTP before relying on auth email delivery at public scale.
+7. Create/verify external provider credentials for only the features intended at launch.
+8. Leave feature flags false for integrations that are not fully configured.
+9. Prepare Cloudflare Worker secrets/vars without committing them.
+
+Supabase leaked-password protection is a paid-plan feature. If the project remains on a plan that does not provide it, the advisor warning is expected; do not fake or suppress the finding.
+
+## Domain-dependent final stage
+
+Domain selection is intentionally last. After the production domain is chosen:
+
+1. Set `ALLOWED_ORIGINS` to the exact HTTPS production origin(s).
+2. Set `VITE_SUPPORT_EMAIL` to the final public support address and rebuild.
+3. Set `PLATFORM_PROFILE_ORIGIN` and `PUBLIC_BASE_HOST` if platform/custom profile domains are enabled.
+4. Set the Supabase Auth Site URL to the final production origin.
+5. Add only the required Supabase redirect URLs for:
+   - auth callback
+   - email verification
+   - password reset
+   - GitHub callback, if the GitHub App launches
+6. Update the GitHub App homepage/callback URLs if GitHub integration launches.
+7. Configure Cloudflare DNS/routes/custom hostnames.
+8. Rebuild after all `VITE_*` public values are final.
+9. Deploy the final-domain build.
+10. Re-run `GET /api/public/profile/<published-username>` and the public `/u/<username>` page.
+11. Re-run the Supabase security advisors; no `security_definer_view` findings should return.
+12. Run the remaining live smoke checks below.
+
+## Build and deploy
+
+With the final production environment available locally to Wrangler:
 
 ```bash
+pnpm install --frozen-lockfile
 pnpm build
-npx wrangler preview \
-  --name core-qualification \
-  --worker-name career-profile-platform \
-  --config dist/career_profile_platform/wrangler.json \
+npx wrangler deploy \
+  --config dist/careerprofilego/wrangler.json \
   --secrets-file .env.local \
-  --message "<what changed>"
+  --message "CareerProfile Go production release"
 ```
 
-- `--secrets-file .env.local` is required: the preview has no base-config secrets, so every deployment must carry the keys again (uploads are additive; omitted secrets are preserved).
-- The generated `dist/career_profile_platform/wrangler.json` is the canonical deploy config (assets `../client`, SPA fallback, `run_worker_first`, rate limits). Do not deploy the root `wrangler.toml` directly — its `assets.directory` is overridden by the plugin output.
-- Production URL (separate from the preview): `career-profile-platform.memrae-staging.workers.dev`, via
-  `npx wrangler deploy -c dist/career_profile_platform/wrangler.json --secrets-file .env.local`.
+The Worker name comes from the generated configuration and release `wrangler.toml` (`careerprofilego`). Avoid overriding it with the legacy `career-profile-platform` name.
 
-## Post-deploy verification
+## Post-deploy smoke checks
 
-1. `GET /` — 200; correct `<title>`; SSR meta present (`og:title`, `og:image` with absolute URL, canonical).
-2. `GET /robots.txt`, `GET /sitemap.xml` — 200, absolute URLs on the deployed origin.
-3. `GET /u/<published-username>` — 200 + ProfilePage JSON-LD; unknown username → `noindex` + 404-style meta.
-4. `POST /api/recruiter/ask` — 401 `UNAUTHORIZED` without a session; 429 `TOO_MANY_REQUESTS` past 30 calls/min per IP (anti-abuse limiter, includes `Retry-After`) and 429 `RATE_LIMITED` when the profile owner's daily plan quota is exhausted; 503 `AI_NOT_CONFIGURED` while no AI key is set.
-5. Locally: `pnpm test:e2e` (Playwright + system Chrome, desktop + Pixel 7) and the full unit gate `npx vitest run --maxWorkers=2`.
+Verify against the actual production origin:
+
+1. `GET /` returns 200 with the CareerProfile Go title, canonical, Organization/WebSite JSON-LD, absolute Open Graph image, CSP, `nosniff`, frame denial, referrer policy, permissions policy, and HSTS.
+2. `GET /og-cover.png` returns the generated 1200×630 CareerProfile Go social image.
+3. `GET /privacy`, `/terms`, `/refund-policy`, and `/contact` return 200 with correct canonicals.
+4. `GET /robots.txt` and `GET /sitemap.xml` return 200 with the production origin.
+5. A published `/u/<username>` returns public profile metadata; an unknown/unpublished username returns noindex metadata.
+6. Anonymous database/API access cannot read private base tables.
+7. `POST /api/recruiter/ask` rejects unauthenticated access and respects both anti-abuse and plan quotas when enabled.
+8. Signup, verification, login, forgot-password, reset-password, logout, and account deletion are exercised with a real inbox.
+9. If GitHub is enabled, complete a real install/callback/sync/disconnect flow.
+10. If billing is enabled, complete Razorpay test-mode checkout/webhook verification before any live-mode transaction.
+11. If domains are enabled, validate hostname ownership/provisioning with a non-critical test hostname first.
 
 ## Rollback
 
-- Production: `npx wrangler deployments list --name career-profile-platform`, then `npx wrangler deployments rollback` (or redeploy a previous `dist/`).
-- Preview: redeploy the previous `dist/career_profile_platform` + `dist/client` with the same `--name core-qualification`; the URL stays constant.
+For the CareerProfile Go Worker:
+
+```bash
+npx wrangler deployments list --name careerprofilego
+npx wrangler deployments rollback --name careerprofilego
+```
+
+If a rollback is caused by a database migration, do not blindly reverse production data changes. First classify whether the application can be rolled back while keeping the forward-compatible schema.
+
+## Release rule
+
+Do not merge the release PR or point the final domain at CareerProfile Go until:
+
+- the exact head SHA is green;
+- required provider credentials are configured;
+- production Auth/SMTP settings are verified;
+- the final domain-dependent values are set;
+- live post-deploy smoke checks pass.
