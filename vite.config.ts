@@ -33,9 +33,8 @@ export default defineConfig({
     // `pnpm test:integration` (vitest.integration.config.ts).
     exclude: ['src/tests/integration/**'],
     globals: true,
-    // Vitest 5 supports fsModuleCache under test config. The runtime and official
-    // docs expose it, while the 5.0.1 bundled type used here omits the property.
-    // @ts-expect-error -- Vitest 5.0.1 type gap; supported runtime option.
+    // Cache transformed modules on disk to reduce repeated work under the bounded
+    // two-worker CI test pool.
     fsModuleCache: true,
   },
 });
