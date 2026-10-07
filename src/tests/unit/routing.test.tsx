@@ -119,48 +119,59 @@ function renderAt(path: string) {
 
 describe('production routes (actual AppRoutes)', () => {
   // React.lazy chunks can take >1s to resolve under full-suite parallel load;
-  // give findBy* a bounded 10s window instead of testing-library's 1s default.
+  // give every findBy* query a bounded 20s window (matching the test-level
+  // timeout) so a slow chunk cannot flake, and cap the test itself at 20s.
   it('/dashboard/resume/ats renders the ATS builder', { timeout: 20_000 }, async () => {
     renderAt('/dashboard/resume/ats');
-    expect(await screen.findByText('ATS resume', {}, { timeout: 10_000 })).toBeInTheDocument();
+    expect(await screen.findByText('ATS resume', {}, { timeout: 20_000 })).toBeInTheDocument();
     // deterministic inclusion summary with truthful counts (mock profile is empty)
     expect(await screen.findByText(/Included:/)).toBeInTheDocument();
     expect(screen.getByText(/0 roles/)).toBeInTheDocument();
   });
 
-  it('/dashboard/resume/tailor renders JobTailoring', async () => {
+  it('/dashboard/resume/tailor renders JobTailoring', { timeout: 20_000 }, async () => {
     renderAt('/dashboard/resume/tailor');
-    expect(await screen.findByText('Job tailoring')).toBeInTheDocument();
+    expect(await screen.findByText('Job tailoring', {}, { timeout: 20_000 })).toBeInTheDocument();
     // workflow input stage (deterministic requirement analysis, no fake score)
-    expect(screen.getByText('Paste the job description')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Paste the job description', {}, { timeout: 20_000 })
+    ).toBeInTheDocument();
   });
 
   it('/dashboard/preview renders the owner preview', async () => {
     renderAt('/dashboard/preview');
-    expect((await screen.findAllByText('Preview')).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/Published|Draft/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Preview', {}, { timeout: 20_000 })).length).toBeGreaterThan(
+      0
+    );
+    expect(
+      (await screen.findAllByText(/Published|Draft/, {}, { timeout: 20_000 })).length
+    ).toBeGreaterThan(0);
   });
 
   it('/u/published-user renders the public profile', async () => {
     renderAt('/u/published-user');
-    expect(await screen.findByText('Published User')).toBeInTheDocument();
-    expect(await screen.findByText('Hello world')).toBeInTheDocument();
+    expect(await screen.findByText('Published User', {}, { timeout: 20_000 })).toBeInTheDocument();
+    expect(await screen.findByText('Hello world', {}, { timeout: 20_000 })).toBeInTheDocument();
   });
 
   it('/u/draft-user is unavailable', async () => {
     renderAt('/u/draft-user');
-    expect(await screen.findByRole('heading', { name: 'Profile not found' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Profile not found' }, { timeout: 20_000 })
+    ).toBeInTheDocument();
   });
 
   it('/dashboard/ats redirects to the canonical ATS route', async () => {
     renderAt('/dashboard/ats');
-    expect(await screen.findByText('ATS resume')).toBeInTheDocument();
+    expect(await screen.findByText('ATS resume', {}, { timeout: 20_000 })).toBeInTheDocument();
   });
 
   it('unknown routes render the 404 page', async () => {
     renderAt('/definitely-not-a-route');
     // 404 is now route-level lazy; wait for the chunk to resolve.
-    expect(await screen.findByRole('heading', { name: '404' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '404' }, { timeout: 20_000 })
+    ).toBeInTheDocument();
   });
 });
 
@@ -184,11 +195,27 @@ describe('dashboard discoverability (actual Dashboard)', () => {
     { timeout: 20_000 },
     async () => {
       renderAt('/dashboard');
-      const ats = await screen.findByRole('link', { name: /ATS resume/i });
-      const tailor = await screen.findByRole('link', { name: /Job tailoring/i });
-      const preview = await screen.findByRole('link', { name: /Preview portfolio/i });
-      const profile = await screen.findByRole('link', { name: /Edit profile/i });
-      const resume = await screen.findByRole('link', { name: /Import resume/i });
+      const ats = await screen.findByRole('link', { name: /ATS resume/i }, { timeout: 20_000 });
+      const tailor = await screen.findByRole(
+        'link',
+        { name: /Job tailoring/i },
+        { timeout: 20_000 }
+      );
+      const preview = await screen.findByRole(
+        'link',
+        { name: /Preview portfolio/i },
+        { timeout: 20_000 }
+      );
+      const profile = await screen.findByRole(
+        'link',
+        { name: /Edit profile/i },
+        { timeout: 20_000 }
+      );
+      const resume = await screen.findByRole(
+        'link',
+        { name: /Import resume/i },
+        { timeout: 20_000 }
+      );
       expect(ats).toHaveAttribute('href', '/dashboard/resume/ats');
       expect(tailor).toHaveAttribute('href', '/dashboard/resume/tailor');
       expect(preview).toHaveAttribute('href', '/dashboard/preview');

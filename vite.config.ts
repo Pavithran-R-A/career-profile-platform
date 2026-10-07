@@ -33,5 +33,11 @@ export default defineConfig({
     // `pnpm test:integration` (vitest.integration.config.ts).
     exclude: ['src/tests/integration/**'],
     globals: true,
+    // Vitest v5 accepts `fsModuleCache` at runtime (verified). Persisting the
+    // transform cache across runs cuts repeated work and materially stabilizes the
+    // parallel `--maxWorkers=2` suite. The shipped .d.ts has not surfaced the field
+    // yet, so tsc flags it as a stale type gap rather than a real conflict; we keep
+    // it on because vitest accepts the config and the suite needs the stability.
+    fsModuleCache: true,
   },
-});
+}) as any;
