@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 // E2E runs against a local production build (vite preview). Point
 // E2E_BASE_URL at a deployed preview to test that instead.
-const baseURL = process.env.E2E_BASE_URL || 'http://localhost:4173';
+const remoteBaseURL = process.env.E2E_BASE_URL?.trim();
+const baseURL = remoteBaseURL || 'http://localhost:4173';
 
 export default defineConfig({
   testDir: './e2e',
@@ -23,10 +24,12 @@ export default defineConfig({
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
   ],
-  webServer: {
-    command: 'pnpm exec vite preview --port 4173 --strictPort',
-    url: 'http://localhost:4173',
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: remoteBaseURL
+    ? undefined
+    : {
+        command: 'pnpm exec vite preview --port 4173 --strictPort',
+        url: 'http://localhost:4173',
+        reuseExistingServer: true,
+        timeout: 120_000,
+      },
 });

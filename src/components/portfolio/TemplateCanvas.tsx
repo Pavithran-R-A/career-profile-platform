@@ -39,6 +39,7 @@ export function TemplateCanvas({
       aria-label={label ?? `${template.metadata.name} portfolio preview`}>
       <div
         aria-hidden="true"
+        inert
         className="absolute top-0 left-0"
         style={{
           width: `${100 / scale}%`,
