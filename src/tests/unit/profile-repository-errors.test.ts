@@ -169,6 +169,23 @@ describe('createProfileWithBasics (atomic onboarding)', () => {
     expect(id).toBeNull();
   });
 
+  it('treats the unique-index collision as a taken username under owner RLS', async () => {
+    fakeClient.rpc.mockResolvedValue({
+      data: null,
+      error: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    });
+    const repo = new ProfileRepository();
+    const result = await repo.createProfileWithBasics({
+      userId: 'user-2',
+      username: 'taken',
+      displayName: 'Example',
+      headline: '',
+      about: '',
+      location: '',
+    });
+    expect(result).toBeNull();
+  });
+
   it('throws customer-safe on RPC failure', async () => {
     fakeClient.rpc.mockResolvedValue({
       data: null,
