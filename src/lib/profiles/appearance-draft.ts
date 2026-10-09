@@ -151,9 +151,27 @@ export function resetToSaved(state: AppearanceState): AppearanceState {
   return {
     ...state,
     current: state.saved,
-    status: state.dirty ? state.status : state.status,
+    status: 'saved',
     dirty: false,
   };
+}
+
+/**
+ * Reconcile an async save with edits made while the request was in flight.
+ * The server's successful snapshot advances, but a newer local draft must
+ * never be replaced by the older saved copy.
+ */
+export function mergeAppearanceSaveResult(
+  latest: AppearanceState,
+  result: AppearanceState
+): AppearanceState {
+  if (result.status === 'error') {
+    return { ...latest, status: 'error' };
+  }
+  return withCurrent(
+    { ...latest, saved: result.saved, status: 'saved' },
+    latest.current
+  );
 }
 
 /**
