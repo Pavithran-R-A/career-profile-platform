@@ -14,7 +14,7 @@ async function login(page: Page) {
   await page.getByLabel('Email').fill(email!);
   await page.getByLabel('Password', { exact: true }).fill(password!);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(/\\/(?:dashboard|onboarding)(?:\\/|$)/, { timeout: 30_000 });
+  await expect(page).toHaveURL(new RegExp('/(?:dashboard|onboarding)(?:/|$)'), { timeout: 30_000 });
 }
 
 test.describe('real disposable-account product journeys', () => {
@@ -71,11 +71,11 @@ test.describe('real disposable-account product journeys', () => {
     const downloadPromise = page.waitForEvent('download', { timeout: 90_000 });
     await page.getByRole('button', { name: 'Export PDF' }).click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/\\.pdf$/);
+    expect(download.suggestedFilename().endsWith('.pdf')).toBe(true);
     const source = readFileSync(await download.path());
     expect(source.subarray(0, 5).toString('utf8')).toBe('%PDF-');
     const copy = new Uint8Array(source);
-    const pdf = await extractTextFromPDF(copy.buffer);
+    const pdf = await extractTextFromPDF(copy.buffer as ArrayBuffer);
     expect(pdf.text).toContain('QA Disposable 1');
     expect(pdf.text).toContain('QA Verified Profile Engineer');
     expect(pdf.pageCount).toBeGreaterThanOrEqual(1);
@@ -87,7 +87,7 @@ test.describe('real disposable-account product journeys', () => {
     await page.goto('/dashboard/resume/tailor');
     await expect(page.getByRole('heading', { name: 'Job tailoring' })).toBeVisible();
     await page.getByLabel('Job description').fill(
-      'Software QA Engineer at Example Studio.\\nRequired skills and experience:\\n- TypeScript\\n- Automated regression testing\\n- PostgreSQL\\n- Writing maintainable automated tests'
+      ['Software QA Engineer at Example Studio.', 'Required skills and experience:', '- TypeScript', '- Automated regression testing', '- PostgreSQL', '- Writing maintainable automated tests'].join('\n')
     );
     await page.getByRole('button', { name: 'Analyze requirements' }).click();
     await expect(page.getByText('Analysis complete')).toBeVisible();
