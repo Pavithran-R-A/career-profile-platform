@@ -11,6 +11,7 @@ import {
   setSectionHidden,
   resetToSaved,
   saveAppearance,
+  mergeAppearanceSaveResult,
   type AppearanceState,
 } from '../lib/profiles/appearance-draft';
 import { getTemplate } from '../lib/templates/types';
@@ -27,6 +28,7 @@ export default function AppearanceEditor() {
   const [appearance, setAppearance] = useState<AppearanceState | null>(null);
   const [loading, setLoading] = useState(true);
   const saveTimer = useRef<number | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
   // Module-singleton ProfileService would remount loops; construct once.
   const profileServiceRef = useRef<ProfileService | null>(null);
@@ -63,15 +65,32 @@ export default function AppearanceEditor() {
     }
   }, [auth, loading, navigate]);
 
-  // Debounced autosave: every draft change persists shortly after; the
-  // preview updates instantly from draft state, never waiting for the wire.
-  const queueSave = useCallback((state: AppearanceState) => {
-    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => {
-      saveTimer.current = null;
-      void saveAppearance(state).then(setAppearance);
-    }, 600);
+  // Serialize network writes so an older request cannot overwrite a newer
+  // preference snapshot, then reconcile each response with the latest draft.
+  const enqueueSave = useCallback((state: AppearanceState) => {
+    saveQueue.current = saveQueue.current
+      .catch(() => {})
+      .then(async () => {
+        try {
+          const result = await saveAppearance(state);
+          setAppearance((latest) => (latest ? mergeAppearanceSaveResult(latest, result) : latest));
+        } catch {
+          setAppearance((latest) => (latest ? { ...latest, status: 'error' } : latest));
+        }
+      });
   }, []);
+
+  // Debounced autosave: the preview updates synchronously; persistence follows.
+  const queueSave = useCallback(
+    (state: AppearanceState) => {
+      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+      saveTimer.current = window.setTimeout(() => {
+        saveTimer.current = null;
+        enqueueSave(state);
+      }, 600);
+    },
+    [enqueueSave]
+  );
 
   useEffect(
     () => () => {
@@ -138,7 +157,7 @@ export default function AppearanceEditor() {
       window.clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
-    void saveAppearance(appearance).then(setAppearance);
+    enqueueSave(appearance);
   };
 
   return (
