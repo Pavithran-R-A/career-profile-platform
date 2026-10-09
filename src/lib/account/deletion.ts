@@ -27,12 +27,14 @@
  */
 export function isOwnDeletionEmail(expectedEmail: string | null, inputEmail: string): boolean {
   return Boolean(
-    expectedEmail &&
-      expectedEmail.trim().toLowerCase() === inputEmail.trim().toLowerCase()
+    expectedEmail && expectedEmail.trim().toLowerCase() === inputEmail.trim().toLowerCase()
   );
 }
 
-export function isOwnDeletionUser(expectedUserId: string, reauthedUserId: string | undefined): boolean {
+export function isOwnDeletionUser(
+  expectedUserId: string,
+  reauthedUserId: string | undefined
+): boolean {
   return Boolean(reauthedUserId && expectedUserId === reauthedUserId);
 }
 
