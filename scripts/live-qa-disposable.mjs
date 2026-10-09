@@ -17,7 +17,8 @@ function readLocalConfig(file) {
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))
-    ) value = value.slice(1, -1);
+    )
+      value = value.slice(1, -1);
     entries[line.slice(0, pos).trim()] = value;
   }
   return entries;
@@ -29,7 +30,9 @@ let admin;
 let success = false;
 const publicOrigin = 'https://careerprofilego.memrae-staging.workers.dev';
 
-function fail(reason) { throw new Error(reason); }
+function fail(reason) {
+  throw new Error(reason);
+}
 
 async function run() {
   const ignored = spawnSync('git', ['check-ignore', '-q', '.wrangler-secrets.local']);
@@ -45,13 +48,17 @@ async function run() {
     fail('Supabase URL does not match the intended QA project.');
   }
   const gitSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  const remoteSha = execFileSync('git', ['rev-parse', 'origin/master'], { encoding: 'utf8' }).trim();
+  const remoteSha = execFileSync('git', ['rev-parse', 'origin/master'], {
+    encoding: 'utf8',
+  }).trim();
   if (gitSha !== remoteSha) fail('Refusing QA on a commit different from origin/master.');
   const health = await fetch(publicOrigin + '/api/health');
   if (!health.ok) fail('Deployed Worker health check failed.');
   const { buildSha } = await health.json();
   if (buildSha !== gitSha) {
-    fail('The deployed Worker does not match git HEAD. Deploy the exact SHA before creating QA users.');
+    fail(
+      'The deployed Worker does not match git HEAD. Deploy the exact SHA before creating QA users.'
+    );
   }
 
   admin = createClient(url, secrets.SUPABASE_SECRET_KEY, {
@@ -64,16 +71,23 @@ async function run() {
     const email = `cpg-qa-${suffix}-${num}@example.test`;
     const password = 'Qa1!' + randomBytes(24).toString('base64url');
     const { data, error } = await admin.auth.admin.createUser({
-      email, password, email_confirm: true,
+      email,
+      password,
+      email_confirm: true,
       app_metadata: { qa_disposable: true },
     });
     if (error || !data.user?.id) fail('Could not create disposable Supabase QA user.');
     const id = data.user.id;
     users.push({ id, email, password });
-    writeFileSync(auditFile, JSON.stringify({
-      notice: 'Temporary QA accounts created by scripts/live-qa-disposable.mjs; never delete other users',
-      ids: users.map((u) => u.id),
-    }), { mode: 0o600 });
+    writeFileSync(
+      auditFile,
+      JSON.stringify({
+        notice:
+          'Temporary QA accounts created by scripts/live-qa-disposable.mjs; never delete other users',
+        ids: users.map((u) => u.id),
+      }),
+      { mode: 0o600 }
+    );
 
     const client = createClient(url, pubKey, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -84,8 +98,11 @@ async function run() {
     const { data: profileId, error: profileError } = await client.rpc(
       'create_profile_with_basics',
       {
-        p_user_id: id, p_username: username, p_display_name: `QA Disposable ${num}`,
-        p_headline: 'Temporary QA fixture', p_about: 'Disposable testing profile',
+        p_user_id: id,
+        p_username: username,
+        p_display_name: `QA Disposable ${num}`,
+        p_headline: 'Temporary QA fixture',
+        p_about: 'Disposable testing profile',
         p_location: 'Test only',
       }
     );
@@ -97,24 +114,31 @@ async function run() {
 
   // Actual authenticated RLS: user 2 must be unable to read or modify user 1.
   const { data: visible, error: readError } = await clients[1]
-    .from('profiles').select('id').eq('id', profiles[0].id);
-  if (readError || (visible?.length ?? 0) !== 0) fail('Cross-user private profile read was not isolated.');
+    .from('profiles')
+    .select('id')
+    .eq('id', profiles[0].id);
+  if (readError || (visible?.length ?? 0) !== 0)
+    fail('Cross-user private profile read was not isolated.');
   const { data: modified, error: updateError } = await clients[1]
-    .from('profiles').update({ headline: 'UNAUTHORIZED' })
-    .eq('id', profiles[0].id).select('id');
+    .from('profiles')
+    .update({ headline: 'UNAUTHORIZED' })
+    .eq('id', profiles[0].id)
+    .select('id');
   if (updateError || (modified?.length ?? 0) !== 0) {
     fail('Cross-user profile update was not isolated.');
   }
   console.log('Authenticated two-user RLS isolation: PASS.');
 
   // Publish, fetch through the REAL Worker, then unpublish.
-  const { error: publishError } = await clients[0].from('profiles')
+  const { error: publishError } = await clients[0]
+    .from('profiles')
     .update({ visibility: 'published', published_at: new Date().toISOString() })
     .eq('id', profiles[0].id);
   if (publishError) fail('Profile publication via owner session failed.');
   const published = await fetch(publicOrigin + '/api/public/profile/' + profiles[0].username);
   if (published.status !== 200) fail('Newly published QA profile is not publicly accessible.');
-  const { error: unpublishError } = await clients[0].from('profiles')
+  const { error: unpublishError } = await clients[0]
+    .from('profiles')
     .update({ visibility: 'draft', published_at: null })
     .eq('id', profiles[0].id);
   if (unpublishError) fail('Profile unpublication via owner session failed.');
@@ -123,9 +147,13 @@ async function run() {
   console.log('Real Worker publication/unpublication: PASS.');
 
   const env = {
-    ...process.env, E2E_BASE_URL: publicOrigin, E2E_EXPECT_SHA: gitSha,
-    E2E_QA_EMAIL: users[0].email, E2E_QA_PASSWORD: users[0].password,
-    E2E_QA_SECOND_EMAIL: users[1].email, E2E_QA_SECOND_PASSWORD: users[1].password,
+    ...process.env,
+    E2E_BASE_URL: publicOrigin,
+    E2E_EXPECT_SHA: gitSha,
+    E2E_QA_EMAIL: users[0].email,
+    E2E_QA_PASSWORD: users[0].password,
+    E2E_QA_SECOND_EMAIL: users[1].email,
+    E2E_QA_SECOND_PASSWORD: users[1].password,
     E2E_QA_ACCOUNT_DISPOSABLE: 'yes',
   };
   // No privileged key crosses into the browser test subprocess.
@@ -135,7 +163,9 @@ async function run() {
   console.log('Running real deployed-browser tests with private subprocess environment.');
   const processName = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
   const result = spawnSync(processName, ['test:e2e:live'], {
-    env, stdio: 'inherit', shell: process.platform === 'win32',
+    env,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
     timeout: 12 * 60 * 1000,
   });
   if (result.error || result.status !== 0) {
