@@ -1,0 +1,38 @@
+name: One-time QA formatter snapshot
+
+on:
+  push:
+    paths:
+      - '.github/workflows/qa-format-snapshot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Emit formatter output for exactly four non-secret source files
+        run: |
+          pnpm exec prettier --write docs/DEPLOYED_QA.md e2e-live/account-delete.spec.ts scripts/live-qa-disposable.mjs src/workers/handler.ts
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in [
+              "docs/DEPLOYED_QA.md",
+              "e2e-live/account-delete.spec.ts",
+              "scripts/live-qa-disposable.mjs",
+              "src/workers/handler.ts",
+          ]:
+              print(f"%%BEGIN {path}", flush=True)
+              print(Path(path).read_text(), end="", flush=True)
+              print(f"\n%%END {path}", flush=True)
+          PY
