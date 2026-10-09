@@ -65,10 +65,7 @@ export default function AccountDelete() {
     try {
       // Reauthentication changes the active Supabase session. Never allow
       // credentials for another account to redirect the deletion target.
-      if (
-        auth.status !== 'authenticated' ||
-        !isOwnDeletionEmail(auth.user.email, email)
-      ) {
+      if (auth.status !== 'authenticated' || !isOwnDeletionEmail(auth.user.email, email)) {
         setError('Confirm the same email address as your signed-in account.');
         return;
       }
