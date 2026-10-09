@@ -66,6 +66,19 @@ test.describe('visual matrix', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('pricing never promises recruiter AI when the provider is disabled', async ({ page }) => {
+    await page.route('**/api/recruiter/config', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ enabled: false, aiConfigured: false }),
+      });
+    });
+    await page.goto('/pricing');
+    await expect(page.getByRole('heading', { level: 2, name: /free/i })).toBeVisible();
+    await expect(page.getByText(/recruiter AI questions \/ day/i)).toHaveCount(0);
+  });
+
   test('login: form is compact and centered-ish, no overflow', async ({ page }) => {
     await page.goto('/login');
     await expect(page.getByLabel(/email/i)).toBeVisible();
