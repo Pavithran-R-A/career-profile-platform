@@ -27,6 +27,27 @@ test.describe('visual matrix', () => {
     await expectNoHorizontalOverflow(page);
   });
 
+  test('common phone, tablet and laptop widths keep core pages within the viewport', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const widths = [360, 390, 430, 768, 1024, 1280, 1440, 1920];
+    const routes = ['/', '/pricing', '/login', '/signup'];
+
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: width < 768 ? 800 : 900 });
+      for (const route of routes) {
+        await page.goto(route);
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+        if (route === '/pricing') {
+          await expect(page.getByRole('heading', { level: 2, name: /free/i })).toBeVisible();
+          await expect(page.getByRole('heading', { level: 2, name: /pro/i })).toBeVisible();
+        }
+        await expectNoHorizontalOverflow(page);
+      }
+    }
+  });
+
   test('landing: primary CTA and section landmarks render', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('heading', { level: 1 }).waitFor();
