@@ -170,21 +170,23 @@ export default function ATSResumeBuilder() {
     setSelectedProjects(next);
   };
 
+  // Keep the original arrays/indexes stable; exporting the PDF uses those
+  // same indexes. Never destructively filter atsData after clicking Generate.
+  // Derive the preview so later checkbox changes cannot desynchronize it.
+  const previewData: ATSResumeData | null = atsData
+    ? {
+        ...atsData,
+        headline: headlineOverride || atsData.headline,
+        about: aboutOverride || atsData.about,
+        experiences: atsData.experiences.filter((_, i) => selectedExps.has(i)),
+        education: atsData.education.filter((_, i) => selectedEdus.has(i)),
+        skills: atsData.skills.filter((skill) => selectedSkills.has(skill)),
+        projects: atsData.projects.filter((_, i) => selectedProjects.has(i)),
+      }
+    : null;
+
   const handleGenerate = () => {
     if (!atsData) return;
-    setState('generating');
-
-    const filteredData: ATSResumeData = {
-      ...atsData,
-      headline: headlineOverride || atsData.headline,
-      about: aboutOverride || atsData.about,
-      experiences: atsData.experiences.filter((_, i) => selectedExps.has(i)),
-      education: atsData.education.filter((_, i) => selectedEdus.has(i)),
-      skills: atsData.skills.filter((s) => selectedSkills.has(s)),
-      projects: atsData.projects.filter((_, i) => selectedProjects.has(i)),
-    };
-
-    setAtsData(filteredData);
     setState('preview');
     track('ats_generated', { source: 'ats_builder' });
   };
@@ -602,7 +604,7 @@ export default function ATSResumeBuilder() {
                     </span>
                   </div>
                   <ScaledCanvas scale={0.72} height={600} label="ATS resume preview">
-                    <ATSPreview data={atsData} />
+                    <ATSPreview data={previewData ?? atsData} />
                   </ScaledCanvas>
                 </div>
               ) : (
