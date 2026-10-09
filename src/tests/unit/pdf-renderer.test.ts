@@ -70,6 +70,14 @@ describe('PDF renderer (production bytes, shared parseback)', () => {
     expect(text).toContain('TypeScript');
   }, 30_000);
 
+  it('exports readable ATS-friendly ASCII separators rather than mojibake', async () => {
+    const { text } = await parseBack(base);
+    expect(text).toContain('QA Lead - Example Works');
+    expect(text).toContain('2020 - Present');
+    expect(text).toContain('B.Tech in Computer Science - Example University');
+    expect(text).not.toContain('â');
+  }, 30_000);
+
   it('renders sections in ATS reading order with no duplicates', async () => {
     const blob = await generatePDFBlob(base);
     const bytes = new Uint8Array(await blob.arrayBuffer());
