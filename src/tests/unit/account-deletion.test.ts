@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateAuthFreshness,
+  isOwnDeletionEmail,
+  isOwnDeletionUser,
   RECENT_AUTH_WINDOW_S,
   buildDeletionPlan,
   EXPLICIT_TABLES,
@@ -21,6 +23,23 @@ const NOW = 1_800_000_000;
 function claimsFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return { sub: 'user-A', iat: NOW - 30, exp: NOW + 3000, role: 'authenticated', ...overrides };
 }
+
+describe('same-account guard before deleting a user', () => {
+  it('allows a case-insensitive match to the original sign-in email', () => {
+    expect(isOwnDeletionEmail('Original@Example.com', ' original@example.COM ')).toBe(true);
+  });
+
+  it('rejects another account email and missing account email', () => {
+    expect(isOwnDeletionEmail('original@example.com', 'second@example.com')).toBe(false);
+    expect(isOwnDeletionEmail(null, 'second@example.com')).toBe(false);
+  });
+
+  it('rejects authentication that switched to a different user ID', () => {
+    expect(isOwnDeletionUser('user-a', 'user-b')).toBe(false);
+    expect(isOwnDeletionUser('user-a', undefined)).toBe(false);
+    expect(isOwnDeletionUser('user-a', 'user-a')).toBe(true);
+  });
+});
 
 describe('validateAuthFreshness (verified-claims re-auth gate)', () => {
   it('accepts a valid fresh verified claim set', () => {
