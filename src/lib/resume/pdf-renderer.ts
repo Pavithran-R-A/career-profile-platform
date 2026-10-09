@@ -99,12 +99,12 @@ export async function generatePDFBlob(viewModel: ATSResumeViewModel): Promise<Bl
               React.createElement(
                 Text,
                 { key: `exp-title-${i}`, style: styles.entryTitle },
-                `${exp.role} â€” ${exp.company}`
+                `${exp.role} - ${exp.company}`
               ),
               React.createElement(
                 Text,
                 { key: `exp-date-${i}`, style: styles.entryDate },
-                `${exp.endDate ? `${exp.startDate} â€“ ${exp.endDate}` : `${exp.startDate} â€“ Present`}${exp.location ? ` | ${exp.location}` : ''}`
+                `${exp.endDate ? `${exp.startDate} - ${exp.endDate}` : `${exp.startDate} - Present`}${exp.location ? ` | ${exp.location}` : ''}`
               ),
               React.createElement(
                 Text,
@@ -123,12 +123,12 @@ export async function generatePDFBlob(viewModel: ATSResumeViewModel): Promise<Bl
               React.createElement(
                 Text,
                 { key: `edu-title-${i}`, style: styles.entryTitle },
-                `${edu.degree}${edu.field ? ` in ${edu.field}` : ''} â€” ${edu.institution}`
+                `${edu.degree}${edu.field ? ` in ${edu.field}` : ''} - ${edu.institution}`
               ),
               React.createElement(
                 Text,
                 { key: `edu-date-${i}`, style: styles.entryDate },
-                edu.endDate ? `${edu.startDate} â€“ ${edu.endDate}` : `${edu.startDate} â€“ Present`
+                edu.endDate ? `${edu.startDate} - ${edu.endDate}` : `${edu.startDate} - Present`
               ),
             ])
           )
