@@ -274,7 +274,7 @@ async function verifyAuth(
   try {
     const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `***
         apikey: publishableKey,
       },
     });
@@ -1118,7 +1118,7 @@ async function handleResumeExtract(
     // owner, so no service key is required for this endpoint.
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(supabaseUrl, publishableKey, {
-      global: { headers: { Authorization: `Bearer ${auth.token}` } },
+      global: { headers: { Authorization: `*** } },
     });
 
     const { data: sourceRow, error: sourceError } = await supabase
@@ -1710,7 +1710,7 @@ async function handleAccountDelete(
 
     const { createClient } = await import('@supabase/supabase-js');
     const authClient = createClient(supabaseUrl, publishableKey, {
-      global: { headers: { Authorization: `Bearer ${auth.token}` } },
+      global: { headers: { Authorization: `*** } },
     });
 
     const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(auth.token);
@@ -1889,7 +1889,7 @@ async function handleAccountDelete(
     // 404 means a prior attempt already deleted the user: retry succeeded.
     const adminRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${adminKey}`, apikey: adminKey },
+      headers: { Authorization: `*** apikey: adminKey },
     });
 
     if (!adminRes.ok && adminRes.status !== 404) {
@@ -2930,7 +2930,12 @@ export async function handleRequest(
 
   if (url.pathname === '/api/health') {
     return json(
-      { status: 'ok', timestamp: new Date().toISOString(), buildSha: typeof __BUILD_COMMIT_SHA__ === 'undefined' ? 'unavailable' : __BUILD_COMMIT_SHA__ },
+      {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        buildSha:
+          typeof __BUILD_COMMIT_SHA__ === 'undefined' ? 'unavailable' : __BUILD_COMMIT_SHA__,
+      },
       200,
       origin,
       env,
