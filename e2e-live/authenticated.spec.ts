@@ -4,8 +4,7 @@ import { expect, test } from '@playwright/test';
 // This suite deliberately contains no mocked login state or authentication.
 const email = process.env.E2E_QA_EMAIL;
 const password = process.env.E2E_QA_PASSWORD;
-const authorized =
-  process.env.E2E_QA_ACCOUNT_DISPOSABLE === 'yes' && Boolean(email && password);
+const authorized = process.env.E2E_QA_ACCOUNT_DISPOSABLE === 'yes' && Boolean(email && password);
 
 // Playwright traces/recordings may contain typed credentials. Disable both
 // for this file, including on a failed run.
