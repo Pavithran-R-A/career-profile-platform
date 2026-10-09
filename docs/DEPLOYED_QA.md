@@ -65,7 +65,6 @@ Worker Version ID, any test account IDs (redacted), and evidence paths.
    allow-list before diagnosing callback failures.
 6. Keep the final custom domain and credential rotation out of this task.
 
-
 ## Safe disposable-account provisioning (no user passwords needed)
 
 Run this **only from the existing trusted local Wrangler/Supabase machine**,
