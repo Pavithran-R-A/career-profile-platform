@@ -168,10 +168,7 @@ export function mergeAppearanceSaveResult(
   if (result.status === 'error') {
     return { ...latest, status: 'error' };
   }
-  return withCurrent(
-    { ...latest, saved: result.saved, status: 'saved' },
-    latest.current
-  );
+  return withCurrent({ ...latest, saved: result.saved, status: 'saved' }, latest.current);
 }
 
 /**
