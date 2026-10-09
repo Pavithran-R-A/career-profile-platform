@@ -106,7 +106,15 @@ async function run() {
         p_location: 'Test only',
       }
     );
-    if (profileError || !profileId) fail('Onboarding RPC failed for disposable user.');
+    if (profileError || !profileId) {
+      // The PostgREST SQLSTATE is safe diagnostic metadata; don't print
+      // user input, credentials, request headers, or raw DB error messages.
+      const code =
+        typeof profileError?.code === 'string' && /^[A-Z0-9]{4,8}$/.test(profileError.code)
+          ? profileError.code
+          : 'unknown';
+      fail(`Onboarding RPC failed for disposable user (code: ${code}).`);
+    }
     clients.push(client);
     profiles.push({ id: profileId, username });
   }
