@@ -5,8 +5,15 @@ test.describe('deployed guest acceptance', () => {
   test('Worker health returns live JSON', async ({ request }) => {
     const response = await request.get('/api/health', { timeout: 20_000 });
     expect(response.status()).toBe(200);
-    const body = (await response.json()) as { status?: string };
+    const body = (await response.json()) as { status?: string; buildSha?: string };
     expect(body.status).toBe('ok');
+    // Release acceptance must prove the deployed Worker corresponds to
+    // the exact checkout, not an older healthy instance.
+    if (process.env.E2E_EXPECT_SHA) {
+      expect(body.buildSha, 'Deployed Worker SHA does not match tested git HEAD').toBe(
+        process.env.E2E_EXPECT_SHA
+      );
+    }
   });
 
   test('homepage renders and does not navigate its demo links', async ({ page }) => {

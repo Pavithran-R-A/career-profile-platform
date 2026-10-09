@@ -64,3 +64,34 @@ Worker Version ID, any test account IDs (redacted), and evidence paths.
 5. Confirm test account verification status and Supabase Site URL/redirect
    allow-list before diagnosing callback failures.
 6. Keep the final custom domain and credential rotation out of this task.
+
+
+## Safe disposable-account provisioning (no user passwords needed)
+
+Run this **only from the existing trusted local Wrangler/Supabase machine**,
+after deploying the exact `origin/master` SHA:
+
+```sh
+pnpm test:e2e:disposable
+```
+
+The Node runner reads existing `.env.local` and gitignored
+`.wrangler-secrets.local` **in memory**. It does not display keys, change
+credentials, or commit secret values. It refuses to proceed if the Worker
+`/api/health` build SHA differs from local `origin/master`. It generates
+two random, unique `@example.test` accounts using the authorized
+Supabase Admin API (email preconfirmed **without sending any email**).
+It performs real owner vs cross-user RLS probes, publishes and unpublishes
+a synthetic profile through the actual Worker, and runs the browser suite
+with disposable credentials only in subprocess environment variables.
+
+One browser test **deletes the second disposable account**, and the runner
+verifies the first survives. Finally, it deletes the first account and
+attempts to remove any leftover QA rows. No existing user account is touched.
+An ID-only local `.qa-disposable-ids.local` checkpoint is left if cleanup
+fails; inspect before manually cleaning **only those IDs**.
+
+**Important limitations:** preconfirmed synthetic users do not verify SMTP
+delivery or actual signup/recovery emails. The full resume/ATS/tailoring
+customer workflow needs additional browser assertions and actual fixtures
+before it may be marked complete.

@@ -1,3 +1,4 @@
+declare const __BUILD_COMMIT_SHA__: string;
 import { createHmac } from 'node:crypto';
 import { createServerClient } from '../lib/supabase/server';
 import { readProAnnualPricePaise, buildPublicPlans, getPlan } from '../lib/billing/plans';
@@ -2929,7 +2930,7 @@ export async function handleRequest(
 
   if (url.pathname === '/api/health') {
     return json(
-      { status: 'ok', timestamp: new Date().toISOString() },
+      { status: 'ok', timestamp: new Date().toISOString(), buildSha: typeof __BUILD_COMMIT_SHA__ === 'undefined' ? 'unavailable' : __BUILD_COMMIT_SHA__ },
       200,
       origin,
       env,
