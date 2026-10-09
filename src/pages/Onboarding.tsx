@@ -158,7 +158,7 @@ export default function Onboarding() {
                 </div>
                 {usernameError && <p className="text-red-600 text-sm mt-1">{usernameError}</p>}
                 {usernameAvailable && (
-                  <p className="text-green-600 text-sm mt-1">Username is available</p>
+                  <p className="text-green-600 text-sm mt-1">Username looks valid. Availability is confirmed when you finish setup.</p>
                 )}
               </div>
 
