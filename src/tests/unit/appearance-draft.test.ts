@@ -7,6 +7,7 @@ import {
   setSectionHidden,
   resetToSaved,
   saveAppearance,
+  mergeAppearanceSaveResult,
 } from '../../lib/profiles/appearance-draft';
 import type { ProfilePreferences } from '../../lib/profiles/preferences';
 
@@ -205,6 +206,28 @@ describe('regression: appearance live preview (draft-first architecture)', () =>
 
     // Still zero persistence calls after every interaction
     expect(upsertCalls).toHaveLength(0);
+  });
+
+  it('keeps a newer unsaved draft when an earlier autosave completes', async () => {
+    resetPersistenceMock();
+
+    const initial = initialAppearanceState(makePrefs());
+    const firstEdit = setTemplate(initial, 'technical');
+    const newerEdit = setAccent(firstEdit, 'emerald');
+
+    const result = await saveAppearance(firstEdit);
+    const reconciled = mergeAppearanceSaveResult(newerEdit, result);
+
+    expect(reconciled.saved.template_key).toBe('technical');
+    expect(reconciled.saved.accent_key).toBe('blue');
+    expect(reconciled.current.template_key).toBe('technical');
+    expect(reconciled.current.accent_key).toBe('emerald');
+    expect(reconciled.dirty).toBe(true);
+
+    const finalResult = await saveAppearance(reconciled);
+    const completed = mergeAppearanceSaveResult(reconciled, finalResult);
+    expect(completed.current).toEqual(completed.saved);
+    expect(completed.dirty).toBe(false);
   });
 
   it('a template-only save can no longer reset the saved section order', async () => {
