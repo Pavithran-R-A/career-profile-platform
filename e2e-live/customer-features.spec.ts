@@ -41,20 +41,26 @@ test.describe('real disposable-account product journeys', () => {
     await expect(page.getByLabel('Headline', { exact: true })).toHaveValue(headline);
     await expect(page.getByLabel('About', { exact: true })).toHaveValue(about);
 
-    await page.getByRole('navigation', { name: 'Profile sections' }).getByRole('button', {
-      name: 'Skills',
-      exact: true,
-    }).click();
+    await page
+      .getByRole('navigation', { name: 'Profile sections' })
+      .getByRole('button', {
+        name: 'Skills',
+        exact: true,
+      })
+      .click();
     await page.getByLabel('Skill name').fill('QAReleaseSkill');
     await page.getByRole('button', { name: 'Add skill', exact: true }).click();
     const remove = page.getByRole('button', { name: 'Remove skill QAReleaseSkill' });
     await expect(remove).toBeVisible();
 
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.getByRole('navigation', { name: 'Profile sections' }).getByRole('button', {
-      name: 'Skills',
-      exact: true,
-    }).click();
+    await page
+      .getByRole('navigation', { name: 'Profile sections' })
+      .getByRole('button', {
+        name: 'Skills',
+        exact: true,
+      })
+      .click();
     const reloadedRemove = page.getByRole('button', { name: 'Remove skill QAReleaseSkill' });
     await expect(reloadedRemove).toBeVisible();
     await reloadedRemove.click();
@@ -86,9 +92,18 @@ test.describe('real disposable-account product journeys', () => {
   }) => {
     await page.goto('/dashboard/resume/tailor');
     await expect(page.getByRole('heading', { name: 'Job tailoring' })).toBeVisible();
-    await page.getByLabel('Job description').fill(
-      ['Software QA Engineer at Example Studio.', 'Required skills and experience:', '- TypeScript', '- Automated regression testing', '- PostgreSQL', '- Writing maintainable automated tests'].join('\n')
-    );
+    await page
+      .getByLabel('Job description')
+      .fill(
+        [
+          'Software QA Engineer at Example Studio.',
+          'Required skills and experience:',
+          '- TypeScript',
+          '- Automated regression testing',
+          '- PostgreSQL',
+          '- Writing maintainable automated tests',
+        ].join('\n')
+      );
     await page.getByRole('button', { name: 'Analyze requirements' }).click();
     await expect(page.getByText('Analysis complete')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Build the resume' })).toBeVisible();
