@@ -20,6 +20,22 @@
 // Secret isolation: the admin key is used only inside the worker; nothing in
 // this module's outputs ever contains it.
 
+/**
+ * Account deletion must reauthenticate the account that initiated the flow.
+ * Supabase signInWithPassword changes the browser's active session: without
+ * this guard a user with access to multiple accounts could delete the wrong one.
+ */
+export function isOwnDeletionEmail(expectedEmail: string | null, inputEmail: string): boolean {
+  return Boolean(
+    expectedEmail &&
+      expectedEmail.trim().toLowerCase() === inputEmail.trim().toLowerCase()
+  );
+}
+
+export function isOwnDeletionUser(expectedUserId: string, reauthedUserId: string | undefined): boolean {
+  return Boolean(reauthedUserId && expectedUserId === reauthedUserId);
+}
+
 export const RECENT_AUTH_WINDOW_S = 10 * 60; // 10 minutes
 
 export interface AuthFreshness {
