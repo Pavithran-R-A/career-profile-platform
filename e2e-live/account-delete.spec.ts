@@ -4,8 +4,7 @@ import { expect, test } from '@playwright/test';
 // by scripts/live-qa-disposable.mjs, never a user-owned account.
 const email = process.env.E2E_QA_SECOND_EMAIL;
 const password = process.env.E2E_QA_SECOND_PASSWORD;
-const authorized =
-  process.env.E2E_QA_ACCOUNT_DISPOSABLE === 'yes' && Boolean(email && password);
+const authorized = process.env.E2E_QA_ACCOUNT_DISPOSABLE === 'yes' && Boolean(email && password);
 
 test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
