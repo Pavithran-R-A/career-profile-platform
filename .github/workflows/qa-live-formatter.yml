@@ -1,0 +1,29 @@
+name: One-time Live QA Format
+
+on:
+  push:
+    paths:
+      - '.github/workflows/qa-live-formatter.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Show formatted QA spec
+        run: |
+          pnpm exec prettier --write e2e-live/customer-features.spec.ts
+          echo '%%BEGIN customer-features'
+          cat e2e-live/customer-features.spec.ts
+          echo '%%END customer-features'
