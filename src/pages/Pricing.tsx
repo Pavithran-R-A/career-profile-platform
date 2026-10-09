@@ -19,6 +19,7 @@ export default function Pricing() {
   const [plans, setPlans] = useState<PublicPlanCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recruiterAiAvailable, setRecruiterAiAvailable] = useState(false);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   usePageMeta({
@@ -46,13 +47,23 @@ export default function Pricing() {
       });
   }, []);
 
+  useEffect(() => {
+    void fetch('/api/recruiter/config')
+      .then(async (response) => {
+        if (!response.ok) return;
+        const config = (await response.json()) as { enabled?: boolean; aiConfigured?: boolean };
+        setRecruiterAiAvailable(config.enabled === true && config.aiConfigured === true);
+      })
+      .catch(() => setRecruiterAiAvailable(false));
+  }, []);
+
   return (
     <div className="mx-auto max-w-4xl px-6 py-16">
       <div className="text-center mb-12">
         <h1 className="text-3xl font-bold tracking-tight">Pricing</h1>
         <p className="mt-3 text-[var(--muted-foreground)]">
-          Start free. Upgrade to Pro for higher limits, custom domains, and more recruiter AI
-          questions.
+          Start free with your career profile, ATS resumes, and a shareable portfolio. Pro adds
+          higher limits when available.
         </p>
       </div>
 
@@ -81,8 +92,10 @@ export default function Pricing() {
 
               <ul className="space-y-2 text-sm text-gray-700 mb-6">
                 <li>{plan.entitlements.resumeVariants} resume variants</li>
-                <li>{plan.entitlements.githubRepos} GitHub repos</li>
-                <li>{plan.entitlements.recruiterAiPerDay} recruiter AI questions / day</li>
+                <li>{plan.entitlements.githubRepos} GitHub repos (when integration is enabled)</li>
+                {recruiterAiAvailable && (
+                  <li>{plan.entitlements.recruiterAiPerDay} recruiter AI questions / day</li>
+                )}
                 <li>Unlimited deterministic job tailoring</li>
                 <li>
                   {plan.entitlements.customDomains} custom domain
