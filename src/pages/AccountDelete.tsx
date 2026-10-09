@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { getSupabaseClient } from '../lib/supabase/client';
 import { useNoindexMeta } from '../lib/seo/usePageMeta';
+import { isOwnDeletionEmail, isOwnDeletionUser } from '../lib/account/deletion';
 
 type Phase = 'confirm' | 'reauth' | 'deleting' | 'done';
 
@@ -62,8 +63,18 @@ export default function AccountDelete() {
     setError(null);
     setBusy(true);
     try {
+      // Reauthentication changes the active Supabase session. Never allow
+      // credentials for another account to redirect the deletion target.
+      if (
+        auth.status !== 'authenticated' ||
+        !isOwnDeletionEmail(auth.user.email, email)
+      ) {
+        setError('Confirm the same email address as your signed-in account.');
+        return;
+      }
+      const initiatingUserId = auth.user.id;
       const supabase = getSupabaseClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: reauthData, error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
@@ -71,7 +82,12 @@ export default function AccountDelete() {
         setError('That sign-in did not match. Try again to continue.');
         return;
       }
-      // Fresh session in hand — run the deletion with the new token.
+      if (!isOwnDeletionUser(initiatingUserId, reauthData.user?.id)) {
+        await supabase.auth.signOut();
+        setError('The signed-in account changed. Sign in to your original account and retry.');
+        return;
+      }
+      // Fresh session for the SAME account — then run its deletion.
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) {
