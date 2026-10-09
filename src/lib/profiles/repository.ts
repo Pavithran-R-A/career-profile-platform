@@ -259,6 +259,12 @@ export class ProfileRepository {
     );
 
     if (error) {
+      // An authenticated caller can only SELECT their own rows under RLS.
+      // A different user's username is therefore invisible to the optional
+      // availability probe, but the database's unique index still protects
+      // the INSERT. Treat that race/collision as "username taken", not a
+      // generic backend outage.
+      if (error.code === '23505') return null;
       throwProfileLoadError('createProfileWithBasics', error);
     }
     return (data as unknown as string | null) ?? null;
