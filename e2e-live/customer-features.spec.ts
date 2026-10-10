@@ -24,7 +24,7 @@ test.describe('real disposable-account product journeys', () => {
     await login(page);
   });
 
-  test('profile basics and skill creation persist across reload, and skill deletion works', async ({
+  test('profile basics and skill creation persist; confirmed skill deletion survives reload', async ({
     page,
   }) => {
     await page.goto('/dashboard/profile');
@@ -63,8 +63,18 @@ test.describe('real disposable-account product journeys', () => {
       .click();
     const reloadedRemove = page.getByRole('button', { name: 'Remove skill QAReleaseSkill' });
     await expect(reloadedRemove).toBeVisible();
+    // Playwright auto-dismisses unhandled JS confirm dialogs; explicitly
+    // accept the customer's removal confirmation before asserting deletion.
+    page.once('dialog', (dialog) => void dialog.accept());
     await reloadedRemove.click();
     await expect(reloadedRemove).toHaveCount(0);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page
+      .getByRole('navigation', { name: 'Profile sections' })
+      .getByRole('button', { name: 'Skills', exact: true })
+      .click();
+    await expect(page.getByRole('button', { name: 'Remove skill QAReleaseSkill' })).toHaveCount(0);
   });
 
   test('ATS export downloads a real parseable PDF containing the disposable profile', async ({
@@ -115,9 +125,17 @@ test.describe('real disposable-account product journeys', () => {
     const emerald = page.getByRole('group', { name: 'Accent color' }).getByRole('button', {
       name: 'Emerald',
     });
+    // Force a real change even if a rerun starts with Emerald already selected.
+    const blue = page.getByRole('group', { name: 'Accent color' }).getByRole('button', {
+      name: 'Blue',
+    });
+    await blue.click();
+    await expect(page.locator('.status-chip')).toContainText(/^Saved$/, { timeout: 15_000 });
     await emerald.click();
     await expect(emerald).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('.status-chip')).toContainText(/saved/i, { timeout: 15_000 });
+    // The eventual Saved state must follow a genuinely dirty draft.
+    await expect(page.locator('.status-chip')).toContainText(/unsaved|saving/i);
+    await expect(page.locator('.status-chip')).toContainText(/^Saved$/, { timeout: 15_000 });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(
       page.getByRole('group', { name: 'Accent color' }).getByRole('button', { name: 'Emerald' })
