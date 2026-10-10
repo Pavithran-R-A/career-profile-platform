@@ -86,6 +86,7 @@ export default function ResumeImport() {
   const [state, setState] = useState<ResumeState>('empty');
   const [error, setError] = useState<string | null>(null);
   const [extractionBlocked, setExtractionBlocked] = useState(false);
+  const [extractionConfigured, setExtractionConfigured] = useState<boolean | null>(null);
   const [existingProfile, setExistingProfile] = useState<ProfileWithRelations | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [currentResume, setCurrentResume] = useState<{ id: string; filename: string } | null>(null);
@@ -98,6 +99,28 @@ export default function ResumeImport() {
   const [droppedNotes, setDroppedNotes] = useState<string[]>([]);
 
   const profileId = existingProfile?.id ?? null;
+
+  // Advertise extraction honestly before a customer uploads a private PDF.
+  // The public config endpoint exposes only the availability flag, never a key.
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/recruiter/config')
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return (await response.json()) as { aiConfigured?: boolean };
+      })
+      .then((config) => {
+        if (active && typeof config?.aiConfigured === 'boolean') {
+          setExtractionConfigured(config.aiConfigured);
+        }
+      })
+      .catch(() => {
+        // Unknown is not the same as unavailable: don't invent a status.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (auth.status !== 'authenticated' || !auth.user) return;
@@ -417,7 +440,9 @@ export default function ResumeImport() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="page-title">Import resume</h1>
-          <p className="page-subtitle">Turn an existing PDF into structured profile data.</p>
+          <p className="page-subtitle">
+            Save your CV, then review extracted details when available.
+          </p>
         </div>
         <Link to="/dashboard" className="link-quiet text-sm">
           ← Back to dashboard
@@ -429,6 +454,22 @@ export default function ResumeImport() {
           className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6"
           role="alert">
           {error}
+        </div>
+      )}
+
+      {extractionConfigured === false && state === 'empty' && !extractionBlocked && (
+        <div
+          className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg mb-6"
+          role="status">
+          <p className="font-medium">Automatic CV extraction is currently unavailable.</p>
+          <p className="text-sm mt-1">
+            You can still save your PDF privately. Uploading will not fill your profile
+            automatically until extraction is enabled. You can{' '}
+            <Link to="/dashboard/profile" className="underline font-medium">
+              enter your details manually
+            </Link>{' '}
+            at any time.
+          </p>
         </div>
       )}
 
@@ -522,17 +563,24 @@ export default function ResumeImport() {
               letterSpacing: '-0.02em',
               lineHeight: 1.15,
             }}>
-            Turn your existing resume into structured data
+            Save your existing resume to your profile
           </h2>
           <p className="text-sm text-[var(--muted-foreground)] mt-3 max-w-md mx-auto leading-relaxed">
-            Upload the PDF you already use for applications. We read it, then let you review
-            everything before anything touches your profile.
+            {extractionConfigured === false
+              ? 'Your PDF is saved privately. Add profile details manually while automatic extraction is unavailable.'
+              : 'Upload your PDF and review any extracted details before applying them to your profile.'}
           </p>
 
           <ol className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-1 max-w-2xl mx-auto text-left">
             {[
               ['1', 'Upload', 'Stored privately on your account'],
-              ['2', 'Review', 'Experience, education and skills extracted'],
+              [
+                '2',
+                'Review',
+                extractionConfigured === false
+                  ? 'Add your profile details manually'
+                  : 'Review extracted profile details',
+              ],
               ['3', 'Apply', 'You choose what gets added'],
             ].map(([n, title, body], i, arr) => (
               <li key={n} className="flex sm:flex-1 items-center gap-1 sm:gap-2 min-w-0">

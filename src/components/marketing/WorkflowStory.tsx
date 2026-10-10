@@ -165,8 +165,8 @@ export function WorkflowStory() {
           <p className="t-eyebrow">One source of career truth</p>
           <h2 className="t-display-section mt-4">One workflow. Multiple outputs.</h2>
           <p className="t-lead mt-5">
-            Import once. Everything you publish — profile, resume, tailoring — comes from the same
-            record, so it all stays consistent.
+            Save your CV and build your profile, then keep your published portfolio, resume and
+            tailored applications consistent from the same record.
           </p>
         </Reveal>
 
