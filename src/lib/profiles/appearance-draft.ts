@@ -96,9 +96,12 @@ function clampToValid(prefs: ProfilePreferences): ProfilePreferences {
 }
 
 /** Normalized initial state from the server row (or defaults for a new profile). */
-export function initialAppearanceState(server: ProfilePreferences | null): AppearanceState {
+export function initialAppearanceState(
+  server: ProfilePreferences | null,
+  profileId: string = ''
+): AppearanceState {
   const clean = clampToValid(
-    server ?? ({ id: '', profile_id: '', ...DEFAULTS } as ProfilePreferences)
+    server ?? ({ id: '', profile_id: profileId, ...DEFAULTS } as ProfilePreferences)
   );
   return { saved: clean, current: clean, status: 'idle', dirty: false };
 }
