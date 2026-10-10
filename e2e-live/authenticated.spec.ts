@@ -24,8 +24,14 @@ test.describe('real disposable-account acceptance', () => {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page).not.toHaveURL(/\/login(?:\/|$)/);
 
+    // Header controls hydrate after reload; wait for whichever menu the
+    // current viewport renders before choosing a path (no silent else).
     const accountMenu = page.getByRole('button', { name: 'Account menu' });
-    if (await accountMenu.isVisible()) {
+    const accountMenuReady = await accountMenu
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (accountMenuReady) {
       await accountMenu.click();
       await page.getByRole('menuitem', { name: 'Sign out' }).click();
     } else {

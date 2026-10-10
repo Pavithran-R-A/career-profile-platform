@@ -29,6 +29,23 @@ export default function AccountDelete() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Terminal success state must win over every auth branch: the flow signs
+  // the session out BEFORE reaching 'done', so an unauthenticated check placed
+  // above here would hide the confirmation the customer is owed after a
+  // successful deletion (live QA regression).
+  if (phase === 'done') {
+    return (
+      <div className="page-shell">
+        <div className="card card-pad max-w-md mx-auto text-center" role="status">
+          <h1 className="page-title">Account deleted</h1>
+          <p className="text-sm text-[var(--muted-foreground)] mt-2">
+            Everything on your account has been removed. Redirecting you home…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (auth.status === 'loading') {
     return (
       <div className="page-shell">
@@ -121,19 +138,6 @@ export default function AccountDelete() {
       setBusy(false);
     }
   };
-
-  if (phase === 'done') {
-    return (
-      <div className="page-shell">
-        <div className="card card-pad max-w-md mx-auto text-center" role="status">
-          <h1 className="page-title">Account deleted</h1>
-          <p className="text-sm text-[var(--muted-foreground)] mt-2">
-            Everything on your account has been removed. Redirecting you home…
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   if (phase === 'deleting') {
     return (

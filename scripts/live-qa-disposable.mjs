@@ -180,9 +180,26 @@ async function run() {
     fail('Deployed browser QA did not pass. See sanitized test results.');
   }
 
+  // The browser suite signs user 1 out with Supabase's default global scope,
+  // which revokes EVERY session of that user — including the session this
+  // Node client holds (GoTrue then rejects getUser with HTTP 400). Account
+  // survival is what must be proven: a fresh password sign-in is the
+  // authoritative check, and it reports the exact error code if it fails.
   const ownStillValid = await clients[0].auth.getUser();
   if (ownStillValid.error || ownStillValid.data.user?.id !== users[0].id) {
-    fail('Surviving QA account no longer authenticates after deletion test.');
+    const staleCode = ownStillValid.error?.code ?? ownStillValid.error?.status ?? 'no-user';
+    console.log(`Pre-check: old session rejected after browser sign-out (code ${staleCode}).`);
+    const relogin = await clients[0].auth.signInWithPassword({
+      email: users[0].email,
+      password: users[0].password,
+    });
+    if (relogin.error || relogin.data.user?.id !== users[0].id) {
+      const code = relogin.error?.code ?? relogin.error?.status ?? 'no-user';
+      fail(
+        `Surviving QA account no longer authenticates after deletion test (error code: ${code}).`
+      );
+    }
+    console.log('Surviving QA account re-authenticated with fresh credentials: PASS.');
   }
   const deleted = await admin.auth.admin.getUserById(users[1].id);
   if (!deleted.error && deleted.data.user) {
