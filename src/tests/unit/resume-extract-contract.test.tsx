@@ -69,9 +69,10 @@ describe('ResumeImport extract contract', () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => url === '/api/resume/extract')).toBe(true)
     );
-    const [url, init] = fetchMock.mock.calls.find(
-      ([url]) => url === '/api/resume/extract'
-    ) as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls.find(([url]) => url === '/api/resume/extract') as [
+      string,
+      RequestInit,
+    ];
     expect(url).toBe('/api/resume/extract');
     expect(JSON.parse(init.body as string)).toEqual({ resumeSourceId: 'resume-id' });
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-123');
@@ -130,5 +131,4 @@ describe('ResumeImport extract contract', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/resume/extract', expect.anything());
     vi.unstubAllGlobals();
   });
-
 });
