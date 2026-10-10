@@ -34,8 +34,9 @@ export function Hero() {
               <span className="t-accent-phrase">recruiters remember.</span>
             </h1>
             <p className="t-lead mt-6 max-w-xl rise rise-2">
-              Upload your CV and get a structured career profile, an ATS-ready resume and a
-              portfolio you can share — then tailor it all to the job in front of you.
+              Save your CV, build your career profile, export an ATS-ready resume and share
+              your portfolio. Tailor it to your next job — automatic CV extraction is
+              available only when the service is enabled.
             </p>
 
             <div className="mt-9 flex flex-col sm:flex-row gap-3 rise rise-3">
