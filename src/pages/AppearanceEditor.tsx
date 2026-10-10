@@ -46,7 +46,7 @@ export default function AppearanceEditor() {
         }
         setProfile(loaded);
         const prefs = await getPreferences(loaded.id);
-        setAppearance(initialAppearanceState(prefs));
+        setAppearance(initialAppearanceState(prefs, loaded.id));
       } finally {
         setLoading(false);
       }

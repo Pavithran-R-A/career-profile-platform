@@ -67,6 +67,17 @@ describe('appearance draft state', () => {
     expect(state.dirty).toBe(false);
   });
 
+  it('new profiles with no preferences retain their real ID for the first save', async () => {
+    resetPersistenceMock();
+    const initial = initialAppearanceState(null, UUID);
+    expect(initial.current.profile_id).toBe(UUID);
+    const edited = setAccent(initial, 'emerald');
+    const saved = await saveAppearance(edited);
+    expect(saved.status).toBe('saved');
+    expect(upsertCalls[0].profile_id).toBe(UUID);
+    expect(upsertCalls[0].accent_key).toBe('emerald');
+  });
+
   it('normalizes legacy section orders: unknown keys dropped, all six known sections kept', () => {
     const state = initialAppearanceState(
       makePrefs({ section_order: ['about', 'skills', 'projects'] })
