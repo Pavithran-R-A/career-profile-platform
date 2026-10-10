@@ -440,7 +440,9 @@ export default function ResumeImport() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="page-title">Import resume</h1>
-          <p className="page-subtitle">Save your CV, then review extracted details when available.</p>
+          <p className="page-subtitle">
+            Save your CV, then review extracted details when available.
+          </p>
         </div>
         <Link to="/dashboard" className="link-quiet text-sm">
           ← Back to dashboard
@@ -461,8 +463,8 @@ export default function ResumeImport() {
           role="status">
           <p className="font-medium">Automatic CV extraction is currently unavailable.</p>
           <p className="text-sm mt-1">
-            You can still save your PDF privately. Uploading will not fill your profile automatically
-            until extraction is enabled. You can{' '}
+            You can still save your PDF privately. Uploading will not fill your profile
+            automatically until extraction is enabled. You can{' '}
             <Link to="/dashboard/profile" className="underline font-medium">
               enter your details manually
             </Link>{' '}
@@ -572,7 +574,13 @@ export default function ResumeImport() {
           <ol className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-1 max-w-2xl mx-auto text-left">
             {[
               ['1', 'Upload', 'Stored privately on your account'],
-              ['2', 'Review', extractionConfigured === false ? 'Add your profile details manually' : 'Review extracted profile details'],
+              [
+                '2',
+                'Review',
+                extractionConfigured === false
+                  ? 'Add your profile details manually'
+                  : 'Review extracted profile details',
+              ],
               ['3', 'Apply', 'You choose what gets added'],
             ].map(([n, title, body], i, arr) => (
               <li key={n} className="flex sm:flex-1 items-center gap-1 sm:gap-2 min-w-0">
