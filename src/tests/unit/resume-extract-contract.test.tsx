@@ -66,8 +66,12 @@ describe('ResumeImport extract contract', () => {
     const file = new File(['%PDF-1.4 synthetic'], 'resume.pdf', { type: 'application/pdf' });
     fireEvent.change(input, { target: { files: [file] } });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => url === '/api/resume/extract')).toBe(true)
+    );
+    const [url, init] = fetchMock.mock.calls.find(
+      ([url]) => url === '/api/resume/extract'
+    ) as [string, RequestInit];
     expect(url).toBe('/api/resume/extract');
     expect(JSON.parse(init.body as string)).toEqual({ resumeSourceId: 'resume-id' });
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-123');
@@ -103,4 +107,28 @@ describe('ResumeImport extract contract', () => {
     expect(screen.queryByText(/Something went wrong/)).not.toBeInTheDocument();
     vi.unstubAllGlobals();
   });
+  it('warns before upload when the live extraction provider is disabled', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ enabled: false, aiConfigured: false }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/dashboard/resume']}>
+        <ResumeImport />
+      </MemoryRouter>
+    );
+
+    expect(
+      await screen.findByText('Automatic CV extraction is currently unavailable.')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'enter your details manually' })).toHaveAttribute(
+      'href',
+      '/dashboard/profile'
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/resume/extract', expect.anything());
+    vi.unstubAllGlobals();
+  });
+
 });
