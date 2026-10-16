@@ -128,6 +128,11 @@ describe('ResumeImport extract contract', () => {
       'href',
       '/dashboard/profile'
     );
+    expect(
+      screen.getByText(
+        'Upload your PDF to save it privately. Add profile details manually while automatic extraction is unavailable.'
+      )
+    ).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith('/api/resume/extract', expect.anything());
     vi.unstubAllGlobals();
   });
