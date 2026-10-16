@@ -567,7 +567,7 @@ export default function ResumeImport() {
           </h2>
           <p className="text-sm text-[var(--muted-foreground)] mt-3 max-w-md mx-auto leading-relaxed">
             {extractionConfigured === false
-              ? 'Your PDF is saved privately. Add profile details manually while automatic extraction is unavailable.'
+              ? 'Upload your PDF to save it privately. Add profile details manually while automatic extraction is unavailable.'
               : 'Upload your PDF and review any extracted details before applying them to your profile.'}
           </p>
 
