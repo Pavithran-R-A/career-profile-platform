@@ -35,7 +35,7 @@ export function toSafeAuthMessage(raw: string | null | undefined): string {
     return 'Your password does not meet the security requirements.';
   }
 
-  if (/expired.{0,30}link|link.{0,30}expired/.test(message)) {
+  if (/expired.{0,30}link|link.{0,30}expired|token.{0,30}expired|invalid.{0,20}link/.test(message)) {
     return 'This link is invalid or has expired.';
   }
 
