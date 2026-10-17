@@ -80,9 +80,9 @@ export default function GitHubCallback() {
     const params = new URLSearchParams(window.location.search);
 
     // GitHub denial / provider error params (user cancelled the install or
-    // the authorization).
+    // the authorization). error_description is deliberately NOT read: it is
+    // untrusted URL content and must never reach customer-visible copy.
     const providerError = params.get('error');
-    const errorDescription = params.get('error_description');
     const code = params.get('code');
     const state = params.get('state');
 
@@ -91,9 +91,13 @@ export default function GitHubCallback() {
       return;
     }
     if (providerError) {
+      // GitHub denial params are untrusted URL content — never echo
+      // error_description into customer UI (same fail-closed rule that
+      // /auth/callback follows for Supabase email links). Classify on the
+      // error code with fixed copy only.
       finishError(
-        errorDescription
-          ? `GitHub authorization was not completed: ${errorDescription}`
+        providerError === 'access_denied'
+          ? 'GitHub authorization was cancelled. You can reconnect any time from the dashboard.'
           : 'GitHub authorization was not completed.'
       );
       return;
