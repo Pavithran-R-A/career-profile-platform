@@ -355,14 +355,25 @@ describe('password reset email flow', () => {
 });
 
 describe('auth callback (email link landing)', () => {
-  it('shows the provider error description for a denied/expired link', async () => {
+  it('shows safe fixed copy for an expired email callback link', async () => {
     renderPage(
       <AuthCallback />,
       '/auth/callback?error=access_denied&error_description=Link%20expired'
     );
 
     expect(await screen.findByText('Verification failed')).toBeInTheDocument();
-    expect(screen.getByText('Link expired')).toBeInTheDocument();
+    expect(screen.getByText('This link is invalid or has expired.')).toBeInTheDocument();
+  });
+
+  it('never reflects an untrusted callback error description from the URL', async () => {
+    renderPage(
+      <AuthCallback />,
+      '/auth/callback?error=access_denied&error_description=Internal%20DB%20connection%20host%3D10.0.0.12'
+    );
+
+    expect(await screen.findByText('Verification failed')).toBeInTheDocument();
+    expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument();
+    expect(screen.queryByText(/10\.0\.0\.12/)).not.toBeInTheDocument();
   });
 
   it('verifies the token hash with the emailed type', async () => {
@@ -378,7 +389,7 @@ describe('auth callback (email link landing)', () => {
       })
     );
     expect(await screen.findByText('Verification failed')).toBeInTheDocument();
-    expect(screen.getByText(/Token has expired or is invalid/)).toBeInTheDocument();
+    expect(screen.getByText('This link is invalid or has expired.')).toBeInTheDocument();
   });
 
   it('sends a first confirmed login without a profile to onboarding', async () => {
