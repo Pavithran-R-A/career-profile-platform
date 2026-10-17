@@ -320,8 +320,12 @@ export default function ProfileEditor() {
   }, [profile]);
 
   if (auth.status === 'loading' || loading) {
+    // Loading envelope must match the loaded root below (max-w-[1360px]):
+    // React reuses this host div, so the old page-shell (64rem cap) swapped
+    // 1024px -> full width when the editor appeared (same CLS mechanism as
+    // the appearance editor, 0.248 measured at 1280px).
     return (
-      <div className="page-shell">
+      <div className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-8">
         <div className="space-y-4" role="status" aria-label="Loading profile editor">
           <div className="skeleton h-8 w-48" />
           <div className="flex gap-6">

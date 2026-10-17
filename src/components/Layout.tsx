@@ -127,7 +127,30 @@ export default function Layout() {
   const auth = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const isAuthed = auth.status === 'authenticated';
+
+  // Mobile disclosure hygiene: Escape closes the drawer and returns focus to
+  // its toggle, and crossing the lg breakpoint (1024px) closes the drawer so
+  // aria-expanded cannot stay "true" against a CSS-hidden nav after resize.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+    const onResize = () => {
+      if (window.innerWidth >= 1024) setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -196,9 +219,11 @@ export default function Layout() {
           </nav>
 
           <button
+            ref={menuButtonRef}
             type="button"
             className="lg:hidden inline-flex items-center justify-center w-11 h-11 rounded-md text-[var(--foreground)] hover:bg-[var(--surface-muted)]"
             aria-expanded={menuOpen}
+            aria-controls="mobile-nav"
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             onClick={() => setMenuOpen((open) => !open)}>
             <svg
@@ -217,69 +242,72 @@ export default function Layout() {
           </button>
         </div>
 
-        {menuOpen && (
-          <nav
-            className="lg:hidden border-t border-[var(--border)] bg-[var(--surface)] px-4 py-3 space-y-1"
-            aria-label="Mobile">
-            {isAuthed ? (
-              <>
-                {AUTH_NAV.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to === '/dashboard'}
-                    onClick={() => setMenuOpen(false)}
-                    className={({ isActive }) =>
-                      `block px-3 py-3 rounded-md text-base min-h-[44px] ${isActive ? 'bg-[var(--surface-muted)] text-[var(--ink)] font-semibold' : 'text-[var(--foreground)] hover:bg-[var(--surface-muted)]'}`
-                    }>
-                    {item.label}
-                  </NavLink>
-                ))}
+        {/* Always mounted (hidden when closed) so aria-controls on the toggle
+            resolves to a real element in both states — a11y audits flagged the
+            expanded toggle with no addressable controlled region. */}
+        <nav
+          id="mobile-nav"
+          hidden={!menuOpen}
+          className="lg:hidden border-t border-[var(--border)] bg-[var(--surface)] px-4 py-3 space-y-1"
+          aria-label="Mobile">
+          {isAuthed ? (
+            <>
+              {AUTH_NAV.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/dashboard'}
+                  onClick={() => setMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `block px-3 py-3 rounded-md text-base min-h-[44px] ${isActive ? 'bg-[var(--surface-muted)] text-[var(--ink)] font-semibold' : 'text-[var(--foreground)] hover:bg-[var(--surface-muted)]'}`
+                  }>
+                  {item.label}
+                </NavLink>
+              ))}
+              <Link
+                to="/dashboard/appearance"
+                onClick={() => setMenuOpen(false)}
+                className="block px-3 py-3 rounded-md text-base text-[var(--foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
+                Appearance
+              </Link>
+              <Link
+                to="/dashboard/account/delete"
+                onClick={() => setMenuOpen(false)}
+                className="block px-3 py-3 rounded-md text-base text-[var(--muted-foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
+                Delete account
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="block w-full text-left px-3 py-3 rounded-md text-base text-[var(--danger)] hover:bg-[var(--danger-surface)] min-h-[44px]">
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              {GUEST_NAV.map((item) => (
                 <Link
-                  to="/dashboard/appearance"
+                  key={item.href}
+                  to={item.href}
                   onClick={() => setMenuOpen(false)}
                   className="block px-3 py-3 rounded-md text-base text-[var(--foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
-                  Appearance
+                  {item.label}
                 </Link>
-                <Link
-                  to="/dashboard/account/delete"
-                  onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base text-[var(--muted-foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
-                  Delete account
-                </Link>
-                <button
-                  onClick={handleSignOut}
-                  className="block w-full text-left px-3 py-3 rounded-md text-base text-[var(--danger)] hover:bg-[var(--danger-surface)] min-h-[44px]">
-                  Sign out
-                </button>
-              </>
-            ) : (
-              <>
-                {GUEST_NAV.map((item) => (
-                  <Link
-                    key={item.href}
-                    to={item.href}
-                    onClick={() => setMenuOpen(false)}
-                    className="block px-3 py-3 rounded-md text-base text-[var(--foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
-                    {item.label}
-                  </Link>
-                ))}
-                <Link
-                  to="/login"
-                  onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base text-[var(--foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
-                  Sign in
-                </Link>
-                <Link
-                  to="/signup"
-                  onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-3 rounded-md text-base font-semibold bg-[var(--accent)] text-white text-center min-h-[44px]">
-                  Get started
-                </Link>
-              </>
-            )}
-          </nav>
-        )}
+              ))}
+              <Link
+                to="/login"
+                onClick={() => setMenuOpen(false)}
+                className="block px-3 py-3 rounded-md text-base text-[var(--foreground)] hover:bg-[var(--surface-muted)] min-h-[44px]">
+                Sign in
+              </Link>
+              <Link
+                to="/signup"
+                onClick={() => setMenuOpen(false)}
+                className="block px-3 py-3 rounded-md text-base font-semibold bg-[var(--accent)] text-white text-center min-h-[44px]">
+                Get started
+              </Link>
+            </>
+          )}
+        </nav>
       </header>
       {/* tabIndex={-1} makes the landmark programmatically focusable so the
           skip link actually moves focus (QA-021); no ring for pointer users. */}

@@ -50,12 +50,16 @@ export default function DashboardPreview() {
 
   if (auth.status === 'loading' || loading) {
     return (
-      // Match the loaded preview's envelope (max-w-5xl below) and reserve
-      // close to the rendered height (browser frame + 640px canvas): the old
-      // h-64 block under-reserved by ~300px and dragged the page (CLS 0.239
-      // measured at 1280px).
-      <div className="page-shell" role="status" aria-label="Loading preview">
-        <div className="space-y-4">
+      // Match the loaded preview's envelope EXACTLY at the root level: React
+      // reuses this host div, so any width difference between the loading and
+      // loaded roots (old page-shell, 64rem) becomes a full-width jump on load
+      // (CLS 0.158 measured at 1536px). Inner skeleton heights already reserve
+      // the rendered frame (browser chrome + 640px canvas).
+      <div
+        className="min-h-screen bg-[var(--background)]"
+        role="status"
+        aria-label="Loading preview">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 space-y-4">
           <div className="skeleton h-10 w-full" />
           <div className="skeleton h-[560px] sm:h-[680px] w-full" />
         </div>

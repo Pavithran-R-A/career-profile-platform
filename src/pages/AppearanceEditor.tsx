@@ -122,13 +122,22 @@ export default function AppearanceEditor() {
   );
 
   if (auth.status === 'loading' || loading || !appearance) {
+    // Loading envelope must match the loaded root below (max-w-[1360px], full
+    // width on small screens): React reuses this host div, so the old
+    // page-shell (64rem cap) swapped 1024px -> full width on load and dragged
+    // the page (CLS 0.248 measured at 1280px). Panel heights reserve the
+    // rendered preview column (chrome bar + 640px canvas) so the footer holds
+    // still while data resolves.
     return (
-      <div className="page-shell" role="status" aria-label="Loading appearance">
+      <div
+        className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-8"
+        role="status"
+        aria-label="Loading appearance">
         <div className="space-y-4">
           <div className="skeleton h-9 w-56" />
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,430px)_minmax(0,1fr)] gap-6">
-            <div className="skeleton h-[560px] rounded-xl" />
-            <div className="skeleton h-[560px] rounded-xl" />
+            <div className="skeleton h-[640px] rounded-xl" />
+            <div className="skeleton h-[680px] rounded-xl" />
           </div>
         </div>
       </div>
