@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
 import { getSupabaseClient } from '../../lib/supabase/client';
 import { toSafeAuthMessage } from '../../lib/auth/errors';
@@ -16,6 +16,14 @@ export default function VerifyEmail() {
   // explicit outcomes is always shown after a check.
   const [feedback, setFeedback] = useState<'none' | 'not_yet' | 'error'>('none');
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const location = useLocation();
+  // Resend path: the signup page hands over the address it just signed up;
+  // a pending session supplies it otherwise. Without either, no resend button
+  // is offered (we never guess an address).
+  const [resendTo, setResendTo] = useState<string | null>(
+    (location.state as { email?: string } | null)?.email ?? null
+  );
+  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   useEffect(() => {
     if (auth.status === 'authenticated' && auth.user.emailConfirmed) {
@@ -31,6 +39,7 @@ export default function VerifyEmail() {
         data: { session },
       } = await supabase.auth.getSession();
       if (session?.user) {
+        if (session.user.email) setResendTo((prev) => prev ?? session.user.email!);
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -97,6 +106,15 @@ export default function VerifyEmail() {
     }
   };
 
+  const handleResend = async () => {
+    if (!resendTo || resendState === 'sending') return;
+    setResendState('sending');
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.auth.resend({ type: 'signup', email: resendTo });
+    // Explicit outcome either way — never a silent no-op.
+    setResendState(error ? 'error' : 'sent');
+  };
+
   if (auth.status === 'authenticated' && auth.user.emailConfirmed) {
     return null;
   }
@@ -132,14 +150,34 @@ export default function VerifyEmail() {
             </p>
           )}
 
-          <p className="text-sm text-gray-500">
-            Didn't receive the email? Check your spam folder or{' '}
-            <button
-              onClick={() => void handleCheckVerification()}
-              className="text-gray-900 hover:underline">
-              try again
-            </button>
-          </p>
+          <div className="text-sm text-gray-500 space-y-2">
+            <p>
+              Didn't receive the email? Check your spam folder, or resend it
+              {resendTo ? ` to ${resendTo}` : ''}:
+            </p>
+            {resendTo ? (
+              resendState === 'sent' ? (
+                <p className="text-green-700" role="status">
+                  Confirmation email resent. Give it a minute, then check your inbox and spam
+                  folder.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => void handleResend()}
+                    disabled={resendState === 'sending'}
+                    className="w-full bg-white border border-gray-300 text-gray-900 py-2 px-4 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {resendState === 'sending' ? 'Resending…' : 'Resend confirmation email'}
+                  </button>
+                  {resendState === 'error' && (
+                    <p className="text-red-600" role="alert">
+                      Couldn't resend the email right now. Please wait a moment and try again.
+                    </p>
+                  )}
+                </div>
+              )
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-6">

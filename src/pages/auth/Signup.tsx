@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
+import { toSafeAuthMessage } from '../../lib/auth/errors';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 import { newPasswordError, NEW_PASSWORD_MIN_LENGTH } from '../../lib/auth/password';
 import { track } from '../../lib/analytics/events';
@@ -42,11 +43,12 @@ export default function Signup() {
     setLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      setError(toSafeAuthMessage(authError.message));
       return;
     }
 
-    void navigate('/verify-email');
+    // Carry the address so the verify page can offer "resend confirmation".
+    void navigate('/verify-email', { state: { email } });
   };
 
   const handleTogglePassword = () => {

@@ -90,6 +90,8 @@ These steps can be completed before selecting the final public domain:
 4. Confirm `20261004170512_server_only_public_views.sql` is applied and the Supabase advisor has no `security_definer_view` findings.
 5. Configure a strong Supabase Auth password policy in Authentication settings.
 6. Configure production SMTP before relying on auth email delivery at public scale.
+   The exact field-by-field setup (sender, host/port, DNS, Supabase Auth SMTP
+   fields, templates, redirect URLs) is in `docs/EMAIL_PRODUCTION_CHECKLIST.md`.
 7. Create/verify external provider credentials for only the features intended at launch.
 8. Leave feature flags false for integrations that are not fully configured.
 9. Prepare Cloudflare Worker secrets/vars without committing them.

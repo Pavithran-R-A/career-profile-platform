@@ -35,6 +35,60 @@ cannot be one transaction. Corrected design (shipped):
 
 > CUSTOM SMTP REQUIRED BEFORE PUBLIC LAUNCH.
 
+Concrete field-by-field sender setup (Postmark SMTP + DNS + Supabase Auth
+SMTP fields + templates + redirect URLs) is documented in
+`docs/EMAIL_PRODUCTION_CHECKLIST.md`. It is owner-executed configuration;
+the agent has not touched any production Auth setting.
+
+## Launch-Readiness Reconciliation (2026-10-17)
+
+Recorded in-repo because no Linear integration is connected to this workspace
+(`grep -ri linear docs/` returns only an unrelated UI-layout note); sync these
+entries to Linear manually or connect the Linear app.
+
+Shipped since the last reconciliation (each with green CI on the exact SHA
+and deployed-SHA parity via `/api/health` `buildSha`):
+
+- **Visual/accessibility residuals closed.** `1c9e4e9` traced Appearance
+  Editor CLS 0.248 (@1280) and private-preview CLS 0.158 (@1536) to a single
+  mechanism — React reuses the loading branch's root host `<div>`, and the old
+  loading root carried `.page-shell` (64rem) while the loaded root is wider,
+  so the page jumped 1024px → full width. Loading shells now mirror their
+  loaded envelopes. Live re-measurement on the deployed SHA: appearance
+  0.0054 @1280, 0.0040 @1536; preview 0.0035 @1536.
+- **Mobile nav disclosure defects fixed.** At 390px the toggle had
+  `aria-expanded` but no addressable region, Escape did not close the drawer,
+  and resizing past `lg` left `aria-expanded="true"` against a CSS-hidden
+  nav. The nav is now always mounted (`aria-controls` resolves), Escape closes
+  with focus returned to the toggle, and crossing the breakpoint closes it.
+  Guards: `src/tests/unit/mobile-nav-disclosure.test.tsx` and
+  `loading-envelope-guards.test.tsx`.
+- **Release protection.** `docs/RELEASE_PROTECTION.md`. Ruleset A
+  (`Protect master history`, id 25304942) is **active**: `master` cannot be
+  deleted and force pushes are rejected, so the exact-SHA chain the Cloudflare
+  deploy and rollback evidence rely on is immutable. Ruleset B
+  (`Require CI before merge to master`, id 25304979) is **documented but
+  disabled** — it changes the daily flow, so activation is an owner decision.
+- **Email flow validation.** `src/tests/unit/email-auth-flows.test.tsx`
+  (20 tests) covers signup, resend, verify, reset, expiry, callback routing
+  and error sanitisation against mocked Supabase Auth. Writing it exposed a
+  real leak: `Login`, `Signup` and `ForgotPassword` rendered raw
+  `authError.message` (e.g. `Invalid JWT: pgrst-000`). All three now route
+  through `toSafeAuthMessage`. The verify page also gained a real
+  **Resend confirmation email** action (`supabase.auth.resend`) — previously
+  the "try again" link only re-checked status and never resent.
+
+Remaining blockers (unchanged, all owner-held):
+
+1. **Real email delivery** — needs the Postmark account, DNS access and the
+   Supabase SMTP dashboard. See `docs/EMAIL_PRODUCTION_CHECKLIST.md`.
+2. **AI extraction happy path** — needs a live provider key.
+3. **GitHub App integration** — needs app credentials + webhook URL.
+4. **Billing (Razorpay)** — needs live keys and a webhook.
+5. **Domain ownership** — root domain + DNS; `VITE_SUPPORT_EMAIL` still unset.
+
+Not claimed: 100% customer readiness.
+
 ## Non-Email Qualification (code + automated, not live-browser)
 
 Live-browser bridge was unavailable in this environment, so no item below is marked as live-browser PASS:

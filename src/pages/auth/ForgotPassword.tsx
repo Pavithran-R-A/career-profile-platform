@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
+import { toSafeAuthMessage } from '../../lib/auth/errors';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 
 export default function ForgotPassword() {
@@ -21,7 +22,7 @@ export default function ForgotPassword() {
     setLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      setError(toSafeAuthMessage(authError.message));
       return;
     }
 

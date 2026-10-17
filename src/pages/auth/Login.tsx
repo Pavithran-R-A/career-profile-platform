@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../lib/auth/context';
+import { toSafeAuthMessage } from '../../lib/auth/errors';
 import { isSafeRedirect } from '../../lib/validators/url';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 
@@ -29,7 +30,7 @@ export default function Login() {
     setLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      setError(toSafeAuthMessage(authError.message));
       return;
     }
 
