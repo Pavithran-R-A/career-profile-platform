@@ -1,35 +1,43 @@
 /**
- * Customer-safe mapping for Supabase auth error messages. Raw provider text
- * ("Auth session missing!", "Invalid JWT", PostgREST internals) must never
- * reach the UI — every message returned here is safe to render verbatim.
+ * Customer-safe mapping for Supabase Auth error messages.
+ *
+ * An upstream message is untrusted diagnostic text. Match recognizable errors
+ * only to FIXED customer-facing strings; never return the upstream message
+ * itself, even when it is short or happens to contain a friendly keyword.
  */
-
 const SAFE_DEFAULT = 'Something went wrong. Please try again.';
 
-/** Patterns that indicate provider/database internals or leaked diagnostics. */
-const INTERNAL_PATTERNS =
-  /session missing|invalid jwt|jwt|postgres|pgrst|sqlstate|constraint|violates|schema|relation|column|uuid|token expired|api key|apikey|provider|otp|secret/i;
-
-/** Messages that are already user-appropriate pass through untouched. */
-const ALLOWED_PATTERNS =
-  /password|email|account|verified|verification|link|expired|invalid login|rate|try again|signed|user already|characters|weak/i;
-
 export function toSafeAuthMessage(raw: string | null | undefined): string {
-  if (!raw) return SAFE_DEFAULT;
-  const message = raw.trim();
-  if (message.length === 0) return SAFE_DEFAULT;
-  if (ALLOWED_PATTERNS.test(message) && !INTERNAL_PATTERNS.test(message)) {
-    return message;
+  const message = raw?.trim().toLowerCase();
+  if (!message) return SAFE_DEFAULT;
+
+  if (/session missing|invalid jwt|invalid token|token expired|recovery token/.test(message)) {
+    return 'This password-reset link is invalid or has expired.';
   }
-  if (INTERNAL_PATTERNS.test(message)) {
-    // Distinguish the two cases users actually hit.
-    if (/session missing|invalid jwt/i.test(message)) {
-      return 'This password-reset link is invalid or has expired.';
-    }
-    if (/rate/i.test(message)) {
-      return 'Too many attempts. Please wait a moment and try again.';
-    }
-    return SAFE_DEFAULT;
+
+  if (/rate limit|too many requests|too many attempts/.test(message)) {
+    return 'Too many attempts. Please wait a moment and try again.';
   }
-  return message.length <= 140 ? message : SAFE_DEFAULT;
+
+  if (/user already registered|user already exists/.test(message)) {
+    return 'User already registered';
+  }
+
+  if (/email not confirmed|email not verified/.test(message)) {
+    return 'Please verify your email before signing in.';
+  }
+
+  if (/invalid login credentials|invalid email or password|incorrect password/.test(message)) {
+    return 'Invalid email or password.';
+  }
+
+  if (/weak password|password.{0,50}(too short|length|characters|weak)/.test(message)) {
+    return 'Your password does not meet the security requirements.';
+  }
+
+  if (/expired.{0,30}link|link.{0,30}expired/.test(message)) {
+    return 'This link is invalid or has expired.';
+  }
+
+  return SAFE_DEFAULT;
 }
