@@ -50,10 +50,14 @@ export default function DashboardPreview() {
 
   if (auth.status === 'loading' || loading) {
     return (
+      // Match the loaded preview's envelope (max-w-5xl below) and reserve
+      // close to the rendered height (browser frame + 640px canvas): the old
+      // h-64 block under-reserved by ~300px and dragged the page (CLS 0.239
+      // measured at 1280px).
       <div className="page-shell" role="status" aria-label="Loading preview">
         <div className="space-y-4">
           <div className="skeleton h-10 w-full" />
-          <div className="skeleton h-96 w-full" />
+          <div className="skeleton h-[560px] sm:h-[680px] w-full" />
         </div>
       </div>
     );
