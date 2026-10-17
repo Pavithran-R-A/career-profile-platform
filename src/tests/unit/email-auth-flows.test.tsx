@@ -373,7 +373,8 @@ describe('auth callback (email link landing)', () => {
 
     expect(await screen.findByText('Verification failed')).toBeInTheDocument();
     expect(screen.getByText('Something went wrong. Please try again.')).toBeInTheDocument();
-    expect(screen.queryByText(/10\.0\.0\.12/)).not.toBeInTheDocument();
+    const callbackContent = screen.getByText('Verification failed').parentElement?.textContent;
+    expect(callbackContent).not.toContain('10.0.0.12');
   });
 
   it('verifies the token hash with the emailed type', async () => {
