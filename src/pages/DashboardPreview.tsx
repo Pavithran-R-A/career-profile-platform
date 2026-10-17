@@ -121,7 +121,7 @@ export default function DashboardPreview() {
               </span>
             )}
           </div>
-          <div className="bg-white">
+          <div className="bg-white [overflow-wrap:anywhere]">
             <TemplateComponent
               profile={profile}
               config={template.config}

@@ -40,7 +40,7 @@ export function TemplateCanvas({
       <div
         aria-hidden="true"
         inert
-        className="absolute top-0 left-0"
+        className="absolute top-0 left-0 [overflow-wrap:anywhere]"
         style={{
           width: `${100 / scale}%`,
           transform: `scale(${scale})`,

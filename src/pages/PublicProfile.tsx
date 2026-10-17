@@ -102,11 +102,15 @@ export default function PublicProfile() {
 
   if (loading) {
     return (
-      <div className="page-shell" role="status" aria-label="Loading profile">
-        <div className="space-y-4">
+      // Match the loaded template's full-bleed envelope and reserve close to
+      // the rendered height: the skeleton→content swap previously changed the
+      // shell width (64rem → full) and dragged the footer (measured CLS 0.304
+      // on the published page at 1280px).
+      <div className="w-full" role="status" aria-label="Loading profile">
+        <div className="space-y-4 px-4 sm:px-6 pt-8">
           <div className="skeleton h-10 w-64 mx-auto" />
           <div className="skeleton h-4 w-48 mx-auto" />
-          <div className="skeleton h-64 w-full mt-8" />
+          <div className="skeleton h-[460px] sm:h-[560px] w-full mt-8" />
         </div>
       </div>
     );
@@ -145,7 +149,10 @@ export default function PublicProfile() {
   const actionLinks = profile.links.filter((l) => l !== contactLink).slice(0, 4);
 
   return (
-    <div>
+    // Customer text (URLs, emails, pasted tokens) must wrap instead of
+    // widening the page on mobile — overflow-wrap is inherited by every
+    // template section below (measured 70px horizontal overflow at 390px).
+    <div className="[overflow-wrap:anywhere]">
       <TemplateComponent
         profile={profile}
         config={template.config}
