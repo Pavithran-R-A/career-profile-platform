@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { getSupabaseClient } from '../../lib/supabase/client';
 import { useNoindexMeta } from '../../lib/seo/usePageMeta';
 import { track } from '../../lib/analytics/events';
+import { toSafeAuthMessage } from '../../lib/auth/errors';
 
 export default function AuthCallback() {
   useNoindexMeta('Signing in — CareerProfile Go');
@@ -23,7 +24,7 @@ export default function AuthCallback() {
 
       if (error) {
         setStatus('error');
-        setErrorMessage(errorDescription || error);
+        setErrorMessage(toSafeAuthMessage(errorDescription || error));
         return;
       }
 
@@ -35,7 +36,7 @@ export default function AuthCallback() {
 
         if (verifyError) {
           setStatus('error');
-          setErrorMessage(verifyError.message);
+          setErrorMessage(toSafeAuthMessage(verifyError.message));
           return;
         }
       }
