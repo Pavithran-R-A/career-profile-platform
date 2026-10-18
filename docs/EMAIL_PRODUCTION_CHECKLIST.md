@@ -50,6 +50,52 @@ setup), Mailgun, Brevo, Elastic Email. Rejected for this workload: Knock
 (orchestration layer over another provider — an extra hop and secret, not a
 sender).
 
+## Prepared alternative: Resend (dedicated DNS + SMTP settings ready to apply)
+
+Researched 2026-10-18 against Resend's official docs — sources:
+[Supabase SMTP guide](https://resend.com/docs/send-with-supabase-smtp),
+[SMTP guide](https://resend.com/docs/send-with-smtp),
+[add & verify a domain](https://resend.com/docs/add-a-domain),
+[DNS guide example](https://resend.com/docs/guides/dns/namecheap),
+[DMARC](https://resend.com/docs/dashboard/domains/dmarc),
+[quotas](https://resend.com/docs/knowledge-base/account-quotas-and-limits).
+Owner picks Resend **or** Postmark below; nothing here has been activated.
+
+### Supabase Auth → Emails → SMTP Settings (Resend values)
+
+| Field    | Value                                                         |
+| -------- | ------------------------------------------------------------- |
+| Sender   | `CareerProfile Go <no-reply@yourdomain>`                      |
+| Host     | `smtp.resend.com`                                             |
+| Port     | `465` (implicit TLS — the port Resend documents for Supabase) |
+| User     | `resend` (literally)                                          |
+| Password | Resend **API key** (`re_…`), not the account password         |
+
+### DNS records to publish on the chosen sender domain
+
+Copy the final values from Resend's domain **Records** tab (they are generated
+per domain/region); the documented shape is:
+
+| Purpose                                            | Type | Host                | Value                                                   |
+| -------------------------------------------------- | ---- | ------------------- | ------------------------------------------------------- |
+| DKIM                                               | TXT  | `resend._domainkey` | `p=<Resend-generated public key>`                       |
+| SPF                                                | TXT  | `send`              | `v=spf1 include:amazonses.com ~all`                     |
+| Bounce/feedback MX                                 | MX   | `send`              | `feedback-smtp.<region>.amazonses.com` (priority 10)    |
+| DMARC (recommended, not required for verification) | TXT  | `_dmarc`            | `v=DMARC1; p=none; rua=mailto:dmarcreports@yourdomain;` |
+
+- Merge SPF into an existing apex SPF TXT — never two SPF records.
+- Start DMARC at `p=none`, tighten to `p=quarantine` after a clean week.
+- Resend recommends (doesn't require) a sending subdomain such as
+  `notifications@yourdomain`; each subdomain verifies separately.
+  `onboarding@resend.dev` is test-only (owner-address recipients) — never launch on it.
+
+### Limits to budget
+
+- Resend Free: **100/day, 3,000/month** transactional emails, 3 domains;
+  SMTP rate limit matches API (10 req/s per team).
+- Supabase Auth with custom SMTP defaults to **25 emails/hour** — raise this
+  in Auth settings (owner action) before public signup.
+
 ## Owner checklist
 
 ### 1. Domain
@@ -123,6 +169,14 @@ Confirm each template the app's tested flows rely on:
       signals), and state the action in the first line.
 
 ### 6. App-side URLs (no code change needed)
+
+Code-side state verified at `1ab65ee`: signup sends
+`emailRedirectTo = {origin}/auth/callback` (`src/pages/auth/Signup.tsx:41`,
+fallback in `src/lib/auth/context.tsx:71`), reset sends
+`redirectTo = {origin}/reset-password` (`context.tsx:93-94`), resend uses
+`{ type: 'signup' }` (`VerifyEmail.tsx:113`), and the callback verifies
+`token_hash` + `type` before routing (`AuthCallback.tsx`). All are built from
+`window.location.origin`, so the deployed origin must be allow-listed:
 
 - [ ] Set Supabase **Site URL** to the canonical production origin, and add
       `/auth/callback` + `/reset-password` as **Redirect URLs**. The app

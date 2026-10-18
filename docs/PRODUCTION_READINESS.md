@@ -3,6 +3,54 @@
 Date: 2026-09-24 (UTC)
 Constraints honored: Confirm Email left ON; no SUPABASE_SECRET_KEY requested; no `admin.createUser(email_confirm=true)` bypass; no repeated resends.
 
+## Release Evidence — PR #7 integration (2026-10-18)
+
+Production baseline at start: `175b24d3d87713124890e65238646277aed59aec`.
+The pre-existing rollback target (Worker version `36b75d06`, deploy of
+`175b24d`) was re-verified and preserved before any deploy.
+
+- **Integration:** PR #7 (head `fb883d4e98ed5430964a605c1f85298bfa1a130d`)
+  merged into `master` as a genuine fast-forward — all 7 commit SHAs
+  preserved, no merge commit. Follow-up fix `e83e438` (GitHub callback no
+  longer reflects URL `error_description`) and live guard spec `1ab65ee`
+  landed on top.
+- **Deployed SHA:** `1ab65ee7d8f5ce289d46f224517aa08098bb3af1` —
+  `HEAD == origin/master == /api/health buildSha` verified live
+  (evidence in this session; health JSON returned the exact SHA).
+- **Worker:** `careerprofilego`, version ID
+  `78f504c3-bf29-4a47-a953-a4507f286bd7`, deployed with the original
+  release config (`dist/careerprofilego/wrangler.json` + `.env.local`
+  secrets file, `--message "CareerProfile Go production release 1ab65ee …"`).
+  Instantaneous prior version for this SHA's lineage: `2fd4c65d…` (of `e83e438`).
+- **CI (run 39092708878, `1ab65ee`): success** — format, lint, typecheck,
+  unit, production build, bundle budget, and Playwright desktop+mobile:
+  **762 unit tests (69 files) + 64 Playwright tests**, 0 failures.
+  (PR-head run 39048865508 and fix run 39052074429 also green.)
+- **Auth error review (re-check):** `toSafeAuthMessage` is fail-closed —
+  every upstream/URL string maps only to fixed customer copy, unknown →
+  generic fallback; ordinary errors have useful wording ("Invalid email or
+  password.", rate-limit, expired-link, weak-password variants). Unit:
+  40/40 across `auth-error-sanitization`, `github-callback-error`,
+  `email-auth-flows`.
+- **Live auth smoke**: new spec `e2e-live/auth-error-feedback.spec.ts`
+  (shipped in `1ab65ee`) — wrong-password login shows fixed copy only;
+  crafted `error_description` values on `/dashboard/github/callback` and
+  `/auth/callback` never render (desktop + mobile): **6/6 passed live**.
+  Guest live suite: **10/10 passed** (health SHA match included).
+- **Regression / disposable QA:** `pnpm test:e2e:disposable` against the
+  deployed `1ab65ee` — **23 passed, 5 skipped (desktop-only specs on the
+  mobile project), 0 failed**, in 5.4m. Covering sign-in + session
+  persistence + sign-out, profile/skill CRUD persistence, real ATS PDF
+  download, job-description matching, appearance autosave, publish/
+  unpublish through the real Worker, two-user RLS isolation, existing
+  public-profile non-disclosure, and account deletion with same-account
+  reauthentication plus second-account survival.
+- **QA cleanup:** both disposable accounts removed; `.qa-disposable-ids.local`
+  absent (removed by the runner); "accounts cleaned" reported. No existing
+  user touched; no email resend loop run.
+- **Visual audit:** the completed 36-case audit was not repeated (no
+  regression reason).
+
 ## Account Deletion Semantics Correction (2026-09-28)
 
 A correctness audit found the earlier claim "no observable half-deleted
