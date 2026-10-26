@@ -7,9 +7,11 @@ dist/
 tsconfig.tsbuildinfo
 
 # Environment files
+# .env.example is the committed template; every real .env* stays local.
 .env
-.env.*.local
+.env.*
 !.env.example
+!.gitignore
 
 # IDE
 .idea/
@@ -31,9 +33,16 @@ coverage/
 # Playwright
 test-results/
 playwright-report/
+playwright-live-report/
 e2e/.artifacts/
+# Live-QA run artifacts (traces/screenshots of authenticated sessions)
+e2e/.live-artifacts/
 e2e/screenshots/
 e2e/**-snapshots/
+
+# Workspace-local agent/tooling state
+.mimosa/
+.freebuff/
 
 # Misc
 *.local

@@ -1227,7 +1227,8 @@ export default function ProfileEditor() {
                                 {exp.location ? ` · ${exp.location}` : ''}
                               </p>
                             </div>
-                            <CardActions disabled={saving}
+                            <CardActions
+                              disabled={saving}
                               onEdit={() => toggleEdit(`experience:${exp.id}`)}
                               onDelete={() => void handleExperienceDelete(exp.id)}
                               onMoveUp={() => void handleMove('experience', idx, -1)}
@@ -1465,7 +1466,8 @@ export default function ProfileEditor() {
                               })}
                             </p>
                           </div>
-                          <CardActions disabled={saving}
+                          <CardActions
+                            disabled={saving}
                             onEdit={() => toggleEdit(`education:${edu.id}`)}
                             onDelete={() => void handleEducationDelete(edu.id)}
                             onMoveUp={() => void handleMove('education', idx, -1)}
@@ -1668,7 +1670,8 @@ export default function ProfileEditor() {
                               )}
                             </div>
                           </div>
-                          <CardActions disabled={saving}
+                          <CardActions
+                            disabled={saving}
                             onEdit={() => toggleEdit(`projects:${project.id}`)}
                             onDelete={() => void handleProjectDelete(project.id)}
                             onMoveUp={() => void handleMove('projects', idx, -1)}
@@ -1884,7 +1887,8 @@ export default function ProfileEditor() {
                               </a>
                             </div>
                           </div>
-                          <CardActions disabled={saving}
+                          <CardActions
+                            disabled={saving}
                             onEdit={() => toggleEdit(`links:${link.id}`)}
                             onDelete={() => void handleLinkDelete(link.id)}
                             onMoveUp={() => void handleMove('links', idx, -1)}
@@ -2089,7 +2093,8 @@ export default function ProfileEditor() {
                               )}
                             </div>
                           </div>
-                          <CardActions disabled={saving}
+                          <CardActions
+                            disabled={saving}
                             onEdit={() => setAchievementEditId(a.id)}
                             onDelete={() => void handleAchievementDelete(a.id)}
                             onMoveUp={() => void handleAchievementMove(idx, -1)}

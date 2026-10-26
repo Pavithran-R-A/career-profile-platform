@@ -83,8 +83,24 @@ function concat(a: Uint8Array<ArrayBuffer>, b: Uint8Array<ArrayBuffer>): Uint8Ar
  */
 function wrapPkcs1DerInPkcs8(pkcs1: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
   const versionAndAlgorithm = new Uint8Array([
-    0x02, 0x01, 0x00, // version INTEGER 0
-    0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, // SEQUENCE { OID 1.2.840.113549.1.1.1, NULL }
+    0x02,
+    0x01,
+    0x00, // version INTEGER 0
+    0x30,
+    0x0d,
+    0x06,
+    0x09,
+    0x2a,
+    0x86,
+    0x48,
+    0x86,
+    0xf7,
+    0x0d,
+    0x01,
+    0x01,
+    0x01,
+    0x05,
+    0x00, // SEQUENCE { OID 1.2.840.113549.1.1.1, NULL }
   ]);
   return derWrap(0x30, concat(versionAndAlgorithm, derWrap(0x04, pkcs1)));
 }

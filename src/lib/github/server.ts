@@ -331,7 +331,10 @@ interface RepoMetaStore {
       options?: { onConflict?: string; ignoreDuplicates?: boolean }
     ) => Promise<{ error: unknown }>;
     update: (values: Record<string, unknown>) => {
-      eq: (col: string, val: unknown) => {
+      eq: (
+        col: string,
+        val: unknown
+      ) => {
         in: (col: string, vals: unknown[]) => Promise<{ error: unknown }>;
       };
     };

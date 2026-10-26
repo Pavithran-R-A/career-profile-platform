@@ -144,9 +144,7 @@ export default function Layout() {
   useEffect(() => {
     if (!routeLocation.hash) return;
     const timer = window.setTimeout(() => {
-      const target = document.getElementById(
-        decodeURIComponent(routeLocation.hash.slice(1))
-      );
+      const target = document.getElementById(decodeURIComponent(routeLocation.hash.slice(1)));
       target?.scrollIntoView();
     }, 0);
     return () => window.clearTimeout(timer);

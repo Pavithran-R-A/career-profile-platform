@@ -121,6 +121,7 @@ export default function AppearanceEditor() {
   // but guard anyway so embedders/tests without a data router don't crash.
   let blocker: ReturnType<typeof useBlocker> | { state: 'idle' } = { state: 'idle' };
   try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- useBlocker throws outside a data router; the try/catch keeps embedders and router-less test harnesses alive. The router context never changes mid-session, so the hook order is stable in every environment that reaches this line.
     blocker = useBlocker(
       ({ currentLocation, nextLocation }) =>
         Boolean(appearance?.dirty) && currentLocation.pathname !== nextLocation.pathname
