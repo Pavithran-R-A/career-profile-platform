@@ -130,8 +130,14 @@ export default function Billing() {
               await new Promise((r) => setTimeout(r, delays[Math.min(i, delays.length - 1)]));
               i += 1;
               try {
+                // Fresh token per poll: the pre-checkout token can expire
+                // mid-window and 401s would masquerade as "still processing".
+                const {
+                  data: { session },
+                } = await getSupabaseClient().auth.getSession();
+                if (!session?.access_token) continue;
                 const res = await fetch('/api/billing/status', {
-                  headers: { Authorization: `Bearer ${token}` },
+                  headers: { Authorization: `Bearer ${session.access_token}` },
                 });
                 if (res.ok) {
                   const data = (await res.json()) as BillingStatus;

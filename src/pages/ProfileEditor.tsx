@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
-import { ProfileService } from '../lib/profiles/service';
+import { ProfileService, safeProfileErrorMessage } from '../lib/profiles/service';
 import { isHttpUrl, sanitizeUrl } from '../lib/validators/url';
 import { getSupabaseClient } from '../lib/supabase/client';
 import { formatDateRange, isDateRangeInvalid } from '../lib/profiles/date-format';
@@ -229,6 +229,7 @@ export default function ProfileEditor() {
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [achievements, setAchievements] = useState<AchievementRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<EditSection>('basics');
   const [error, setError] = useState<string | null>(null);
@@ -263,30 +264,60 @@ export default function ProfileEditor() {
     return () => document.removeEventListener('keydown', onKey);
   }, [previewOpen]);
 
+  const successTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (successTimer.current !== null) window.clearTimeout(successTimer.current);
+    },
+    []
+  );
+
   const flashSuccess = (msg: string) => {
     setSuccess(msg);
-    setTimeout(() => setSuccess(null), 2600);
+    if (successTimer.current !== null) window.clearTimeout(successTimer.current);
+    successTimer.current = window.setTimeout(() => setSuccess(null), 2600);
   };
 
+  // One load per user id: auth token refreshes re-emit auth events and must
+  // not refetch (or reset) editor state mid-session.
+  const loadedUserIdRef = useRef<string | null>(null);
+
+  const loadProfile = useCallback(
+    (userId: string) => {
+      loadedUserIdRef.current = userId;
+      setLoadError(null);
+      void profileService
+        .getProfile(userId)
+        .then((p) => {
+          setProfile(p);
+          setLoading(false);
+          if (p) {
+            void getPreferences(p.id)
+              .then(setPreferences)
+              .catch(() => setPreferences(null));
+            void supabase
+              .from('profile_achievements')
+              .select('*')
+              .eq('profile_id', p.id)
+              .order('sort_order')
+              .then(({ data }) => setAchievements((data as AchievementRow[]) ?? []));
+          }
+        })
+        .catch((err) => {
+          setLoadError(safeProfileErrorMessage(err));
+          setLoading(false);
+        });
+    },
+    [profileService, supabase]
+  );
+
+  const authUserId = auth.status === 'authenticated' ? auth.user.id : null;
+
   useEffect(() => {
-    if (auth.status === 'authenticated') {
-      void profileService.getProfile(auth.user.id).then((p) => {
-        setProfile(p);
-        setLoading(false);
-        if (p) {
-          void getPreferences(p.id)
-            .then(setPreferences)
-            .catch(() => setPreferences(null));
-          void supabase
-            .from('profile_achievements')
-            .select('*')
-            .eq('profile_id', p.id)
-            .order('sort_order')
-            .then(({ data }) => setAchievements((data as AchievementRow[]) ?? []));
-        }
-      });
+    if (authUserId && loadedUserIdRef.current !== authUserId) {
+      loadProfile(authUserId);
     }
-  }, [auth]);
+  }, [authUserId, loadProfile]);
 
   useEffect(() => {
     if (auth.status === 'unauthenticated') {
@@ -301,10 +332,10 @@ export default function ProfileEditor() {
   }, [auth, loading, navigate]);
 
   useEffect(() => {
-    if (!loading && auth.status === 'authenticated' && !profile) {
+    if (!loading && !loadError && auth.status === 'authenticated' && !profile) {
       void navigate('/onboarding');
     }
-  }, [loading, auth, profile, navigate]);
+  }, [loading, loadError, auth, profile, navigate]);
 
   // Funnel: any section save that changes the row counts as a profile update.
   const lastUpdatedAt = useRef<string | null>(null);
@@ -336,6 +367,30 @@ export default function ProfileEditor() {
               <div className="skeleton h-28 w-full" />
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-8">
+        <div
+          className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center"
+          role="alert">
+          <h1 className="text-lg font-semibold mb-2">Your profile couldn't load</h1>
+          <p className="text-sm text-[var(--muted-foreground)] mb-5">{loadError}</p>
+          <button
+            className="min-h-[44px] px-5 rounded-lg text-sm font-semibold bg-[var(--ink)] text-white hover:bg-[#1d2939] disabled:opacity-50"
+            disabled={loading}
+            onClick={() => {
+              if (auth.status === 'authenticated') {
+                setLoading(true);
+                loadProfile(auth.user.id);
+              }
+            }}>
+            Try again
+          </button>
         </div>
       </div>
     );

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
-import { ProfileService } from '../lib/profiles/service';
+import { ProfileService, safeProfileErrorMessage } from '../lib/profiles/service';
 import { sanitizeUrl } from '../lib/validators/url';
 import { toATSExportModel } from '../lib/resume/ats-export';
 import { generatePDFBlob } from '../lib/resume/pdf-renderer';
@@ -103,26 +103,48 @@ export default function ATSResumeBuilder() {
   if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
   const profileService = profileServiceRef.current;
 
+  // One load per user id: auth token refreshes re-emit auth events and must
+  // not refetch (or reset) the builder's selections mid-session.
+  const loadedUserIdRef = useRef<string | null>(null);
+
+  const loadProfile = useCallback(
+    (userId: string) => {
+      loadedUserIdRef.current = userId;
+      setState('loading');
+      setError(null);
+      void profileService
+        .getProfile(userId)
+        .then((p) => {
+          if (p) {
+            setProfile(p);
+            const data = buildATSData(p);
+            setAtsData(data);
+            setHeadlineOverride(p.headline || '');
+            setAboutOverride(p.about || '');
+            setSelectedSkills(new Set(data.skills));
+            setSelectedExps(new Set(data.experiences.map((_, i) => i)));
+            setSelectedEdus(new Set(data.education.map((_, i) => i)));
+            setSelectedProjects(new Set(data.projects.map((_, i) => i)));
+            setState('ready');
+          } else {
+            void navigate('/onboarding');
+          }
+        })
+        .catch((err) => {
+          setError(safeProfileErrorMessage(err));
+          setState('error');
+        });
+    },
+    [profileService, navigate]
+  );
+
+  const authUserId = auth.status === 'authenticated' ? auth.user.id : null;
+
   useEffect(() => {
-    if (auth.status === 'authenticated') {
-      void profileService.getProfile(auth.user.id).then((p) => {
-        if (p) {
-          setProfile(p);
-          const data = buildATSData(p);
-          setAtsData(data);
-          setHeadlineOverride(p.headline || '');
-          setAboutOverride(p.about || '');
-          setSelectedSkills(new Set(data.skills));
-          setSelectedExps(new Set(data.experiences.map((_, i) => i)));
-          setSelectedEdus(new Set(data.education.map((_, i) => i)));
-          setSelectedProjects(new Set(data.projects.map((_, i) => i)));
-          setState('ready');
-        } else {
-          void navigate('/onboarding');
-        }
-      });
+    if (authUserId && loadedUserIdRef.current !== authUserId) {
+      loadProfile(authUserId);
     }
-  }, [auth, navigate]);
+  }, [authUserId, loadProfile]);
 
   useEffect(() => {
     if (auth.status === 'unauthenticated') {
@@ -636,19 +658,11 @@ export default function ATSResumeBuilder() {
       )}
 
       {state === 'error' && (
-        <div className="text-center py-12">
-          <p className="text-gray-600 mb-4">Something went wrong. Please try again.</p>
+        <div className="text-center py-12" role="alert">
+          <p className="text-gray-600 mb-4">{error ?? 'Something went wrong. Please try again.'}</p>
           <button
             onClick={() => {
-              setState('loading');
-              setError(null);
-              void profileService.getProfile(auth.user!.id).then((p) => {
-                if (p) {
-                  setProfile(p);
-                  setAtsData(buildATSData(p));
-                  setState('ready');
-                }
-              });
+              if (auth.status === 'authenticated') loadProfile(auth.user.id);
             }}
             className="bg-gray-900 text-white py-2 px-6 rounded-md hover:bg-gray-800">
             Try Again

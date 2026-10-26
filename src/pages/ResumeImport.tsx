@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ResumeService } from '../lib/resume/service';
-import { ProfileService } from '../lib/profiles/service';
+import { ProfileService, safeProfileErrorMessage } from '../lib/profiles/service';
 import { toCustomerMessage } from '../lib/resume/errors';
 import { resumeExtractionSchema } from '../lib/ai/provider';
 import type { ResumeExtraction } from '../lib/ai/provider';
@@ -89,6 +89,7 @@ export default function ResumeImport() {
   const [extractionConfigured, setExtractionConfigured] = useState<boolean | null>(null);
   const [existingProfile, setExistingProfile] = useState<ProfileWithRelations | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [currentResume, setCurrentResume] = useState<{ id: string; filename: string } | null>(null);
   const [draft, setDraft] = useState<ResumeExtraction | null>(null);
   const [review, setReview] = useState<ReviewModel | null>(null);
@@ -135,8 +136,11 @@ export default function ResumeImport() {
         if (profile) {
           setPendingReview(await loadPendingReview(profile.id));
         }
-      } catch {
-        if (!cancelled) setProfileLoaded(true);
+      } catch (err) {
+        if (!cancelled) {
+          setProfileLoadError(safeProfileErrorMessage(err));
+          setProfileLoaded(true);
+        }
       }
     })();
 
@@ -623,6 +627,10 @@ export default function ResumeImport() {
             <p className="text-sm text-[var(--faint-foreground)] mt-5" role="status">
               Preparing upload…
             </p>
+          ) : profileLoadError ? (
+            <p className="text-sm text-[var(--ink)] mt-5" role="alert">
+              {profileLoadError}
+            </p>
           ) : (
             <input
               ref={fileInputRef}
@@ -637,7 +645,7 @@ export default function ResumeImport() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="btn btn-primary mt-5 !min-h-[48px] !px-8"
-            disabled={!profileLoaded}>
+            disabled={!profileLoaded || profileLoadError !== null}>
             Select PDF
           </button>
         </div>

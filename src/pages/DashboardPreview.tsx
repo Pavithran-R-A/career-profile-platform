@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
-import { ProfileService } from '../lib/profiles/service';
+import { ProfileService, safeProfileErrorMessage } from '../lib/profiles/service';
 import { getPreferences, type ProfilePreferences } from '../lib/profiles/preferences';
 import { getTemplate } from '../lib/templates/types';
 import { getTemplateComponent } from '../lib/templates/registry';
@@ -15,26 +15,43 @@ export default function DashboardPreview() {
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [preferences, setPreferences] = useState<ProfilePreferences | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const profileServiceRef = useRef<ProfileService | null>(null);
   if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
   const profileService = profileServiceRef.current;
 
-  useEffect(() => {
-    if (auth.status !== 'authenticated') return;
-    void (async () => {
+  // One load per user id: auth token refreshes re-emit auth events and must
+  // not refetch (or reset) profile state mid-session.
+  const loadedUserIdRef = useRef<string | null>(null);
+
+  const loadProfile = useCallback(
+    async (userId: string) => {
+      loadedUserIdRef.current = userId;
+      setLoadError(null);
       try {
-        const p = await profileService.getProfile(auth.user.id);
+        const p = await profileService.getProfile(userId);
         if (p) {
           const prefs = await getPreferences(p.id);
           setPreferences(prefs);
           setProfile(p);
         }
+      } catch (err) {
+        setLoadError(safeProfileErrorMessage(err));
       } finally {
         setLoading(false);
       }
-    })();
-  }, [auth]);
+    },
+    [profileService]
+  );
+
+  const authUserId = auth.status === 'authenticated' ? auth.user.id : null;
+
+  useEffect(() => {
+    if (authUserId && loadedUserIdRef.current !== authUserId) {
+      void loadProfile(authUserId);
+    }
+  }, [authUserId, loadProfile]);
 
   useEffect(() => {
     if (auth.status === 'unauthenticated') {
@@ -47,6 +64,14 @@ export default function DashboardPreview() {
       void navigate('/login');
     }
   }, [auth, loading, navigate]);
+
+  useEffect(() => {
+    // A load failure is not "no profile" — it must not push the user into
+    // the onboarding wizard.
+    if (!loading && !loadError && auth.status === 'authenticated' && !profile) {
+      void navigate('/onboarding');
+    }
+  }, [loading, loadError, auth, profile, navigate]);
 
   if (auth.status === 'loading' || loading) {
     return (
@@ -69,10 +94,28 @@ export default function DashboardPreview() {
 
   if (auth.status === 'unauthenticated') return null;
 
-  if (!profile) {
-    void navigate('/onboarding');
-    return null;
+  if (loadError) {
+    return (
+      <div className="page-shell">
+        <div
+          className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center"
+          role="alert">
+          <h1 className="text-lg font-semibold mb-2">Your preview couldn't load</h1>
+          <p className="text-sm text-[var(--muted-foreground)] mb-5">{loadError}</p>
+          <button
+            className="min-h-[44px] px-5 rounded-lg text-sm font-semibold bg-[var(--ink)] text-white hover:bg-[#1d2939] disabled:opacity-50"
+            disabled={loading}
+            onClick={() => {
+              if (auth.status === 'authenticated') void loadProfile(auth.user.id);
+            }}>
+            Try again
+          </button>
+        </div>
+      </div>
+    );
   }
+
+  if (!profile) return null;
 
   const templateKey = preferences?.template_key || 'minimal';
   const template = getTemplate(templateKey) ?? getTemplate('minimal')!;

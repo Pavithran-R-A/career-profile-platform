@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { getSupabaseClient } from '../lib/supabase/client';
-import { ProfileService } from '../lib/profiles/service';
+import { ProfileService, safeProfileErrorMessage } from '../lib/profiles/service';
 import type { ProfileWithRelations } from '../lib/profiles/repository';
 import type { PlanEntitlements } from '../lib/billing/plans';
 import type { UsageCheck } from '../lib/billing/usage';
@@ -237,6 +237,7 @@ export default function Domains() {
 
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [entitlements, setEntitlements] = useState<PlanEntitlements | null>(null);
   const [domainUsage, setDomainUsage] = useState<UsageCheck | null>(null);
   const [domains, setDomains] = useState<CustomDomainItem[]>([]);
@@ -251,14 +252,27 @@ export default function Domains() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
+  const authUserId = auth.status === 'authenticated' ? auth.user.id : null;
+
   useEffect(() => {
-    if (auth.status === 'authenticated') {
-      void profileService.getProfile(auth.user.id).then((p) => {
+    if (!authUserId) return;
+    let cancelled = false;
+    void profileService
+      .getProfile(authUserId)
+      .then((p) => {
+        if (cancelled) return;
         setProfile(p);
         setLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(safeProfileErrorMessage(err));
+        setLoading(false);
       });
-    }
-  }, [auth, profileService]);
+    return () => {
+      cancelled = true;
+    };
+  }, [authUserId, profileService]);
 
   useEffect(() => {
     if (auth.status === 'unauthenticated' && !loading) {
@@ -549,6 +563,40 @@ export default function Domains() {
     return (
       <div className="min-h-[80vh] flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <div
+          className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center"
+          role="alert">
+          <h1 className="text-lg font-semibold mb-2">Domains couldn't load</h1>
+          <p className="text-sm text-[var(--muted-foreground)] mb-5">{loadError}</p>
+          <button
+            className="min-h-[44px] px-5 rounded-lg text-sm font-semibold bg-[var(--ink)] text-white hover:bg-[#1d2939] disabled:opacity-50"
+            disabled={loading}
+            onClick={() => {
+              if (auth.status === 'authenticated') {
+                setLoading(true);
+                setLoadError(null);
+                void profileService
+                  .getProfile(auth.user.id)
+                  .then((p) => {
+                    setProfile(p);
+                    setLoading(false);
+                  })
+                  .catch((err) => {
+                    setLoadError(safeProfileErrorMessage(err));
+                    setLoading(false);
+                  });
+              }
+            }}>
+            Try again
+          </button>
+        </div>
       </div>
     );
   }

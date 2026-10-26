@@ -326,7 +326,15 @@ interface RepoMetaStore {
     select: (cols: string) => {
       eq: (col: string, val: unknown) => Promise<{ data: unknown; error: unknown }>;
     };
-    upsert: (rows: unknown) => Promise<{ error: unknown }>;
+    upsert: (
+      rows: unknown,
+      options?: { onConflict?: string; ignoreDuplicates?: boolean }
+    ) => Promise<{ error: unknown }>;
+    update: (values: Record<string, unknown>) => {
+      eq: (col: string, val: unknown) => {
+        in: (col: string, vals: unknown[]) => Promise<{ error: unknown }>;
+      };
+    };
   };
 }
 
@@ -403,8 +411,25 @@ export async function syncConnectionRepositories(params: {
     };
   });
 
-  const { error: upsertErr } = await supabase.from('github_repositories').upsert(rows);
+  const { error: upsertErr } = await supabase
+    .from('github_repositories')
+    .upsert(rows, { onConflict: 'connection_id,github_repo_id' });
   if (upsertErr) return { ok: false, reason: 'github_error' };
+
+  // Repos removed from the installation (or now inaccessible) must not keep
+  // their selection flags: the evidence pipeline's stale sweep deletes
+  // evidence for unselected repositories, so demoting them here is what
+  // reaps their evidence on the next generation run.
+  const fetchedIds = new Set(rows.map((r) => r.github_repo_id));
+  const staleRepoIds = [...previous.keys()].filter((id) => !fetchedIds.has(id));
+  if (staleRepoIds.length > 0) {
+    const { error: staleErr } = await supabase
+      .from('github_repositories')
+      .update({ selected_for_evidence: false, show_publicly: false, last_synced_at: now })
+      .eq('connection_id', connectionId)
+      .in('github_repo_id', staleRepoIds);
+    if (staleErr) return { ok: false, reason: 'github_error' };
+  }
 
   return { ok: true, repositoriesSynced: rows.length, totalAvailable: repos.length };
 }
@@ -428,7 +453,13 @@ export function evidenceSourceKey(item: {
   source_commit_sha: string | null;
   subject: string;
 }): string {
-  return `${item.evidence_type}:${item.source_url ?? item.source_commit_sha ?? item.subject}`;
+  // Commits/PRs/issues are keyed by their immutable sha/number-bearing URL.
+  // Preferring the sha keeps the identity stable across repository renames,
+  // where source_url (containing owner/repo) changes but the item does not.
+  if (item.source_commit_sha) {
+    return `${item.evidence_type}:sha:${item.source_commit_sha}`;
+  }
+  return `${item.evidence_type}:${item.source_url ?? item.subject}`;
 }
 
 /**
@@ -442,7 +473,8 @@ export function evidenceSourceKey(item: {
  *      so renames survive) and is_public = FALSE — nothing is auto-published.
  * Stale policy (explicit): evidence rows whose repository is no longer
  * selected are deleted at the start of generation; rows for still-selected
- * repos are replaced per source identity (upsert-by-dedupe, delete+insert).
+ * repos are skipped when their source identity is already stored (existing
+ * summaries are NOT refreshed — re-generation only adds new items).
  */
 export async function generateEvidenceForSelected(params: {
   profileId: string;

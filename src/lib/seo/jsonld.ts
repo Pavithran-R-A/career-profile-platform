@@ -94,9 +94,10 @@ export function buildProfileJsonLd(input: JsonLdProfileInput): Record<string, un
   };
 }
 
-export function jsonLdScript(data: Record<string, unknown>, nonce?: string): string {
+export function jsonLdScript(data: Record<string, unknown>, nonce?: string, id?: string): string {
   const nonceAttribute = nonce ? ` nonce="${escapeHtml(nonce)}"` : '';
-  return `<script type="application/ld+json"${nonceAttribute}>${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
+  const idAttribute = id ? ` id="${escapeHtml(id)}"` : '';
+  return `<script type="application/ld+json"${nonceAttribute}${idAttribute}>${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 }
 
 const CAREERPROFILEGO_DESCRIPTION =

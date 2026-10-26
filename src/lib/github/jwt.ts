@@ -48,15 +48,60 @@ function base64UrlEncode(data: Uint8Array | ArrayBuffer): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/** DER helper: wraps `content` in a tag with minimal-form length encoding. */
+function derWrap(tag: number, content: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
+  if (content.length < 0x80) {
+    const out = new Uint8Array(content.length + 2);
+    out[0] = tag;
+    out[1] = content.length;
+    out.set(content, 2);
+    return out;
+  }
+  const lenBytes: number[] = [];
+  for (let n = content.length; n > 0; n >>= 8) {
+    lenBytes.unshift(n & 0xff);
+  }
+  const out = new Uint8Array(content.length + 2 + lenBytes.length);
+  out[0] = tag;
+  out[1] = 0x80 | lenBytes.length;
+  out.set(lenBytes, 2);
+  out.set(content, 2 + lenBytes.length);
+  return out;
+}
+
+function concat(a: Uint8Array<ArrayBuffer>, b: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
+
+/**
+ * Wraps a PKCS#1 RSAPrivateKey DER blob in a PKCS#8 PrivateKeyInfo so
+ * WebCrypto (which only imports PKCS#8) accepts GitHub-generated .pem files.
+ * The algorithm identifier below is the fixed rsaEncryption AlgorithmIdentifier.
+ */
+function wrapPkcs1DerInPkcs8(pkcs1: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
+  const versionAndAlgorithm = new Uint8Array([
+    0x02, 0x01, 0x00, // version INTEGER 0
+    0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, // SEQUENCE { OID 1.2.840.113549.1.1.1, NULL }
+  ]);
+  return derWrap(0x30, concat(versionAndAlgorithm, derWrap(0x04, pkcs1)));
+}
+
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
+  const isPkcs1 = pem.includes('-----BEGIN RSA PRIVATE KEY-----');
   const pemContents = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/, '')
-    .replace(/-----END PRIVATE KEY-----/, '')
-    .replace(/-----BEGIN RSA PRIVATE KEY-----/, '')
-    .replace(/-----END RSA PRIVATE KEY-----/, '')
+    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/, '')
+    .replace(/-----END (RSA )?PRIVATE KEY-----/, '')
     .replace(/\s/g, '');
 
-  const binaryDer = Uint8Array.from(atob(pemContents), (c) => c.charCodeAt(0));
+  let binaryDer: Uint8Array<ArrayBuffer> = Uint8Array.from(atob(pemContents), (c) =>
+    c.charCodeAt(0)
+  );
+  if (isPkcs1) {
+    binaryDer = wrapPkcs1DerInPkcs8(binaryDer);
+  }
 
   return crypto.subtle.importKey(
     'pkcs8',

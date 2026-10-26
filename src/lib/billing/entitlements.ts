@@ -53,6 +53,7 @@ function normalizeStatus(status: string | null | undefined): SubscriptionStatus 
     case 'expired':
       return status;
     default:
-      return 'active';
+      // Fail CLOSED: an unrecognized status must never silently grant Pro.
+      return 'expired';
   }
 }
