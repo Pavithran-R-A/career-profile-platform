@@ -25,6 +25,12 @@ Companion to `docs/audits/CAREERPROFILEGO_FULL_CODE_AUDIT_20261026.md` (defect l
 
 Baseline reconciliation (October 18 claims): 762 unit / 64 CI Playwright / 23 live disposable — all three verified genuine by direct count. This branch: 744 unit (≈90 tautological assertions retired, 8 sharper tests added; net −11 counting the two deleted dead-module suites), 64 e2e, live 23 pending re-run (§5).
 
+## 2b. Exact-head CI on GitHub
+
+- First run at `cf9f49f` failed the **production dependency audit**: three HIGH advisories were published after the October 18 release (GHSA-587h-7wmj-h5pm vite ≤8.3.2, GHSA-mrhx-c7xc-m3w5 zod <4.6.6, GHSA-xjj6-f33q-929c undici 7.18.0–7.30.0 via miniflare). Fixed by bumping vite 8.3.0→8.3.3, zod 4.6.5→4.6.6 and widening the undici override to ^7.30.1 — the gate did its job, not weakened.
+- Second run at `083434d` failed lint only: an `import()` type annotation in the updated test mock violated `consistent-type-imports`; replaced with a type-only namespace import.
+- **Final: run `40392363163` at head `d3ea69c29776eb3338963a891670a6ab33a2839d` — SUCCESS, both jobs** (quality: format/lint/typecheck/744-unit/build/bundle-budget/audit; e2e: Playwright desktop+mobile). PR: #8.
+
 ## 3. What this release changes (summary)
 
 Five P1 defects fixed (Razorpay receipt >40 chars breaking all checkout; GitHub re-sync always 502; GitHub JWT rejecting GitHub-format keys; six pages dead-ending on profile-load failure; CI bundle gate silently disabled), the full P2 hardening set (CSRF origin gate, recruiter flag enforced server-side, request-size bounds, public-read rate limiting, domain lifecycle recovery, fail-closed billing status, auth/email corrections), the P3 polish set, one SQL migration closing two RLS policy holes + the custom_domains schema drift, dead code removed, and documentation corrected. Full list with file/line evidence: audit doc §3.
