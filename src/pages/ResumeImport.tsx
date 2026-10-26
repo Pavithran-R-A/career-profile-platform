@@ -861,9 +861,15 @@ export default function ResumeImport() {
       {state === 'error' && (
         <div className="text-center py-12">
           <p className="text-gray-600 mb-1 font-medium">Something went wrong.</p>
-          <p className="text-sm text-gray-500 mb-4">
-            Your resume file is still saved on your account — nothing was lost.
-          </p>
+          {currentResume ? (
+            <p className="text-sm text-gray-500 mb-4">
+              Your resume file is still saved on your account — nothing was lost.
+            </p>
+          ) : (
+            <p className="text-sm text-gray-500 mb-4">
+              Nothing was uploaded — your file was not saved to your account.
+            </p>
+          )}
           <div className="flex flex-wrap justify-center gap-3">
             <button
               type="button"
@@ -872,7 +878,7 @@ export default function ResumeImport() {
                 if (currentResume) void retryExtraction();
               }}
               className="btn btn-primary !min-h-[44px]">
-              Try again
+              {currentResume ? 'Try again' : 'Start over'}
             </button>
             <Link to="/dashboard/profile" className="btn btn-secondary !min-h-[44px]">
               Add details manually

@@ -464,6 +464,8 @@ export default function ATSResumeBuilder() {
                       {atsData.skills.map((skill) => (
                         <button
                           key={skill}
+                          type="button"
+                          aria-pressed={selectedSkills.has(skill)}
                           onClick={() => toggleSkill(skill)}
                           className={`px-3 py-1 rounded-full text-sm border ${
                             selectedSkills.has(skill)

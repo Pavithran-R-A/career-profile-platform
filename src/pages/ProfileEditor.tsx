@@ -18,6 +18,16 @@ type EditSection =
 const INPUT =
   'w-full px-3 py-2 border border-[var(--border-strong)] rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:border-transparent';
 
+/**
+ * Next free sort_order. `array.length` collides after a middle deletion
+ * ([0,2] → length 2 == existing value), and PostgREST breaks ties in an
+ * arbitrary order, so the reloaded list could differ from what the user
+ * arranged. MAX+1 keeps insertion order stable.
+ */
+function nextSortOrder(rows: ReadonlyArray<{ sort_order: number | null }>): number {
+  return rows.reduce((max, r) => Math.max(max, r.sort_order ?? 0), -1) + 1;
+}
+
 const MONTHS = [
   'January',
   'February',
@@ -138,6 +148,7 @@ function CardActions({
   deleteLabel,
   canMoveUp,
   canMoveDown,
+  disabled = false,
 }: {
   onEdit: () => void;
   onDelete: () => void;
@@ -146,6 +157,8 @@ function CardActions({
   deleteLabel: string;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
+  /** A reorder is two sequential UPDATEs; block moves/deletes mid-save. */
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-center gap-1 shrink-0">
@@ -153,7 +166,7 @@ function CardActions({
         <button
           type="button"
           onClick={onMoveUp}
-          disabled={!canMoveUp}
+          disabled={!canMoveUp || disabled}
           aria-label="Move up"
           className="w-8 h-8 rounded-md text-[var(--faint-foreground)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)] disabled:opacity-30 disabled:pointer-events-none">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="mx-auto">
@@ -171,7 +184,7 @@ function CardActions({
         <button
           type="button"
           onClick={onMoveDown}
-          disabled={!canMoveDown}
+          disabled={!canMoveDown || disabled}
           aria-label="Move down"
           className="w-8 h-8 rounded-md text-[var(--faint-foreground)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)] disabled:opacity-30 disabled:pointer-events-none">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="mx-auto">
@@ -188,14 +201,16 @@ function CardActions({
       <button
         type="button"
         onClick={onEdit}
-        className="h-8 px-3 rounded-md text-xs font-semibold border border-[var(--border-strong)] text-[var(--foreground)] hover:bg-[var(--surface-muted)]">
+        disabled={disabled}
+        className="h-8 px-3 rounded-md text-xs font-semibold border border-[var(--border-strong)] text-[var(--foreground)] hover:bg-[var(--surface-muted)] disabled:opacity-30">
         Edit
       </button>
       <button
         type="button"
         onClick={onDelete}
+        disabled={disabled}
         aria-label={deleteLabel}
-        className="w-8 h-8 rounded-md text-[var(--faint-foreground)] hover:bg-[var(--danger-surface)] hover:text-[var(--danger)]">
+        className="w-8 h-8 rounded-md text-[var(--faint-foreground)] hover:bg-[var(--danger-surface)] hover:text-[var(--danger)] disabled:opacity-30 disabled:pointer-events-none">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="mx-auto">
           <path
             d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"
@@ -526,7 +541,7 @@ export default function ProfileEditor() {
       end_month: endMonth,
       is_current: isCurrent,
       description: (fd.get('description') as string) || null,
-      sort_order: profile.experiences.length,
+      sort_order: nextSortOrder(profile.experiences),
     };
 
     try {
@@ -572,17 +587,26 @@ export default function ProfileEditor() {
     setSaving(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
+    const startYear = fd.get('startYear') ? parseInt(fd.get('startYear') as string) : null;
+    const startMonth = fd.get('startMonth') ? parseInt(fd.get('startMonth') as string) : null;
+    const endYear = fd.get('endYear') ? parseInt(fd.get('endYear') as string) : null;
+    const endMonth = fd.get('endMonth') ? parseInt(fd.get('endMonth') as string) : null;
+    if (isDateRangeInvalid({ startYear, startMonth, endYear, endMonth, current: false })) {
+      setSaving(false);
+      setError('The end date cannot be before the start date.');
+      return;
+    }
     const row = {
       profile_id: profile.id,
       institution: fd.get('institution') as string,
       degree: (fd.get('degree') as string) || null,
       field_of_study: (fd.get('fieldOfStudy') as string) || null,
-      start_year: fd.get('startYear') ? parseInt(fd.get('startYear') as string) : null,
-      start_month: fd.get('startMonth') ? parseInt(fd.get('startMonth') as string) : null,
-      end_year: fd.get('endYear') ? parseInt(fd.get('endYear') as string) : null,
-      end_month: fd.get('endMonth') ? parseInt(fd.get('endMonth') as string) : null,
+      start_year: startYear,
+      start_month: startMonth,
+      end_year: endYear,
+      end_month: endMonth,
       description: (fd.get('description') as string) || null,
-      sort_order: profile.education.length,
+      sort_order: nextSortOrder(profile.education),
     };
     try {
       const { data, error } = await supabase
@@ -622,13 +646,21 @@ export default function ProfileEditor() {
     setSaving(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
+    // Same http/https gate as links: type="url" alone accepts javascript:.
+    const projectUrl = (fd.get('projectUrl') as string) || null;
+    const repositoryUrl = (fd.get('repositoryUrl') as string) || null;
+    if ((projectUrl && !isHttpUrl(projectUrl)) || (repositoryUrl && !isHttpUrl(repositoryUrl))) {
+      setSaving(false);
+      setError('Project links must start with http:// or https://');
+      return;
+    }
     const row = {
       profile_id: profile.id,
       name: fd.get('name') as string,
       description: (fd.get('description') as string) || null,
-      project_url: (fd.get('projectUrl') as string) || null,
-      repository_url: (fd.get('repositoryUrl') as string) || null,
-      sort_order: profile.projects.length,
+      project_url: projectUrl,
+      repository_url: repositoryUrl,
+      sort_order: nextSortOrder(profile.projects),
     };
     try {
       const { data, error } = await supabase
@@ -679,7 +711,7 @@ export default function ProfileEditor() {
       profile_id: profile.id,
       name: skillName,
       category: (fd.get('category') as string) || null,
-      sort_order: profile.skills.length,
+      sort_order: nextSortOrder(profile.skills),
     };
     try {
       const { data, error } = await supabase
@@ -730,7 +762,7 @@ export default function ProfileEditor() {
       profile_id: profile.id,
       label: fd.get('label') as string,
       url: linkUrl,
-      sort_order: profile.links.length,
+      sort_order: nextSortOrder(profile.links),
     };
     try {
       const { data, error } = await supabase
@@ -787,7 +819,7 @@ export default function ProfileEditor() {
       source_url: sourceUrl || null,
       is_featured: fd.get('featured') === 'on',
       is_public: fd.get('isPublic') === 'on',
-      sort_order: achievements.length,
+      sort_order: nextSortOrder(achievements),
     };
     try {
       const { data, error } = await supabase
@@ -1195,7 +1227,7 @@ export default function ProfileEditor() {
                                 {exp.location ? ` · ${exp.location}` : ''}
                               </p>
                             </div>
-                            <CardActions
+                            <CardActions disabled={saving}
                               onEdit={() => toggleEdit(`experience:${exp.id}`)}
                               onDelete={() => void handleExperienceDelete(exp.id)}
                               onMoveUp={() => void handleMove('experience', idx, -1)}
@@ -1303,22 +1335,38 @@ export default function ProfileEditor() {
                         onSubmit={(e) => {
                           e.preventDefault();
                           const fd = new FormData(e.currentTarget);
+                          const startYear = fd.get('startYear')
+                            ? parseInt(fd.get('startYear') as string)
+                            : null;
+                          const startMonth = fd.get('startMonth')
+                            ? parseInt(fd.get('startMonth') as string)
+                            : null;
+                          const endYear = fd.get('endYear')
+                            ? parseInt(fd.get('endYear') as string)
+                            : null;
+                          const endMonth = fd.get('endMonth')
+                            ? parseInt(fd.get('endMonth') as string)
+                            : null;
+                          if (
+                            isDateRangeInvalid({
+                              startYear,
+                              startMonth,
+                              endYear,
+                              endMonth,
+                              current: false,
+                            })
+                          ) {
+                            setError('The end date cannot be before the start date.');
+                            return;
+                          }
                           void handleRowUpdate('education', edu.id, {
                             institution: fd.get('institution') as string,
                             degree: (fd.get('degree') as string) || null,
                             field_of_study: (fd.get('fieldOfStudy') as string) || null,
-                            start_year: fd.get('startYear')
-                              ? parseInt(fd.get('startYear') as string)
-                              : null,
-                            start_month: fd.get('startMonth')
-                              ? parseInt(fd.get('startMonth') as string)
-                              : null,
-                            end_year: fd.get('endYear')
-                              ? parseInt(fd.get('endYear') as string)
-                              : null,
-                            end_month: fd.get('endMonth')
-                              ? parseInt(fd.get('endMonth') as string)
-                              : null,
+                            start_year: startYear,
+                            start_month: startMonth,
+                            end_year: endYear,
+                            end_month: endMonth,
                             description: (fd.get('description') as string) || null,
                           });
                         }}
@@ -1417,7 +1465,7 @@ export default function ProfileEditor() {
                               })}
                             </p>
                           </div>
-                          <CardActions
+                          <CardActions disabled={saving}
                             onEdit={() => toggleEdit(`education:${edu.id}`)}
                             onDelete={() => void handleEducationDelete(edu.id)}
                             onMoveUp={() => void handleMove('education', idx, -1)}
@@ -1500,11 +1548,20 @@ export default function ProfileEditor() {
                         onSubmit={(e) => {
                           e.preventDefault();
                           const fd = new FormData(e.currentTarget);
+                          const projectUrl = (fd.get('projectUrl') as string) || null;
+                          const repositoryUrl = (fd.get('repositoryUrl') as string) || null;
+                          if (
+                            (projectUrl && !isHttpUrl(projectUrl)) ||
+                            (repositoryUrl && !isHttpUrl(repositoryUrl))
+                          ) {
+                            setError('Project links must start with http:// or https://');
+                            return;
+                          }
                           void handleRowUpdate('projects', project.id, {
                             name: fd.get('name') as string,
                             description: (fd.get('description') as string) || null,
-                            project_url: (fd.get('projectUrl') as string) || null,
-                            repository_url: (fd.get('repositoryUrl') as string) || null,
+                            project_url: projectUrl,
+                            repository_url: repositoryUrl,
                           });
                         }}
                         className="card card-pad border-[var(--accent)] space-y-4">
@@ -1611,7 +1668,7 @@ export default function ProfileEditor() {
                               )}
                             </div>
                           </div>
-                          <CardActions
+                          <CardActions disabled={saving}
                             onEdit={() => toggleEdit(`projects:${project.id}`)}
                             onDelete={() => void handleProjectDelete(project.id)}
                             onMoveUp={() => void handleMove('projects', idx, -1)}
@@ -1827,7 +1884,7 @@ export default function ProfileEditor() {
                               </a>
                             </div>
                           </div>
-                          <CardActions
+                          <CardActions disabled={saving}
                             onEdit={() => toggleEdit(`links:${link.id}`)}
                             onDelete={() => void handleLinkDelete(link.id)}
                             onMoveUp={() => void handleMove('links', idx, -1)}
@@ -2032,7 +2089,7 @@ export default function ProfileEditor() {
                               )}
                             </div>
                           </div>
-                          <CardActions
+                          <CardActions disabled={saving}
                             onEdit={() => setAchievementEditId(a.id)}
                             onDelete={() => void handleAchievementDelete(a.id)}
                             onMoveUp={() => void handleAchievementMove(idx, -1)}
