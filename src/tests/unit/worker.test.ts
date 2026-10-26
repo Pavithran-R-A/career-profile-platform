@@ -359,4 +359,73 @@ describe('Worker API handler', () => {
       expect(client.from).not.toHaveBeenCalled();
     });
   });
+
+  // Independent verification of the CSRF hardening (audit 2026-10-26): a
+  // cross-site page can send a "simple request" with no preflight, so the
+  // Authorization-header protection that covers authenticated routes does
+  // not extend to unauthenticated POSTs. Any state-changing request that
+  // DECLARES a disallowed Origin must be rejected; Origin-less callers
+  // (provider webhooks, curl) are unaffected, and GETs stay open.
+  describe('cross-site origin gate on state-changing routes', () => {
+    const askRequestWithOrigin = (origin: string | null): Request =>
+      new Request('https://example.com/api/recruiter/ask', {
+        method: 'POST',
+        headers: new Headers({
+          'Content-Type': 'application/json',
+          'cf-connecting-ip': '203.0.113.5',
+          ...(origin ? { Origin: origin } : {}),
+        }),
+        body: JSON.stringify({ username: 'some-user', question: 'What did they build?' }),
+      });
+
+    const prodEnv = {
+      ENVIRONMENT: 'production',
+      ALLOWED_ORIGINS: 'https://app.example.com',
+      RECRUITER_AI_ENABLED: 'true',
+    };
+
+    it('rejects a cross-site POST declaring a disallowed Origin (403 ORIGIN_NOT_ALLOWED)', async () => {
+      const res = await handleRequest(
+        askRequestWithOrigin('https://evil.example'),
+        prodEnv as never,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe('ORIGIN_NOT_ALLOWED');
+    });
+
+    it('lets an allowed origin proceed past the gate into route handling', async () => {
+      const res = await handleRequest(
+        askRequestWithOrigin('https://app.example.com'),
+        prodEnv as never,
+        {} as ExecutionContext
+      );
+      // Gate passed: the recruiter route continues to its own disabled state
+      // (no Supabase configured here) instead of the origin 403.
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe('SERVER_NOT_CONFIGURED');
+    });
+
+    it('does not block GETs even from disallowed origins', async () => {
+      const res = await handleRequest(
+        makeRequest('/api/github/config', 'GET', 'https://evil.example'),
+        prodEnv as never,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('leaves Origin-less callers (provider webhooks, curl) unaffected', async () => {
+      const res = await handleRequest(
+        askRequestWithOrigin(null),
+        prodEnv as never,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe('SERVER_NOT_CONFIGURED');
+    });
+  });
 });

@@ -813,3 +813,57 @@ describe('custom domain add requires PLATFORM_PROFILE_ORIGIN when provisioning e
     expect(body.code).toBe('SERVER_NOT_CONFIGURED');
   });
 });
+
+// ─── 7. Public profile read limiter (anonymous reads) ───────────────────
+
+describe('GET /api/public/profile/:username rate limiting', () => {
+  it('consults PUBLIC_READ_RATE_LIMITER before any DB work and 429s on denial', async () => {
+    vi.restoreAllMocks();
+    const seenKeys: string[] = [];
+    const limiter = {
+      limit: async ({ key }: { key: string }) => {
+        seenKeys.push(key);
+        return { success: false };
+      },
+    };
+    const admin = makeAdminClient({
+      public_profiles: () => ({ rows: [{ id: 'p1' }], error: null }),
+    });
+    vi.mocked(createServerClient).mockReturnValue(admin as never);
+
+    const req = new Request('https://example.com/api/public/profile/ada', {
+      headers: new Headers({ 'cf-connecting-ip': '203.0.113.9' }),
+    });
+    const res = await handleRequest(
+      req,
+      { ...AUTH_ENV, PUBLIC_READ_RATE_LIMITER: limiter } as never,
+      {} as ExecutionContext
+    );
+
+    expect(res.status).toBe(429);
+    expect(seenKeys).toEqual(['public-read:203.0.113.9']);
+    // Denied before the service-role lookup ran at all.
+    expect(admin.from).not.toHaveBeenCalled();
+  });
+
+  it('admits fresh traffic to the profile lookup when the limiter allows', async () => {
+    vi.restoreAllMocks();
+    const limiter = { limit: async () => ({ success: true }) };
+    const admin = makeAdminClient({
+      public_profiles: () => ({ rows: [], error: null }),
+    });
+    vi.mocked(createServerClient).mockReturnValue(admin as never);
+
+    const req = new Request('https://example.com/api/public/profile/ada', {
+      headers: new Headers({ 'cf-connecting-ip': '203.0.113.9' }),
+    });
+    const res = await handleRequest(
+      req,
+      { ...AUTH_ENV, PUBLIC_READ_RATE_LIMITER: limiter } as never,
+      {} as ExecutionContext
+    );
+
+    expect(res.status).toBe(404);
+    expect(admin.from).toHaveBeenCalled();
+  });
+});

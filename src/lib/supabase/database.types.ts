@@ -120,6 +120,14 @@ export type Database = {
           hostname: string;
           id: string;
           last_error: string | null;
+          // The four provider columns are created by migration
+          // 20261026000000; these hand-added entries mirror that DDL exactly.
+          // REGENERATE from the live database after the migration is applied
+          // (supabase gen types) to confirm parity.
+          provider_validation: Json | null;
+          provider_validation_http: Json | null;
+          ssl_status: string | null;
+          ssl_validation_records: Json | null;
           profile_id: string;
           status: string;
           updated_at: string;
@@ -131,6 +139,10 @@ export type Database = {
           hostname: string;
           id?: string;
           last_error?: string | null;
+          provider_validation?: Json | null;
+          provider_validation_http?: Json | null;
+          ssl_status?: string | null;
+          ssl_validation_records?: Json | null;
           profile_id: string;
           status?: string;
           updated_at?: string;
@@ -142,6 +154,10 @@ export type Database = {
           hostname?: string;
           id?: string;
           last_error?: string | null;
+          provider_validation?: Json | null;
+          provider_validation_http?: Json | null;
+          ssl_status?: string | null;
+          ssl_validation_records?: Json | null;
           profile_id?: string;
           status?: string;
           updated_at?: string;
