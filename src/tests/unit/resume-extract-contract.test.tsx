@@ -18,10 +18,24 @@ vi.mock('../../lib/supabase/client', () => ({
       getSession: () =>
         Promise.resolve({ data: { session: { user: { id: 'user-1' }, access_token: 'tok-123' } } }),
     },
+    // loadPendingReview probes resume_sources on mount; without a from()
+    // chain the probe throws and the page now (correctly) surfaces it as a
+    // load error instead of silently rendering the upload slot.
+    from: () => {
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      };
+      return chain;
+    },
   }),
 }));
 
-vi.mock('../../lib/profiles/service', () => ({
+vi.mock('../../lib/profiles/service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/profiles/service')>()),
   ProfileService: class {
     getProfile = vi.fn().mockResolvedValue({ id: 'profile-id' });
   },
