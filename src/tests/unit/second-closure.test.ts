@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
 import { handleRequest } from '../../workers/handler';
 import { createServerClient } from '../../lib/supabase/server';
+import { FAKE_SUPABASE_ADMIN_KEY } from '../fixtures/fake-values';
 
 vi.mock('../../lib/supabase/server', () => ({ createServerClient: vi.fn() }));
 
@@ -90,7 +91,7 @@ function mockAuthUser(userId: string) {
 
 const AUTH_ENV = {
   SUPABASE_URL: 'https://sb.example.com',
-  SUPABASE_SECRET_KEY: 'test-only-admin-key-not-a-real-secret',
+  SUPABASE_SECRET_KEY: FAKE_SUPABASE_ADMIN_KEY,
   SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
 };
 

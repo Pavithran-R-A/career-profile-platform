@@ -6,6 +6,7 @@ import { AuthProvider } from '../../lib/auth/context';
 import Signup from '../../pages/auth/Signup';
 import ForgotPassword from '../../pages/auth/ForgotPassword';
 import VerifyEmail from '../../pages/auth/VerifyEmail';
+import { FAKE_PASSWORD } from '../fixtures/fake-values';
 import ResetPassword from '../../pages/auth/ResetPassword';
 import AuthCallback from '../../pages/auth/AuthCallback';
 import Login from '../../pages/auth/Login';
@@ -101,7 +102,7 @@ function renderPage(ui: ReactElement, path = '/') {
   );
 }
 
-const VALID_PASSWORD = 'Str0ng!Passw0rd';
+const VALID_PASSWORD = FAKE_PASSWORD;
 
 beforeEach(() => {
   vi.clearAllMocks();

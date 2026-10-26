@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { validateClientEnv, validateServerEnv } from '../../config/env';
+import { FAKE_SB_SECRET } from '../fixtures/fake-values';
 
 describe('validateClientEnv', () => {
   it('accepts valid client env', () => {
@@ -31,7 +32,7 @@ describe('validateServerEnv', () => {
   });
 
   it('accepts preferred Supabase secret key', () => {
-    expect(validateServerEnv({ SUPABASE_SECRET_KEY: 'sb_secret_test' })).toBeDefined();
+    expect(validateServerEnv({ SUPABASE_SECRET_KEY: FAKE_SB_SECRET })).toBeDefined();
   });
 
   it('accepts legacy service role key', () => {

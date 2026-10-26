@@ -27,6 +27,7 @@ const { privateKeyPem } = (() => {
 
 import { resolveGitHubConfig, type GitHubModuleConfig } from '../../lib/github/config';
 import { syncConnectionRepositories } from '../../lib/github/server';
+import { FAKE_CLIENT_SECRET } from '../fixtures/fake-values';
 
 const CONFIG: GitHubModuleConfig = resolveGitHubConfig({
   GITHUB_STATE_SECRET: 'test-state-secret',
@@ -34,7 +35,7 @@ const CONFIG: GitHubModuleConfig = resolveGitHubConfig({
   GITHUB_APP_PRIVATE_KEY: privateKeyPem,
   GITHUB_APP_SLUG: 'career-profile-app-test',
   GITHUB_APP_CLIENT_ID: 'Iv1.testclientid',
-  GITHUB_APP_CLIENT_SECRET: 'test-client-secret',
+  GITHUB_APP_CLIENT_SECRET: FAKE_CLIENT_SECRET,
 });
 
 function githubRepo(id: number, name: string) {

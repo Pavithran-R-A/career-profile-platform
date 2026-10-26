@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleRequest } from '../../workers/handler';
 import { createServerClient } from '../../lib/supabase/server';
+import { FAKE_SUPABASE_SERVER_KEY } from '../fixtures/fake-values';
 
 // The handler imports its Supabase clients from lib/supabase/server; mock the
 // module so recruiter-ask ordering tests can stand in for a live backend.
@@ -329,7 +330,7 @@ describe('Worker API handler', () => {
     const backendEnv = (extra: Record<string, string> = {}) => ({
       SUPABASE_URL: 'https://supabase.example.com',
       SUPABASE_PUBLISHABLE_KEY: 'anon-key',
-      SUPABASE_SECRET_KEY: 'test-only-server-secret',
+      SUPABASE_SECRET_KEY: FAKE_SUPABASE_SERVER_KEY,
       RECRUITER_AI_ENABLED: 'true',
       ...extra,
     });

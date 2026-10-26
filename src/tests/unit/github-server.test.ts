@@ -32,6 +32,7 @@ import {
   listInstallationsForUserToken,
 } from '../../lib/github/server';
 import type { GitHubModuleConfig } from '../../lib/github/config';
+import { FAKE_CLIENT_SECRET, FAKE_GITHUB_TOKEN } from '../fixtures/fake-values';
 
 const ENV = {
   GITHUB_STATE_SECRET: 'test-state-secret',
@@ -39,7 +40,7 @@ const ENV = {
   GITHUB_APP_PRIVATE_KEY: privateKeyPem,
   GITHUB_APP_SLUG: 'career-profile-app-test',
   GITHUB_APP_CLIENT_ID: 'Iv1.testclientid',
-  GITHUB_APP_CLIENT_SECRET: 'test-client-secret',
+  GITHUB_APP_CLIENT_SECRET: FAKE_CLIENT_SECRET,
 };
 
 function makeConfig(env: Partial<typeof ENV> & { GITHUB_APP_ID?: string }): GitHubModuleConfig {
@@ -186,7 +187,7 @@ describe('resolveInstallationForUser (Flow A)', () => {
         const url =
           typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
         if (url.startsWith('https://github.com/login/oauth/access_token')) {
-          return new Response(JSON.stringify({ access_token: 'ghu_test_token' }), { status: 200 });
+          return new Response(JSON.stringify({ access_token: FAKE_GITHUB_TOKEN }), { status: 200 });
         }
         if (url.startsWith('https://api.github.com/user/installations')) {
           return new Response(JSON.stringify(installationsBody), { status: 200 });
@@ -294,7 +295,7 @@ describe('resolveInstallationForUser (Flow A)', () => {
         const url =
           typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
         if (url.startsWith('https://github.com/login/oauth/access_token')) {
-          return new Response(JSON.stringify({ access_token: 'ghu_test_token' }), { status: 200 });
+          return new Response(JSON.stringify({ access_token: FAKE_GITHUB_TOKEN }), { status: 200 });
         }
         return new Response('nope', { status: 500 });
       })

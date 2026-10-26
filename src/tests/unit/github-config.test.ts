@@ -9,14 +9,15 @@ import {
   githubInstallInfo,
 } from '../../lib/github/server';
 import type { GitHubEnvSource } from '../../lib/github/config';
+import { FAKE_CLIENT_SECRET, FAKE_GITHUB_APP_PRIVATE_KEY_PEM } from '../fixtures/fake-values';
 
 // All six Flow-A values present. The exact variables the production flow
 // requires: appId, private key, client id, client secret, state secret, slug.
 const FULL_ENV: GitHubEnvSource = {
   GITHUB_APP_ID: '12345',
-  GITHUB_APP_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----',
+  GITHUB_APP_PRIVATE_KEY: FAKE_GITHUB_APP_PRIVATE_KEY_PEM,
   GITHUB_APP_CLIENT_ID: 'Iv1.testclientid',
-  GITHUB_APP_CLIENT_SECRET: 'test-client-secret',
+  GITHUB_APP_CLIENT_SECRET: FAKE_CLIENT_SECRET,
   GITHUB_STATE_SECRET: 'independent-state-secret',
   GITHUB_APP_SLUG: 'career-profile-app-test',
 };

@@ -292,10 +292,23 @@ async function verifyAuth(
     return null;
   }
 
+  // Parse and validate the auth-server base URL once: only an https origin
+  // with a fixed path is acceptable, so neither a misconfigured env value nor
+  // anything request-influenced can redirect the credential check elsewhere.
+  let authUserUrl: URL;
+  try {
+    authUserUrl = new URL('/auth/v1/user', supabaseUrl);
+  } catch {
+    return null;
+  }
+  if (authUserUrl.protocol !== 'https:' || authUserUrl.pathname !== '/auth/v1/user') {
+    return null;
+  }
+
   // Fail closed: any auth-server error (non-2xx or network failure) denies
   // the request rather than throwing a 500 with half-verified state.
   try {
-    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    const response = await fetch(authUserUrl, {
       headers: {
         Authorization: `Bearer ${token}`,
         apikey: publishableKey,
