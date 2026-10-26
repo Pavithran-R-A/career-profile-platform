@@ -7,12 +7,22 @@
  */
 const SAFE_DEFAULT = 'Something went wrong. Please try again.';
 
-export function toSafeAuthMessage(raw: string | null | undefined): string {
+/**
+ * 'reset' pages speak the password-reset-link copy for invalid/expired
+ * tokens; every other surface gets context-neutral copy — a dropped session
+ * on the verify-email page must not claim to be a password-reset link.
+ */
+export function toSafeAuthMessage(
+  raw: string | null | undefined,
+  context: 'reset' | 'generic' = 'generic'
+): string {
   const message = raw?.trim().toLowerCase();
   if (!message) return SAFE_DEFAULT;
 
   if (/session missing|invalid jwt|invalid token|token expired|recovery token/.test(message)) {
-    return 'This password-reset link is invalid or has expired.';
+    return context === 'reset'
+      ? 'This password-reset link is invalid or has expired.'
+      : 'Your session has expired. Please sign in again.';
   }
 
   if (/rate limit|too many requests|too many attempts/.test(message)) {

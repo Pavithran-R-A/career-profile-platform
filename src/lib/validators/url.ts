@@ -4,6 +4,11 @@ export function isSafeRedirect(path: string): boolean {
   if (!path.startsWith('/')) return false;
   if (path.startsWith('//')) return false;
   if (path.includes('://')) return false;
+  // '/\evil.com' normalizes to a protocol-relative URL in WHATWG parsing, and
+  // control characters can smuggle separators into downstream header/link
+  // contexts. Reject both rather than keeping a trapdoor in the validator.
+  if (path.includes('\\')) return false;
+  if (/[\u0000-\u001f]/.test(path)) return false;
   return true;
 }
 
@@ -35,6 +40,12 @@ export function sanitizeUrl(url: string | null | undefined): string | undefined 
   try {
     const parsed = new URL(url);
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return url;
+    }
+    // Safe for navigation and required for genuine contact links ("Email"
+    // buttons on a public profile). Every other scheme (javascript:, data:,
+    // vbscript:, blob:) still falls through to undefined.
+    if (parsed.protocol === 'mailto:') {
       return url;
     }
   } catch {

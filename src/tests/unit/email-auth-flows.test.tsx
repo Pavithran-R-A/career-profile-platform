@@ -213,9 +213,12 @@ describe('resend confirmation / verify-email flow', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /resend confirmation email/i }));
     await waitFor(() =>
+      // The resent link must route through the same callback as signup —
+      // without emailRedirectTo, Supabase falls back to the Site URL root.
       expect(supabaseMock.auth.resend).toHaveBeenCalledWith({
         type: 'signup',
         email: 'new@example.test',
+        options: { emailRedirectTo: `${ORIGIN}/auth/callback` },
       })
     );
     expect(await screen.findByText(/confirmation email resent/i)).toBeInTheDocument();

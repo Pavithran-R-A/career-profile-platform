@@ -51,6 +51,10 @@ describe('sanitizeUrl', () => {
       'https://example.com/path?q=1#hash'
     );
   });
+
+  it('allows mailto: for contact links', () => {
+    expect(sanitizeUrl('mailto:jane@example.com')).toBe('mailto:jane@example.com');
+  });
 });
 
 describe('isSafeRedirect', () => {
@@ -64,6 +68,14 @@ describe('isSafeRedirect', () => {
 
   it('rejects absolute URLs', () => {
     expect(isSafeRedirect('https://evil.com')).toBe(false);
+  });
+
+  it('rejects backslash paths that normalize to protocol-relative URLs', () => {
+    expect(isSafeRedirect('/\\evil.com')).toBe(false);
+  });
+
+  it('rejects control characters', () => {
+    expect(isSafeRedirect('/dashboard\u0000')).toBe(false);
   });
 });
 

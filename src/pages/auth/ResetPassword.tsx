@@ -63,7 +63,7 @@ export default function ResetPassword() {
     setLoading(false);
 
     if (authError) {
-      setError(toSafeAuthMessage(authError.message));
+      setError(toSafeAuthMessage(authError.message, 'reset'));
       return;
     }
 

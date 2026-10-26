@@ -391,9 +391,14 @@ describe('POST /api/domains/custom/refresh', () => {
       DOMAINS_ENV as never,
       {} as ExecutionContext
     );
-    expect(res.status).toBe(502);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('Provider lookup failed');
+    // Provider unreachable (or hostname gone): the row is marked failed and
+    // the caller gets a truthful 200 — NOT an endless "pending validation".
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; error: string };
+    expect(body.status).toBe('failed');
+    expect(body.error).toMatch(/remove|retry/i);
+    // The failed status was persisted (update ran against the domain row).
+    expect(admin.from).toHaveBeenCalledWith('custom_domains');
   });
 });
 

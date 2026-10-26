@@ -613,6 +613,7 @@ describe('recruiter rate-limit key design', () => {
     const env = {
       ...AUTH_ENV,
       RATE_LIMIT_KEY_SECRET: secret,
+      RECRUITER_AI_ENABLED: 'true',
       RECRUITER_RATE_LIMITER: limiter,
     };
     // Recruiter ask for an unknown profile → 404 after the limiter ran.
@@ -659,7 +660,7 @@ describe('recruiter rate-limit key design', () => {
     });
     const res = await handleRequest(
       req,
-      { ...AUTH_ENV, RECRUITER_RATE_LIMITER: limiter } as never,
+      { ...AUTH_ENV, RECRUITER_AI_ENABLED: 'true', RECRUITER_RATE_LIMITER: limiter } as never,
       {} as ExecutionContext
     );
     expect(res.status).toBe(404);

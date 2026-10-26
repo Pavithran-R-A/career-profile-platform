@@ -110,7 +110,14 @@ export default function VerifyEmail() {
     if (!resendTo || resendState === 'sending') return;
     setResendState('sending');
     const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.resend({ type: 'signup', email: resendTo });
+    // Same redirect target as signup: without it, Supabase falls back to the
+    // project Site URL root, and the resent link never routes through the
+    // callback's onboarding/verification logic.
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: resendTo,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    });
     // Explicit outcome either way — never a silent no-op.
     setResendState(error ? 'error' : 'sent');
   };

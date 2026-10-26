@@ -255,6 +255,9 @@ describe('Worker API handler', () => {
       // existed. The Cloudflare contract is limit({ key }) → { success }.
       const limiterCalls: string[] = [];
       const env = {
+        // The flag gates the ask endpoint itself, so every recruiter test
+        // opts in explicitly.
+        RECRUITER_AI_ENABLED: 'true',
         RECRUITER_RATE_LIMITER: {
           limit: async (opts: { key: string }) => {
             limiterCalls.push(opts.key);
@@ -275,6 +278,7 @@ describe('Worker API handler', () => {
 
     it('returns 429 TOO_MANY_REQUESTS with Retry-After only when success is false', async () => {
       const env = {
+        RECRUITER_AI_ENABLED: 'true',
         RECRUITER_RATE_LIMITER: {
           limit: async () => ({ success: false }),
         },
@@ -288,6 +292,7 @@ describe('Worker API handler', () => {
 
     it('does not take the feature down if the limiter throws', async () => {
       const env = {
+        RECRUITER_AI_ENABLED: 'true',
         RECRUITER_RATE_LIMITER: {
           limit: async () => {
             throw new Error('limiter unavailable');
@@ -325,6 +330,7 @@ describe('Worker API handler', () => {
       SUPABASE_URL: 'https://supabase.example.com',
       SUPABASE_PUBLISHABLE_KEY: 'anon-key',
       SUPABASE_SECRET_KEY: 'test-only-server-secret',
+      RECRUITER_AI_ENABLED: 'true',
       ...extra,
     });
 
