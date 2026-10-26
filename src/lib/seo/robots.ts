@@ -5,6 +5,7 @@ export function buildRobotsTxt(origin: string): string {
   return [
     'User-agent: *',
     'Allow: /',
+    'Disallow: /dashboard',
     'Disallow: /dashboard/',
     'Disallow: /login',
     'Disallow: /signup',

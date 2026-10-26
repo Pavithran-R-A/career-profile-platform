@@ -135,6 +135,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   const profileServiceRef = useRef<ProfileService | null>(null);
   if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
@@ -291,9 +292,14 @@ export default function Dashboard() {
     try {
       await navigator.clipboard.writeText(publicUrl);
       setCopied(true);
+      setCopyFailed(false);
       setTimeout(() => setCopied(false), 2000);
     } catch {
+      // Clipboard API unavailable (insecure context / denied): say so — a
+      // silently unchanged button leaves the visitor guessing.
       setCopied(false);
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 2600);
     }
   };
 
@@ -386,10 +392,14 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => void copyLink()}
                     className="btn btn-secondary !min-h-[44px] !py-2.5">
-                    {copied ? 'Copied ✓' : 'Copy link'}
+                    {copied ? 'Copied ✓' : copyFailed ? 'Copy failed' : 'Copy link'}
                   </button>
                   <span role="status" aria-live="polite" className="sr-only">
-                    {copied ? 'Link copied to clipboard' : ''}
+                    {copied
+                      ? 'Link copied to clipboard'
+                      : copyFailed
+                        ? 'Copying failed — select and copy the link manually'
+                        : ''}
                   </span>
                 </div>
               </div>
