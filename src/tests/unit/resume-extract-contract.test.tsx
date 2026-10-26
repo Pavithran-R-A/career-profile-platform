@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import ResumeImport from '../../pages/ResumeImport';
+import type * as ProfilesServiceModule from '../../lib/profiles/service';
 
 const stableAuth = {
   status: 'authenticated',
@@ -34,12 +35,15 @@ vi.mock('../../lib/supabase/client', () => ({
   }),
 }));
 
-vi.mock('../../lib/profiles/service', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../lib/profiles/service')>()),
-  ProfileService: class {
-    getProfile = vi.fn().mockResolvedValue({ id: 'profile-id' });
-  },
-}));
+vi.mock('../../lib/profiles/service', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as typeof ProfilesServiceModule),
+    ProfileService: class {
+      getProfile = vi.fn().mockResolvedValue({ id: 'profile-id' });
+    },
+  };
+});
 
 vi.mock('../../lib/resume/service', () => ({
   ResumeService: class {
