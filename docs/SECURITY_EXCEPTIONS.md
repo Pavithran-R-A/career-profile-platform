@@ -79,13 +79,13 @@ individually — twice, including a sealed deep scan
 (`scan-2026-10-26T18-17-19.212Z-98b3b83c7f44`, seal `sha256:e431a2fa…`,
 "verdictEffect: none") — and all share the same disposition:
 
-| Site | Call | Why it is not SSRF |
-| --- | --- | --- |
-| `src/workers/handler.ts` verifyAuth | `fetch(authUserUrl)` | Base URL is deployment env, parsed via `new URL` and fail-closed to `https:` + the fixed `/auth/v1/user` path; no request data enters the origin or path |
-| `src/workers/handler.ts` resolveInstallationForUser → verifyInstallationForAccount | GitHub API | Fixed `https://api.github.com` base; user influence only over encoded query/body values, never the origin |
-| `src/workers/handler.ts` verifyInstallationOnApp | GitHub API | Same fixed base |
-| `src/workers/handler.ts` extractProfile / complete | AI provider | Base URL is `BHARATCODE_BASE_URL` env (deployment constant) with a fixed default; user input only in the JSON body |
-| `src/pages/GitHubCallback.tsx` ×2 | `fetch('/api/github/…')` | Same-origin RELATIVE URLs — structurally incapable of SSRF |
+| Site                                                                               | Call                     | Why it is not SSRF                                                                                                                                       |
+| ---------------------------------------------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/workers/handler.ts` verifyAuth                                                | `fetch(authUserUrl)`     | Base URL is deployment env, parsed via `new URL` and fail-closed to `https:` + the fixed `/auth/v1/user` path; no request data enters the origin or path |
+| `src/workers/handler.ts` resolveInstallationForUser → verifyInstallationForAccount | GitHub API               | Fixed `https://api.github.com` base; user influence only over encoded query/body values, never the origin                                                |
+| `src/workers/handler.ts` verifyInstallationOnApp                                   | GitHub API               | Same fixed base                                                                                                                                          |
+| `src/workers/handler.ts` extractProfile / complete                                 | AI provider              | Base URL is `BHARATCODE_BASE_URL` env (deployment constant) with a fixed default; user input only in the JSON body                                       |
+| `src/pages/GitHubCallback.tsx` ×2                                                  | `fetch('/api/github/…')` | Same-origin RELATIVE URLs — structurally incapable of SSRF                                                                                               |
 
 Dispositions and conditions:
 

@@ -23,12 +23,14 @@ none of them (verified on an isolated PostgreSQL 18 replica; see
 ```bash
 supabase migration list
 ```
+
 Expected: all migrations ≤ `20261009145657` shown as applied on both Local and
 Remote; **`20261026000000` listed only as "Local only" / unapplied remotely**.
 
 ```bash
 supabase db dump --db-url "$REMOTE_DB_URL" -f /tmp/pre-backup.sql --data-only --use-copy
 ```
+
 Expected: dump completes; size roughly matches row counts. Keep this file —
 it is the data-level rollback artifact alongside PITR. (Alternative accepted
 control: confirm PITR/backups are enabled for the project in the dashboard.)
@@ -46,6 +48,7 @@ select count(*) as total,
        ) as orphan_user_ids
 from public.funnel_events fe;
 ```
+
 Expected: `total=191, orphan_rows=190, orphan_user_ids=41` (small drift is
 fine — the migration is count-agnostic). Record the numbers; step 4 must show
 the SAME values.
@@ -58,6 +61,7 @@ select policyname from pg_policies
   'Users can insert own GitHub connections','Users can update own GitHub connections',
   'Custom domains: owner can insert','DotCV domains: owner can insert');
 ```
+
 Expected: exactly 4 rows. And:
 
 ```sql
@@ -65,6 +69,7 @@ select column_name from information_schema.columns
  where table_schema='public' and table_name='custom_domains'
    and column_name in ('provider_validation','provider_validation_http','ssl_status','ssl_validation_records');
 ```
+
 Expected: 0 rows (columns absent today).
 
 ## 2. Apply (tracked process)
@@ -72,6 +77,7 @@ Expected: 0 rows (columns absent today).
 ```bash
 supabase db push
 ```
+
 Expected output: `Applying migration 20261026000000_worker_write_boundary_and_domain_provider_columns.sql...` then
 `Finished supabase db push.` with ONE warning line:
 
@@ -91,12 +97,14 @@ select column_name, data_type, is_nullable from information_schema.columns
    and column_name in ('provider_validation','provider_validation_http','ssl_status','ssl_validation_records')
  order by column_name;
 ```
+
 Expected: 4 rows — `provider_validation jsonb YES`, `provider_validation_http
 jsonb YES`, `ssl_status text YES`, `ssl_validation_records jsonb YES`.
 
 ```sql
 select conname, convalidated from pg_constraint where conname='funnel_events_user_id_fkey';
 ```
+
 Expected: `funnel_events_user_id_fkey | f` (NOT VALID — the pre-existing
 orphans are untouched and still protected against new writes only).
 
@@ -106,6 +114,7 @@ select count(*) from pg_policies
   'Users can insert own GitHub connections','Users can update own GitHub connections',
   'Custom domains: owner can insert','DotCV domains: owner can insert');
 ```
+
 Expected: `0`.
 
 Repeat the step-1 orphan query. Expected: **identical numbers** (190/41) —
@@ -120,6 +129,7 @@ begin;
   values ('99999999-9999-4999-8999-999999999999', 'ats_generated');
 rollback;
 ```
+
 Expected: `ERROR: insert or update on table "funnel_events" violates foreign
 key constraint "funnel_events_user_id_fkey"` and the transaction aborts.
 
@@ -130,6 +140,7 @@ begin;
   select user_id, 'ats_generated' from public.profiles limit 1;
 rollback;
 ```
+
 Expected: `INSERT 0 1` then `ROLLBACK`.
 
 ## 4. Regenerate TypeScript types
@@ -138,6 +149,7 @@ Expected: `INSERT 0 1` then `ROLLBACK`.
 supabase gen types typescript --project-ref yxrbytzhiilnzlamqpqz > src/lib/supabase/database.types.ts
 pnpm typecheck && pnpm test -- --maxWorkers=2
 ```
+
 Expected: typecheck + unit suite green. Diff check: the `custom_domains`
 `Row` block must contain `provider_validation: Json | null`,
 `provider_validation_http: Json | null`, `ssl_status: string | null`,
@@ -172,6 +184,7 @@ begin;
     drop column if exists ssl_validation_records;
 commit;
 ```
+
 Plus restore the step-1 data dump if any data changed (it should not — the
 migration writes no rows). Worker rollback: redeploy the previous Worker
 version (`wrangler deployments list` on the trusted machine identifies it).
@@ -191,5 +204,6 @@ begin;
   select convalidated from pg_constraint where conname='funnel_events_user_id_fkey';
 commit;
 ```
+
 Expected: delete count = the step-1 orphan number (190), then `t`. Until this
 runs, the constraint still protects all new writes.
