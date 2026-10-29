@@ -6,6 +6,7 @@ import { AuthProvider } from '../../lib/auth/context';
 import Signup from '../../pages/auth/Signup';
 import ForgotPassword from '../../pages/auth/ForgotPassword';
 import VerifyEmail from '../../pages/auth/VerifyEmail';
+import { FAKE_PASSWORD } from '../fixtures/fake-values';
 import ResetPassword from '../../pages/auth/ResetPassword';
 import AuthCallback from '../../pages/auth/AuthCallback';
 import Login from '../../pages/auth/Login';
@@ -101,7 +102,7 @@ function renderPage(ui: ReactElement, path = '/') {
   );
 }
 
-const VALID_PASSWORD = 'Str0ng!Passw0rd';
+const VALID_PASSWORD = FAKE_PASSWORD;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -213,9 +214,12 @@ describe('resend confirmation / verify-email flow', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /resend confirmation email/i }));
     await waitFor(() =>
+      // The resent link must route through the same callback as signup —
+      // without emailRedirectTo, Supabase falls back to the Site URL root.
       expect(supabaseMock.auth.resend).toHaveBeenCalledWith({
         type: 'signup',
         email: 'new@example.test',
+        options: { emailRedirectTo: `${ORIGIN}/auth/callback` },
       })
     );
     expect(await screen.findByText(/confirmation email resent/i)).toBeInTheDocument();

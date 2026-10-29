@@ -1,5 +1,11 @@
 ﻿import { describe, it, expect } from 'vitest';
-import { sanitizeUrl, isSafeRedirect, isHttpUrl } from '../../lib/validators/url';
+import {
+  sanitizeUrl,
+  isSafeRedirect,
+  isHttpUrl,
+  safeUrlSchema,
+  optionalSafeUrlSchema,
+} from '../../lib/validators/url';
 
 describe('sanitizeUrl', () => {
   it('allows http URLs', () => {
@@ -51,6 +57,10 @@ describe('sanitizeUrl', () => {
       'https://example.com/path?q=1#hash'
     );
   });
+
+  it('allows mailto: for contact links', () => {
+    expect(sanitizeUrl('mailto:jane@example.com')).toBe('mailto:jane@example.com');
+  });
 });
 
 describe('isSafeRedirect', () => {
@@ -64,6 +74,14 @@ describe('isSafeRedirect', () => {
 
   it('rejects absolute URLs', () => {
     expect(isSafeRedirect('https://evil.com')).toBe(false);
+  });
+
+  it('rejects backslash paths that normalize to protocol-relative URLs', () => {
+    expect(isSafeRedirect('/\\evil.com')).toBe(false);
+  });
+
+  it('rejects control characters', () => {
+    expect(isSafeRedirect('/dashboard\u0000')).toBe(false);
   });
 });
 
@@ -83,5 +101,28 @@ describe('isHttpUrl', () => {
     expect(isHttpUrl('notaurl')).toBe(false);
     expect(isHttpUrl('')).toBe(false);
     expect(isHttpUrl('example.com/page')).toBe(false);
+  });
+});
+
+describe('safeUrlSchema / optionalSafeUrlSchema (zod contracts)', () => {
+  it('accepts a well-formed http(s) URL', () => {
+    expect(safeUrlSchema.safeParse('https://example.com/portfolio').success).toBe(true);
+  });
+
+  it('rejects dangerous schemes at the schema boundary', () => {
+    expect(safeUrlSchema.safeParse('javascript:alert(1)').success).toBe(false);
+    expect(safeUrlSchema.safeParse('data:text/html,<script>x</script>').success).toBe(false);
+  });
+
+  it('rejects malformed URLs', () => {
+    expect(safeUrlSchema.safeParse('not-a-url').success).toBe(false);
+  });
+
+  it('optional variant accepts null (nullable, not optional) and rejects dangerous values', () => {
+    // Production contract: optionalSafeUrlSchema is safeUrlSchema.nullable().
+    // null passes; undefined does NOT (that would require .optional()).
+    expect(optionalSafeUrlSchema.safeParse(null).success).toBe(true);
+    expect(optionalSafeUrlSchema.safeParse(undefined).success).toBe(false);
+    expect(optionalSafeUrlSchema.safeParse('javascript:alert(1)').success).toBe(false);
   });
 });

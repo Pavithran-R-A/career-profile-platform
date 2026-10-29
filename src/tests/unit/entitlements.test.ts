@@ -54,10 +54,12 @@ describe('entitlements', () => {
 });
 
 describe('normalizeSubscriptionRow', () => {
-  it('defaults to free for null plan', () => {
+  it('defaults to free for null plan (and an unreadable status fails closed)', () => {
     const state = normalizeSubscriptionRow({ plan: null, status: null });
     expect(state.plan).toBe('free');
-    expect(state.status).toBe('active');
+    expect(state.status).toBe('expired');
+    // A free plan stays active regardless — only Pro can lapse.
+    expect(state.plan).toBe('free');
   });
 
   it('accepts valid plan', () => {
@@ -65,9 +67,10 @@ describe('normalizeSubscriptionRow', () => {
     expect(state.plan).toBe('pro');
   });
 
-  it('normalizes unknown status to active', () => {
+  it('normalizes unknown status to expired (fail closed, never grants Pro)', () => {
     const state = normalizeSubscriptionRow({ plan: 'pro', status: 'weird' });
-    expect(state.status).toBe('active');
+    expect(state.status).toBe('expired');
+    expect(isSubscriptionActive(state)).toBe(false);
   });
 });
 

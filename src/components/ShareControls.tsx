@@ -14,16 +14,20 @@ export default function ShareControls({
   dark?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
+      setCopyFailed(false);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard API unavailable (e.g. insecure context) — still honest.
       setCopied(false);
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 2600);
     }
   };
 
@@ -49,7 +53,7 @@ export default function ShareControls({
         type="button"
         onClick={() => void copyLink()}
         className={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${touch} ${base}`}>
-        {copied ? 'Copied ✓' : 'Copy link'}
+        {copied ? 'Copied ✓' : copyFailed ? 'Copy failed' : 'Copy link'}
       </button>
       {canNativeShare && (
         <button
@@ -67,7 +71,11 @@ export default function ShareControls({
         Open profile
       </a>
       <span role="status" aria-live="polite" className="sr-only">
-        {copied ? 'Profile link copied to clipboard' : ''}
+        {copied
+          ? 'Profile link copied to clipboard'
+          : copyFailed
+            ? 'Copying failed — select and copy the link manually'
+            : ''}
       </span>
     </div>
   );

@@ -33,3 +33,10 @@ not_found_handling = "single-page-application"
 name = "RECRUITER_RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 30, period = 60 }
+
+# Anonymous public-read API routes (e.g. /api/public/profile/:username):
+# bounds service-role DB reads per client IP. Fail-open in the handler.
+[[ratelimits]]
+name = "PUBLIC_READ_RATE_LIMITER"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }

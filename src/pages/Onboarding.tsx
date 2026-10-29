@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { ProfileService, safeProfileErrorMessage } from '../lib/profiles/service';
@@ -34,26 +34,59 @@ export default function Onboarding() {
     }
   }, [auth]);
 
-  const checkUsername = async (value: string) => {
-    const validation = validateUsername(value);
-    if (!validation.valid) {
-      setUsernameError(validation.error);
-      setUsernameAvailable(false);
-      return;
-    }
+  // Latest-wins availability probe: debounced (one query per pause, not per
+  // keystroke), out-of-order responses discarded, and failures surfaced —
+  // previously a rejected probe left the Continue button dead with no error.
+  const usernameProbeSeq = useRef(0);
+  const usernameDebounce = useRef<number | null>(null);
 
-    setCheckingUsername(true);
-    const result = await profileService.checkUsernameAvailability(validation.username);
-    setCheckingUsername(false);
-    setUsernameAvailable(result.available);
-    setUsernameError(result.error);
-  };
+  const checkUsername = useCallback(
+    (value: string) => {
+      const validation = validateUsername(value);
+      if (!validation.valid) {
+        setUsernameError(validation.error);
+        setUsernameAvailable(false);
+        setCheckingUsername(false);
+        return;
+      }
+
+      const seq = ++usernameProbeSeq.current;
+      setCheckingUsername(true);
+      profileService
+        .checkUsernameAvailability(validation.username)
+        .then((result) => {
+          if (seq !== usernameProbeSeq.current) return; // a newer probe won
+          setUsernameAvailable(result.available);
+          setUsernameError(result.error);
+        })
+        .catch(() => {
+          if (seq !== usernameProbeSeq.current) return;
+          setUsernameAvailable(false);
+          setUsernameError('Could not check availability. Please try again.');
+        })
+        .finally(() => {
+          if (seq === usernameProbeSeq.current) setCheckingUsername(false);
+        });
+    },
+    [profileService]
+  );
 
   const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setUsername(value);
-    void checkUsername(value);
+    if (usernameDebounce.current !== null) window.clearTimeout(usernameDebounce.current);
+    usernameDebounce.current = window.setTimeout(() => {
+      usernameDebounce.current = null;
+      checkUsername(value);
+    }, 300);
   };
+
+  useEffect(
+    () => () => {
+      if (usernameDebounce.current !== null) window.clearTimeout(usernameDebounce.current);
+    },
+    []
+  );
 
   const handleUsernameSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -108,6 +141,12 @@ export default function Onboarding() {
   const handleFormSubmit = (e: FormEvent) => {
     void handleBasicsSubmit(e);
   };
+
+  useEffect(() => {
+    // Onboarding is a protected page: an unauthenticated visitor gets the
+    // sign-in redirect like every other dashboard route, not a blank area.
+    if (auth.status === 'unauthenticated') void navigate('/login');
+  }, [auth, navigate]);
 
   if (auth.status !== 'authenticated') {
     return null;

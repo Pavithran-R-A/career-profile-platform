@@ -243,7 +243,15 @@ export async function handleHtmlPage(
       'Contact CareerProfile Go for account, privacy, billing, security, or product support.'
     );
   } else if (url.pathname.startsWith('/u/')) {
-    const username = decodeURIComponent(url.pathname.slice(3)).replace(/\/+$/, '');
+    // Malformed percent-encoding (e.g. /u/%zz) throws URIError; fall back to
+    // the raw segment, which matches no profile and renders the noindex
+    // not-found meta instead of a worker-level 500.
+    let username: string;
+    try {
+      username = decodeURIComponent(url.pathname.slice(3)).replace(/\/+$/, '');
+    } catch {
+      username = url.pathname.slice(3);
+    }
     const profile = await fetchPublishedProfile(username, env);
 
     if (profile) {
@@ -268,7 +276,10 @@ export async function handleHtmlPage(
         education: profile.education,
         skills: profile.skills,
       });
-      injection = `${metaTags(meta)}\n${jsonLdScript(jsonLd, cspNonce)}`;
+      // The id lets the client's hydrate-time injector dedupe (it removes
+      // #profile-jsonld before appending its own), so published pages never
+      // end up with two identical ProfilePage blocks.
+      injection = `${metaTags(meta)}\n${jsonLdScript(jsonLd, cspNonce, 'profile-jsonld')}`;
     } else {
       // Unknown/draft profile: truthful not-found meta, noindex.
       injection = metaTags({

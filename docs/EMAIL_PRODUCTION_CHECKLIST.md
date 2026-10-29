@@ -167,6 +167,12 @@ Confirm each template the app's tested flows rely on:
       callback already accepts `type=magiclink`.
 - [ ] Keep templates plain and link-forward; no images in the header (spam
       signals), and state the action in the first line.
+- [ ] **Keep the auth flow type IMPLICIT** (Authentication → Providers →
+      Auth Flows / "PKCE" OFF). The client pins `flowType: 'implicit'`
+      (`src/lib/supabase/client.ts`) and handles both the implicit hash
+      fragment and `token_hash` links. Switching the project to PKCE produces
+      `?code=` callbacks that this codebase does not exchange — confirmation
+      and reset would silently break. Do not flip it without a code change.
 
 ### 6. App-side URLs (no code change needed)
 
@@ -174,7 +180,8 @@ Code-side state verified at `1ab65ee`: signup sends
 `emailRedirectTo = {origin}/auth/callback` (`src/pages/auth/Signup.tsx:41`,
 fallback in `src/lib/auth/context.tsx:71`), reset sends
 `redirectTo = {origin}/reset-password` (`context.tsx:93-94`), resend uses
-`{ type: 'signup' }` (`VerifyEmail.tsx:113`), and the callback verifies
+`{ type: 'signup', options: { emailRedirectTo: {origin}/auth/callback } }`
+(`VerifyEmail.tsx`), and the callback verifies
 `token_hash` + `type` before routing (`AuthCallback.tsx`). All are built from
 `window.location.origin`, so the deployed origin must be allow-listed:
 

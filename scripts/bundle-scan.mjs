@@ -13,7 +13,15 @@ const root = dirname(fileURLToPath(import.meta.url));
 const assetsDir = join(root, '..', 'dist', 'client', 'assets');
 
 const budgetArg = process.argv.indexOf('--budget');
-const budgetKb = budgetArg > -1 ? Number(process.argv[budgetArg + 1]) : null;
+let budgetKb = null;
+if (budgetArg > -1) {
+  budgetKb = Number(process.argv[budgetArg + 1]);
+  if (!Number.isFinite(budgetKb)) {
+    // A bare `--budget` must not silently disable the gate it was meant to enable.
+    console.error('FAIL: --budget requires a numeric kB value, e.g. `bundle:scan --budget 300`.');
+    process.exit(2);
+  }
+}
 
 let files;
 try {
@@ -53,16 +61,18 @@ if (heavy.length > 0) {
   }
 }
 
-if (budgetKb !== null && Number.isFinite(budgetKb)) {
+if (budgetKb !== null) {
   const eager = bySize.find((f) => f.name.startsWith('index-') && f.name.endsWith('.js'));
-  if (eager) {
-    const kb = eager.bytes / 1024;
-    console.log('');
-    console.log(`Eager entry chunk: ${fmt(eager.bytes)} (${eager.name})`);
-    if (kb > budgetKb) {
-      console.error(`FAIL: eager chunk exceeds budget of ${budgetKb} kB.`);
-      process.exit(1);
-    }
-    console.log(`OK: within budget of ${budgetKb} kB.`);
+  if (!eager) {
+    console.error(`FAIL: no eager index-*.js chunk found in ${assetsDir} while a budget was set.`);
+    process.exit(1);
   }
+  const kb = eager.bytes / 1024;
+  console.log('');
+  console.log(`Eager entry chunk: ${fmt(eager.bytes)} (${eager.name})`);
+  if (kb > budgetKb) {
+    console.error(`FAIL: eager chunk exceeds budget of ${budgetKb} kB.`);
+    process.exit(1);
+  }
+  console.log(`OK: within budget of ${budgetKb} kB.`);
 }

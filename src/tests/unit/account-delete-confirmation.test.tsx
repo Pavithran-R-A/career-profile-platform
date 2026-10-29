@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import AccountDelete from '../../pages/AccountDelete';
+import { FAKE_SESSION_TOKEN } from '../fixtures/fake-values';
 
 /**
  * Live QA regression (deployed acceptance against SHA 6243735):
@@ -27,7 +28,7 @@ const harness = vi.hoisted(() => {
     error: null,
   }));
   const getSession = vi.fn(async () => ({
-    data: { session: { access_token: 'fresh-token' } },
+    data: { session: { access_token: FAKE_SESSION_TOKEN } },
   }));
   return { authState, signOut, signInWithPassword, getSession };
 });

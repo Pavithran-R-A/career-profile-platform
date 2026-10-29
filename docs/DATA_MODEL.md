@@ -43,23 +43,29 @@ RLS: owner SELECT only.
 
 ### billing_webhook_events
 
-| Column      | Type        | Constraints              |
-| ----------- | ----------- | ------------------------ |
-| event_id    | text        | PK (x-razorpay-event-id) |
-| event_type  | text        | nullable                 |
-| received_at | timestamptz | NOT NULL, default now()  |
+| Column       | Type        | Constraints                           |
+| ------------ | ----------- | ------------------------------------- |
+| event_id     | text        | PK (x-razorpay-event-id)              |
+| event_type   | text        | nullable                              |
+| received_at  | timestamptz | NOT NULL, default now()               |
+| status       | text        | CHECK (processing, processed, failed) |
+| attempts     | integer     | NOT NULL, default 0                   |
+| last_error   | text        | nullable                              |
+| updated_at   | timestamptz | NOT NULL, default now()               |
+| processed_at | timestamptz | nullable                              |
 
-No client RLS (service role only). Idempotency claim.
+No client RLS (restrictive deny for anon + authenticated; service role only).
+Only `processed` is terminal; `failed`/`processing` rows stay retryable.
 
 ### usage_counters
 
-| Column     | Type        | Constraints                                                                    |
-| ---------- | ----------- | ------------------------------------------------------------------------------ |
-| user_id    | uuid        | FK -> auth.users, cascade                                                      |
-| metric     | text        | CHECK (resume_variants, github_repos, recruiter_ai, tailoring, custom_domains) |
-| window_key | text        | 'YYYY-MM-DD' / 'YYYY-MM' / 'total'                                             |
-| count      | integer     | NOT NULL, default 0, >= 0                                                      |
-| updated_at | timestamptz | NOT NULL, auto-updated via trigger                                             |
+| Column     | Type        | Constraints                                                         |
+| ---------- | ----------- | ------------------------------------------------------------------- |
+| user_id    | uuid        | FK -> auth.users, cascade                                           |
+| metric     | text        | CHECK (resume_variants, github_repos, recruiter_ai, custom_domains) |
+| window_key | text        | 'YYYY-MM-DD' / 'YYYY-MM' / 'total'                                  |
+| count      | integer     | NOT NULL, default 0, >= 0                                           |
+| updated_at | timestamptz | NOT NULL, auto-updated via trigger                                  |
 
 PK: (user_id, metric, window_key). RLS: owner SELECT only.
 
@@ -228,18 +234,9 @@ Year + optional month (no false precision):
 
 All child tables use `sort_order` column for deterministic display ordering.
 
-## Expected Future Tables (not created yet)
-
-- resume_sources
-- github_connections
-- github_repositories
-- profile_evidence
-- ai_conversations
-- ai_messages
-- profile_variants
-- profile_views
-- contact_leads
-- subscriptions
-- domain_bindings
-
-Schema evolution is additive. No destructive rewrites expected.
+Schema evolution is additive. No destructive rewrites expected. (The former
+"Expected Future Tables" list is retired: resume_sources, github_connections,
+github_repositories, profile_evidence, profile_variants and
+user_subscriptions/custom_domains have shipped; ai_conversations, ai_messages,
+profile_views, contact_leads and domain_bindings were never built and are not
+planned.)

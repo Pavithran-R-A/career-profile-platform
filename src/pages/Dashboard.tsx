@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
-import { ProfileService } from '../lib/profiles/service';
+import { ProfileService, safeProfileErrorMessage } from '../lib/profiles/service';
 import { profileCompletion } from '../lib/profiles/completion';
 import { getPreferences } from '../lib/profiles/preferences';
 import { getTemplate } from '../lib/templates/types';
@@ -133,52 +133,70 @@ export default function Dashboard() {
   const [hiddenSections, setHiddenSections] = useState<string[]>([]);
   const [resume, setResume] = useState<ResumeStatusRow | null | 'loading'>('loading');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   const profileServiceRef = useRef<ProfileService | null>(null);
   if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
 
-  useEffect(() => {
-    if (auth.status === 'authenticated') {
-      void profileServiceRef.current!.getProfile(auth.user.id).then((p) => {
-        setProfile(p);
-        setLoading(false);
-        if (p) {
-          void getPreferences(p.id)
-            .then((prefs) => {
-              if (prefs) {
-                setTemplateKey(prefs.template_key);
-                setTemplateIsDefault(false);
-                setAccentKey(prefs.accent_key);
-                setSectionOrder(prefs.section_order);
-                setHiddenSections(prefs.hidden_sections);
-              } else {
-                setTemplateKey('minimal');
-                setTemplateIsDefault(true);
-              }
-            })
-            .catch(() => {
+  // One load per user id: auth token refreshes re-emit auth events and must
+  // not refetch (or reset) profile state mid-session.
+  const loadedUserIdRef = useRef<string | null>(null);
+
+  const loadProfile = useCallback(async (userId: string) => {
+    loadedUserIdRef.current = userId;
+    setLoadError(null);
+    try {
+      const p = await profileServiceRef.current!.getProfile(userId);
+      setProfile(p);
+      setLoading(false);
+      if (p) {
+        void getPreferences(p.id)
+          .then((prefs) => {
+            if (prefs) {
+              setTemplateKey(prefs.template_key);
+              setTemplateIsDefault(false);
+              setAccentKey(prefs.accent_key);
+              setSectionOrder(prefs.section_order);
+              setHiddenSections(prefs.hidden_sections);
+            } else {
               setTemplateKey('minimal');
               setTemplateIsDefault(true);
-            });
-          void (async () => {
-            try {
-              const { data } = await getSupabaseClient()
-                .from('resume_sources')
-                .select('original_filename, status, created_at')
-                .eq('profile_id', p.id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              setResume((data as ResumeStatusRow | null) ?? null);
-            } catch {
-              setResume(null);
             }
-          })();
-        }
-      });
+          })
+          .catch(() => {
+            setTemplateKey('minimal');
+            setTemplateIsDefault(true);
+          });
+        void (async () => {
+          try {
+            const { data } = await getSupabaseClient()
+              .from('resume_sources')
+              .select('original_filename, status, created_at')
+              .eq('profile_id', p.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            setResume((data as ResumeStatusRow | null) ?? null);
+          } catch {
+            setResume(null);
+          }
+        })();
+      }
+    } catch (err) {
+      setLoadError(safeProfileErrorMessage(err));
+      setLoading(false);
     }
-  }, [auth]);
+  }, []);
+
+  const authUserId = auth.status === 'authenticated' ? auth.user.id : null;
+
+  useEffect(() => {
+    if (authUserId && loadedUserIdRef.current !== authUserId) {
+      void loadProfile(authUserId);
+    }
+  }, [authUserId, loadProfile]);
 
   useEffect(() => {
     if (auth.status === 'unauthenticated') {
@@ -193,10 +211,10 @@ export default function Dashboard() {
   }, [auth, loading, navigate]);
 
   useEffect(() => {
-    if (!loading && auth.status === 'authenticated' && !profile) {
+    if (!loading && !loadError && auth.status === 'authenticated' && !profile) {
       void navigate('/onboarding');
     }
-  }, [loading, auth, profile, navigate]);
+  }, [loading, loadError, auth, profile, navigate]);
 
   // Funnel: a fully complete profile counts as profile_completed (once/session).
   useEffect(() => {
@@ -218,6 +236,27 @@ export default function Dashboard() {
             <div className="skeleton h-64" />
             <div className="skeleton h-64" />
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="page-shell">
+        <div
+          className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center"
+          role="alert">
+          <h1 className="text-lg font-semibold mb-2">Your dashboard couldn't load</h1>
+          <p className="text-sm text-[var(--muted-foreground)] mb-5">{loadError}</p>
+          <button
+            className="min-h-[44px] px-5 rounded-lg text-sm font-semibold bg-[var(--ink)] text-white hover:bg-[#1d2939] disabled:opacity-50"
+            disabled={loading}
+            onClick={() => {
+              if (auth.status === 'authenticated') void loadProfile(auth.user.id);
+            }}>
+            Try again
+          </button>
         </div>
       </div>
     );
@@ -253,9 +292,14 @@ export default function Dashboard() {
     try {
       await navigator.clipboard.writeText(publicUrl);
       setCopied(true);
+      setCopyFailed(false);
       setTimeout(() => setCopied(false), 2000);
     } catch {
+      // Clipboard API unavailable (insecure context / denied): say so — a
+      // silently unchanged button leaves the visitor guessing.
       setCopied(false);
+      setCopyFailed(true);
+      setTimeout(() => setCopyFailed(false), 2600);
     }
   };
 
@@ -348,10 +392,14 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => void copyLink()}
                     className="btn btn-secondary !min-h-[44px] !py-2.5">
-                    {copied ? 'Copied ✓' : 'Copy link'}
+                    {copied ? 'Copied ✓' : copyFailed ? 'Copy failed' : 'Copy link'}
                   </button>
                   <span role="status" aria-live="polite" className="sr-only">
-                    {copied ? 'Link copied to clipboard' : ''}
+                    {copied
+                      ? 'Link copied to clipboard'
+                      : copyFailed
+                        ? 'Copying failed — select and copy the link manually'
+                        : ''}
                   </span>
                 </div>
               </div>

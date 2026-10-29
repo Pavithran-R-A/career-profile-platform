@@ -1,346 +1,171 @@
 import { describe, it, expect } from 'vitest';
+import { matchRequirements, MatchStrength } from '../../lib/resume/requirement-matcher';
+import {
+  JobRequirementCategory,
+  JobRequirementPriority,
+  type JobRequirement,
+  type ParsedJob,
+} from '../../lib/resume/job-parser';
+import type { ProfileWithRelations } from '../../lib/profiles/repository';
+import { makeTemplateProfileFixture } from './fixtures/template-profile';
 
-// ─── Requirement Matcher Types ────────────────────────────────
+// Behavioral tests against the SHIPPED matcher (audit 2026-10-27: the
+// previous version of this file reimplemented the matcher locally and tested
+// the copy — it stayed green no matter what the production module did).
 
-interface JobRequirement {
-  id: string;
-  text: string;
-  category: 'must_have' | 'nice_to_have' | 'preferred';
-}
+const PROFILE: ProfileWithRelations = makeTemplateProfileFixture();
 
-interface ProfileSkills {
-  skills: string[];
-  experienceText: string[];
-  educationText: string[];
-}
-
-interface MatchResult {
-  requirementId: string;
-  matched: boolean;
-  confidence: number;
-  matchedFrom: string;
-  matchedTerm: string;
-}
-
-// ─── Requirement Matcher Logic ────────────────────────────────
-
-function matchRequirement(requirement: JobRequirement, profile: ProfileSkills): MatchResult {
-  const lowerReq = requirement.text.toLowerCase();
-  let matched = false;
-  let confidence = 0;
-  let matchedFrom = '';
-  let matchedTerm = '';
-
-  for (const skill of profile.skills) {
-    const lowerSkill = skill.toLowerCase();
-    if (lowerReq.includes(lowerSkill) || lowerSkill.includes(lowerReq)) {
-      matched = true;
-      confidence = 0.95;
-      matchedFrom = 'skill';
-      matchedTerm = skill;
-      return { requirementId: requirement.id, matched, confidence, matchedFrom, matchedTerm };
-    }
-  }
-
-  const reqWords = lowerReq.split(/\s+/).filter((w) => w.length > 3);
-  for (const word of reqWords) {
-    for (const expText of profile.experienceText) {
-      if (expText.toLowerCase().includes(word)) {
-        matched = true;
-        confidence = 0.6;
-        matchedFrom = 'experience';
-        matchedTerm = word;
-        return { requirementId: requirement.id, matched, confidence, matchedFrom, matchedTerm };
-      }
-    }
-    for (const eduText of profile.educationText) {
-      if (eduText.toLowerCase().includes(word)) {
-        matched = true;
-        confidence = 0.5;
-        matchedFrom = 'education';
-        matchedTerm = word;
-        return { requirementId: requirement.id, matched, confidence, matchedFrom, matchedTerm };
-      }
-    }
-  }
-
+function requirement(
+  text: string,
+  category: JobRequirementCategory,
+  priority: JobRequirementPriority = JobRequirementPriority.required
+): JobRequirement {
   return {
-    requirementId: requirement.id,
-    matched: false,
-    confidence: 0,
-    matchedFrom: '',
-    matchedTerm: '',
+    text,
+    category,
+    priority,
+    keywords: [text.toLowerCase()],
+    normalized: text.toLowerCase(),
   };
 }
 
-function matchAllRequirements(
-  requirements: JobRequirement[],
-  profile: ProfileSkills
-): MatchResult[] {
-  return requirements.map((req) => matchRequirement(req, profile));
+function parsedJob(...requirements: JobRequirement[]): ParsedJob {
+  return {
+    title: 'Engineer',
+    company: null,
+    location: null,
+    remote: null,
+    salaryRange: null,
+    summary: null,
+    requirements,
+    rawText: requirements.map((r) => r.text).join('\n'),
+    parsedAt: '2026-10-27T00:00:00.000Z',
+  };
 }
 
-function computeMatchScore(results: MatchResult[]): number {
-  if (results.length === 0) return 0;
-  const matched = results.filter((r) => r.matched).length;
-  return Math.round((matched / results.length) * 100);
-}
-
-function categorizeResults(
-  requirements: JobRequirement[],
-  results: MatchResult[]
-): {
-  matched: { requirement: JobRequirement; result: MatchResult }[];
-  unmatched: { requirement: JobRequirement; result: MatchResult }[];
-} {
-  const matched: { requirement: JobRequirement; result: MatchResult }[] = [];
-  const unmatched: { requirement: JobRequirement; result: MatchResult }[] = [];
-
-  for (let i = 0; i < requirements.length; i++) {
-    const pair = { requirement: requirements[i], result: results[i] };
-    if (results[i].matched) {
-      matched.push(pair);
-    } else {
-      unmatched.push(pair);
-    }
-  }
-
-  return { matched, unmatched };
-}
-
-function rankByConfidence(results: MatchResult[]): MatchResult[] {
-  return [...results].sort((a, b) => b.confidence - a.confidence);
-}
-
-function getUnmatchedSkills(requirements: JobRequirement[], results: MatchResult[]): string[] {
-  return requirements
-    .filter((req, i) => !results[i].matched && req.category === 'must_have')
-    .map((req) => req.text);
-}
-
-// ─── Test Fixtures ────────────────────────────────────────────
-
-const sampleProfile: ProfileSkills = {
-  skills: ['TypeScript', 'React', 'Node.js', 'PostgreSQL', 'Docker', 'AWS'],
-  experienceText: [
-    'Senior Software Engineer at TechCo building distributed systems',
-    'Full Stack Developer at StartupInc developing web applications with React and Node.js',
-  ],
-  educationText: ['B.S. Computer Science at MIT', 'M.S. Software Engineering at Stanford'],
-};
-
-const sampleRequirements: JobRequirement[] = [
-  { id: 'r1', text: 'TypeScript and React experience', category: 'must_have' },
-  { id: 'r2', text: 'Experience with distributed systems', category: 'must_have' },
-  { id: 'r3', text: 'Knowledge of PostgreSQL', category: 'must_have' },
-  { id: 'r4', text: 'Kubernetes container orchestration', category: 'nice_to_have' },
-  { id: 'r5', text: 'CS degree from top university', category: 'nice_to_have' },
-  { id: 'r6', text: 'Machine learning experience', category: 'preferred' },
-];
-
-// ─── Tests ────────────────────────────────────────────────────
-
-describe('Requirement Matcher - matchRequirement', () => {
-  it('matches a skill requirement with exact skill match', () => {
-    const req: JobRequirement = { id: 'r1', text: 'TypeScript', category: 'must_have' };
-    const result = matchRequirement(req, sampleProfile);
-    expect(result.matched).toBe(true);
-    expect(result.confidence).toBe(0.95);
-    expect(result.matchedFrom).toBe('skill');
-    expect(result.matchedTerm).toBe('TypeScript');
+describe('matchRequirements (production module)', () => {
+  it('matches a required skill the profile actually has, with evidence', () => {
+    const result = matchRequirements(
+      parsedJob(requirement('TypeScript', JobRequirementCategory.skill)),
+      PROFILE
+    );
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].strength).toBe(MatchStrength.exact);
+    expect(result.matches[0].matchedEvidence.length).toBeGreaterThan(0);
+    expect(result.summary.unmatched).toBe(0);
   });
 
-  it('matches a requirement with partial skill overlap', () => {
-    const req: JobRequirement = { id: 'r1', text: 'React and Node.js', category: 'must_have' };
-    const result = matchRequirement(req, sampleProfile);
-    expect(result.matched).toBe(true);
-    expect(result.matchedFrom).toBe('skill');
+  it('leaves a required skill the profile lacks as an unmatched gap', () => {
+    const result = matchRequirements(
+      parsedJob(requirement('Kubernetes cluster administration', JobRequirementCategory.skill)),
+      PROFILE
+    );
+    expect(result.matches[0].strength).toBe(MatchStrength.none);
+    expect(result.matches[0].matchedEvidence).toEqual([]);
+    expect(result.gaps.map((g) => g.text)).toContain('Kubernetes cluster administration');
   });
 
-  it('matches distributed systems from experience', () => {
-    const req: JobRequirement = {
-      id: 'r2',
-      text: 'Experience with distributed systems',
-      category: 'must_have',
-    };
-    const result = matchRequirement(req, sampleProfile);
-    expect(result.matched).toBe(true);
-    expect(result.confidence).toBe(0.6);
-    expect(result.matchedFrom).toBe('experience');
+  it('does NOT report preferred requirements as gaps when unmatched', () => {
+    const result = matchRequirements(
+      parsedJob(
+        requirement('Kubernetes', JobRequirementCategory.skill, JobRequirementPriority.preferred)
+      ),
+      PROFILE
+    );
+    expect(result.matches[0].strength).toBe(MatchStrength.none);
+    expect(result.gaps).toEqual([]);
+    expect(result.summary.unmatched).toBe(1);
   });
 
-  it('matches CS degree from education', () => {
-    const req: JobRequirement = {
-      id: 'r5',
-      text: 'Computer Science degree',
-      category: 'nice_to_have',
-    };
-    const result = matchRequirement(req, sampleProfile);
-    expect(result.matched).toBe(true);
-    expect(result.matchedFrom).toBe('education');
+  it('scores experience requirements against real profile tenure', () => {
+    const result = matchRequirements(
+      parsedJob(requirement('3+ years professional experience', JobRequirementCategory.experience)),
+      PROFILE
+    );
+    // Fixture: Senior Developer since 2020, current — well over 3 years.
+    expect(result.matches[0].strength).toBe(MatchStrength.exact);
+    expect(result.matches[0].matchedEvidence.join(' ')).toMatch(/years/i);
   });
 
-  it('does not match Kubernetes (not in profile)', () => {
-    const req: JobRequirement = {
-      id: 'r4',
-      text: 'Kubernetes container orchestration',
-      category: 'nice_to_have',
-    };
-    const result = matchRequirement(req, sampleProfile);
-    expect(result.matched).toBe(false);
-    expect(result.confidence).toBe(0);
+  it('matches education requirements from the profile education section', () => {
+    const result = matchRequirements(
+      parsedJob(requirement('Computer Science degree', JobRequirementCategory.education)),
+      PROFILE
+    );
+    expect(result.matches[0].strength).not.toBe(MatchStrength.none);
+    expect(result.matches[0].matchedEvidence.length).toBeGreaterThan(0);
   });
 
-  it('does not match machine learning (not in profile)', () => {
-    const req: JobRequirement = {
-      id: 'r6',
-      text: 'Machine learning experience',
-      category: 'preferred',
-    };
-    const result = matchRequirement(req, sampleProfile);
-    expect(result.matched).toBe(false);
-  });
-
-  it('returns correct requirementId', () => {
-    const req: JobRequirement = { id: 'custom-id', text: 'Docker', category: 'must_have' };
-    const result = matchRequirement(req, sampleProfile);
-    expect(result.requirementId).toBe('custom-id');
-  });
-});
-
-describe('Requirement Matcher - matchAllRequirements', () => {
-  it('returns results for all requirements', () => {
-    const results = matchAllRequirements(sampleRequirements, sampleProfile);
-    expect(results).toHaveLength(sampleRequirements.length);
-  });
-
-  it('matches skills that are in profile', () => {
-    const results = matchAllRequirements(sampleRequirements, sampleProfile);
-    const typeScriptResult = results.find((r) => r.requirementId === 'r1');
-    expect(typeScriptResult?.matched).toBe(true);
-  });
-
-  it('does not match skills not in profile', () => {
-    const results = matchAllRequirements(sampleRequirements, sampleProfile);
-    const k8sResult = results.find((r) => r.requirementId === 'r4');
-    expect(k8sResult?.matched).toBe(false);
-  });
-});
-
-describe('Requirement Matcher - computeMatchScore', () => {
-  it('computes correct match percentage', () => {
-    const results: MatchResult[] = [
-      { requirementId: '1', matched: true, confidence: 0.9, matchedFrom: 'skill', matchedTerm: '' },
-      { requirementId: '2', matched: true, confidence: 0.6, matchedFrom: 'exp', matchedTerm: '' },
-      { requirementId: '3', matched: false, confidence: 0, matchedFrom: '', matchedTerm: '' },
-    ];
-    expect(computeMatchScore(results)).toBe(67);
-  });
-
-  it('returns 100 when all match', () => {
-    const results: MatchResult[] = [
-      { requirementId: '1', matched: true, confidence: 0.9, matchedFrom: 'skill', matchedTerm: '' },
-      { requirementId: '2', matched: true, confidence: 0.8, matchedFrom: 'skill', matchedTerm: '' },
-    ];
-    expect(computeMatchScore(results)).toBe(100);
-  });
-
-  it('returns 0 when none match', () => {
-    const results: MatchResult[] = [
-      { requirementId: '1', matched: false, confidence: 0, matchedFrom: '', matchedTerm: '' },
-    ];
-    expect(computeMatchScore(results)).toBe(0);
-  });
-
-  it('returns 0 for empty results', () => {
-    expect(computeMatchScore([])).toBe(0);
-  });
-});
-
-describe('Requirement Matcher - categorizeResults', () => {
-  it('separates matched and unmatched requirements', () => {
-    const results = matchAllRequirements(sampleRequirements, sampleProfile);
-    const { matched, unmatched } = categorizeResults(sampleRequirements, results);
-    expect(matched.length + unmatched.length).toBe(sampleRequirements.length);
-    expect(matched.length).toBeGreaterThan(0);
-  });
-
-  it('matched results have matched: true', () => {
-    const results = matchAllRequirements(sampleRequirements, sampleProfile);
-    const { matched } = categorizeResults(sampleRequirements, results);
-    for (const m of matched) {
-      expect(m.result.matched).toBe(true);
+  it('classifies strengths into the shipped tiers', () => {
+    const result = matchRequirements(
+      parsedJob(
+        requirement('TypeScript', JobRequirementCategory.skill),
+        requirement('Kubernetes', JobRequirementCategory.skill),
+        requirement('Rust systems programming', JobRequirementCategory.skill)
+      ),
+      PROFILE
+    );
+    const strengths = result.matches.map((m) => m.strength);
+    expect(strengths).toContain(MatchStrength.exact);
+    expect(strengths).toContain(MatchStrength.none);
+    for (const s of strengths) {
+      expect(Object.values(MatchStrength)).toContain(s);
     }
   });
 
-  it('unmatched results have matched: false', () => {
-    const results = matchAllRequirements(sampleRequirements, sampleProfile);
-    const { unmatched } = categorizeResults(sampleRequirements, results);
-    for (const u of unmatched) {
-      expect(u.result.matched).toBe(false);
-    }
-  });
-});
-
-describe('Requirement Matcher - rankByConfidence', () => {
-  it('sorts results by confidence descending', () => {
-    const results: MatchResult[] = [
-      { requirementId: '1', matched: true, confidence: 0.5, matchedFrom: 'edu', matchedTerm: '' },
-      {
-        requirementId: '2',
-        matched: true,
-        confidence: 0.95,
-        matchedFrom: 'skill',
-        matchedTerm: '',
-      },
-      { requirementId: '3', matched: true, confidence: 0.6, matchedFrom: 'exp', matchedTerm: '' },
-    ];
-    const ranked = rankByConfidence(results);
-    expect(ranked[0].confidence).toBe(0.95);
-    expect(ranked[1].confidence).toBe(0.6);
-    expect(ranked[2].confidence).toBe(0.5);
+  it('produces internally consistent summary counts', () => {
+    const result = matchRequirements(
+      parsedJob(
+        requirement('TypeScript', JobRequirementCategory.skill),
+        requirement('Kubernetes', JobRequirementCategory.skill, JobRequirementPriority.preferred),
+        requirement('Computer Science degree', JobRequirementCategory.education)
+      ),
+      PROFILE
+    );
+    const { matched, partialMatched, unmatched, totalRequirements } = result.summary;
+    expect(totalRequirements).toBe(3);
+    expect(matched + partialMatched + unmatched).toBe(totalRequirements);
+    const categoryTotal = Object.values(result.summary.byCategory).reduce(
+      (sum, c) => sum + c.total,
+      0
+    );
+    expect(categoryTotal).toBe(totalRequirements);
   });
 
-  it('returns empty array for empty input', () => {
-    expect(rankByConfidence([])).toEqual([]);
+  it('aggregates byCategory with matched <= total per category', () => {
+    const result = matchRequirements(
+      parsedJob(
+        requirement('TypeScript', JobRequirementCategory.skill),
+        requirement('React', JobRequirementCategory.skill),
+        requirement('Computer Science degree', JobRequirementCategory.education)
+      ),
+      PROFILE
+    );
+    const skill = result.summary.byCategory[JobRequirementCategory.skill];
+    expect(skill.total).toBe(2);
+    expect(skill.matched).toBeLessThanOrEqual(skill.total);
+    expect(result.summary.byCategory[JobRequirementCategory.education].total).toBe(1);
   });
 
-  it('does not mutate original array', () => {
-    const results: MatchResult[] = [
-      { requirementId: '1', matched: true, confidence: 0.5, matchedFrom: '', matchedTerm: '' },
-      { requirementId: '2', matched: true, confidence: 0.9, matchedFrom: '', matchedTerm: '' },
-    ];
-    const original = [...results];
-    rankByConfidence(results);
-    expect(results).toEqual(original);
-  });
-});
-
-describe('Requirement Matcher - getUnmatchedSkills', () => {
-  it('returns unmatched must-have requirement texts', () => {
-    const results = matchAllRequirements(sampleRequirements, sampleProfile);
-    const unmatched = getUnmatchedSkills(sampleRequirements, results);
-    expect(unmatched.length).toBeGreaterThanOrEqual(0);
-    for (const text of unmatched) {
-      const req = sampleRequirements.find((r) => r.text === text);
-      expect(req?.category).toBe('must_have');
-    }
+  it('returns gap suggestions for unmatched requirements', () => {
+    const result = matchRequirements(
+      parsedJob(requirement('Kubernetes cluster administration', JobRequirementCategory.skill)),
+      PROFILE
+    );
+    expect(result.matches[0].gapSuggestions.length).toBeGreaterThan(0);
   });
 
-  it('excludes nice-to-have and preferred from unmatched', () => {
-    const results = matchAllRequirements(sampleRequirements, sampleProfile);
-    const unmatched = getUnmatchedSkills(sampleRequirements, results);
-    for (const text of unmatched) {
-      const req = sampleRequirements.find((r) => r.text === text);
-      expect(req?.category).not.toBe('nice_to_have');
-      expect(req?.category).not.toBe('preferred');
-    }
+  it('handles an empty requirement list without throwing', () => {
+    const result = matchRequirements(parsedJob(), PROFILE);
+    expect(result.matches).toEqual([]);
+    expect(result.gaps).toEqual([]);
+    expect(result.summary.totalRequirements).toBe(0);
   });
 
-  it('returns empty when all must-haves match', () => {
-    const requirements: JobRequirement[] = [{ id: '1', text: 'TypeScript', category: 'must_have' }];
-    const results = matchAllRequirements(requirements, sampleProfile);
-    const unmatched = getUnmatchedSkills(requirements, results);
-    expect(unmatched).toHaveLength(0);
+  it('does not mutate the parsed job input', () => {
+    const job = parsedJob(requirement('TypeScript', JobRequirementCategory.skill));
+    const snapshot = JSON.parse(JSON.stringify(job)) as ParsedJob;
+    matchRequirements(job, PROFILE);
+    expect(job).toEqual(snapshot);
   });
 });

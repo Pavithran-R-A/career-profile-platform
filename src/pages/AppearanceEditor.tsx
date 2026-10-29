@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useBlocker } from 'react-router';
 import { useAuth } from '../lib/auth/context';
-import { ProfileService } from '../lib/profiles/service';
+import { ProfileService, safeProfileErrorMessage } from '../lib/profiles/service';
 import { getPreferences, type ProfilePreferences } from '../lib/profiles/preferences';
 import {
   initialAppearanceState,
@@ -27,6 +27,7 @@ export default function AppearanceEditor() {
   const [profile, setProfile] = useState<ProfileWithRelations | null>(null);
   const [appearance, setAppearance] = useState<AppearanceState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const saveTimer = useRef<number | null>(null);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
@@ -34,12 +35,16 @@ export default function AppearanceEditor() {
   const profileServiceRef = useRef<ProfileService | null>(null);
   if (!profileServiceRef.current) profileServiceRef.current = new ProfileService();
 
-  useEffect(() => {
-    if (auth.status !== 'authenticated') return;
+  // One load per user id: token refreshes re-emit auth events and must never
+  // reset `current` — that would silently discard the visitor's unsaved draft.
+  const loadedUserIdRef = useRef<string | null>(null);
 
-    void (async () => {
+  const loadProfile = useCallback(
+    async (userId: string) => {
+      loadedUserIdRef.current = userId;
+      setLoadError(null);
       try {
-        const loaded = await profileServiceRef.current!.getProfile(auth.user.id);
+        const loaded = await profileServiceRef.current!.getProfile(userId);
         if (!loaded) {
           void navigate('/onboarding');
           return;
@@ -47,11 +52,22 @@ export default function AppearanceEditor() {
         setProfile(loaded);
         const prefs = await getPreferences(loaded.id);
         setAppearance(initialAppearanceState(prefs, loaded.id));
+      } catch (err) {
+        setLoadError(safeProfileErrorMessage(err));
       } finally {
         setLoading(false);
       }
-    })();
-  }, [auth, navigate]);
+    },
+    [navigate]
+  );
+
+  const authUserId = auth.status === 'authenticated' ? auth.user.id : null;
+
+  useEffect(() => {
+    if (authUserId && loadedUserIdRef.current !== authUserId) {
+      void loadProfile(authUserId);
+    }
+  }, [authUserId, loadProfile]);
 
   useEffect(() => {
     if (auth.status === 'unauthenticated') {
@@ -105,6 +121,7 @@ export default function AppearanceEditor() {
   // but guard anyway so embedders/tests without a data router don't crash.
   let blocker: ReturnType<typeof useBlocker> | { state: 'idle' } = { state: 'idle' };
   try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- useBlocker throws outside a data router; the try/catch keeps embedders and router-less test harnesses alive. The router context never changes mid-session, so the hook order is stable in every environment that reaches this line.
     blocker = useBlocker(
       ({ currentLocation, nextLocation }) =>
         Boolean(appearance?.dirty) && currentLocation.pathname !== nextLocation.pathname
@@ -139,6 +156,30 @@ export default function AppearanceEditor() {
             <div className="skeleton h-[640px] rounded-xl" />
             <div className="skeleton h-[680px] rounded-xl" />
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-8">
+        <div
+          className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center"
+          role="alert">
+          <h1 className="text-lg font-semibold mb-2">Appearance settings couldn't load</h1>
+          <p className="text-sm text-[var(--muted-foreground)] mb-5">{loadError}</p>
+          <button
+            className="min-h-[44px] px-5 rounded-lg text-sm font-semibold bg-[var(--ink)] text-white hover:bg-[#1d2939] disabled:opacity-50"
+            disabled={loading}
+            onClick={() => {
+              if (auth.status === 'authenticated') {
+                setLoading(true);
+                void loadProfile(auth.user.id);
+              }
+            }}>
+            Try again
+          </button>
         </div>
       </div>
     );

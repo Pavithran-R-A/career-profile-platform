@@ -42,7 +42,11 @@ test.describe('recruiter ask on public profiles (desktop + mobile)', () => {
       expect(body.code).toBe('PROFILE_NOT_FOUND');
       expect(body.error).not.toMatch(/not configured/i);
     } else {
-      expect(body.code).toBe('SERVER_NOT_CONFIGURED');
+      // Both disabled shapes are truthful 503s: SERVER_NOT_CONFIGURED when no
+      // backend is configured, FEATURE_DISABLED now that the AI feature flag
+      // gates the ask endpoint itself (it previously stayed live behind a
+      // hidden panel whenever a provider key existed).
+      expect(['SERVER_NOT_CONFIGURED', 'FEATURE_DISABLED']).toContain(body.code);
     }
   });
 

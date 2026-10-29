@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../lib/auth/context';
 import { getSupabaseClient } from '../lib/supabase/client';
@@ -45,12 +45,17 @@ export default function GitHubCallback() {
   const startedRef = useRef(false);
   const connectingRef = useRef(false);
 
-  const finishError = (message: string) => {
-    setOutcome({ state: 'error', message });
-    setTimeout(() => {
-      void navigate('/dashboard/github?connect=failed');
-    }, 2500);
-  };
+  // Stable identity: the connect effect depends on this, and a fresh closure
+  // per render would re-run the OAuth POST on every re-render.
+  const finishError = useCallback(
+    (message: string) => {
+      setOutcome({ state: 'error', message });
+      setTimeout(() => {
+        void navigate('/dashboard/github?connect=failed');
+      }, 2500);
+    },
+    [navigate]
+  );
 
   const connectWithToken = async (selectionToken: string): Promise<boolean> => {
     const session = (await getSupabaseClient().auth.getSession()).data.session;
@@ -152,7 +157,7 @@ export default function GitHubCallback() {
         finishError('GitHub connection failed. Please retry from the dashboard.');
       }
     })();
-  }, [auth, navigate]);
+  }, [auth, navigate, finishError]);
 
   const handleChoose = (installation: EligibleInstallation) => {
     if (connectingRef.current) return;

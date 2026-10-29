@@ -104,11 +104,18 @@ function normalizeResult(
     id: r.id ?? '',
     hostname: r.hostname ?? fallbackHostname,
     status: r.status ?? 'pending',
+    // Displayed verbatim as the record the user must create, so BOTH fields
+    // must come from the provider — inventing a name (e.g. _acme-challenge.*)
+    // would mislabel Cloudflare's own custom-domain record.
     ownership_verification:
-      ownership && typeof ownership.value === 'string' && ownership.value.length > 0
+      ownership &&
+      typeof ownership.name === 'string' &&
+      ownership.name.length > 0 &&
+      typeof ownership.value === 'string' &&
+      ownership.value.length > 0
         ? {
             type: 'txt',
-            name: ownership.name ?? `_acme-challenge.${fallbackHostname}`,
+            name: ownership.name,
             value: ownership.value,
           }
         : null,
@@ -198,5 +205,8 @@ export async function deleteCustomHostname(
     fetchImpl
   );
 
+  // Already gone at the provider (deleted in the dashboard, retention
+  // cleanup): for REMOVAL purposes that is success, not a retryable failure.
+  if (result.status === 404) return true;
   return result.ok;
 }

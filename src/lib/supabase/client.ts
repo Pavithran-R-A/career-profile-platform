@@ -14,7 +14,16 @@ export function getSupabaseClient() {
   }
 
   client = createClient<Database>(supabaseUrl, publishableKey, {
-    auth: { persistSession: true, autoRefreshToken: true },
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      // PINNED to implicit: AuthCallback (token_hash verification) and
+      // ResetPassword depend on the implicit flow's URL handling. A PKCE
+      // `?code=` param is silently ignored by this codebase — switching the
+      // Supabase project to PKCE without a code change breaks email
+      // confirmation and password reset (see docs/EMAIL_PRODUCTION_CHECKLIST.md).
+      flowType: 'implicit',
+    },
   });
 
   return client;

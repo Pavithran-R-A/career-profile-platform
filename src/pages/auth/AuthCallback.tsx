@@ -29,6 +29,14 @@ export default function AuthCallback() {
       }
 
       if (tokenHash && type) {
+        // Whitelist the type before verifying: anything else is a malformed
+        // link, not a verification attempt.
+        const VERIFIED_TYPES = ['signup', 'magiclink', 'recovery', 'invite'] as const;
+        if (!VERIFIED_TYPES.includes(type as (typeof VERIFIED_TYPES)[number])) {
+          setStatus('error');
+          setErrorMessage(toSafeAuthMessage('invalid token'));
+          return;
+        }
         const { error: verifyError } = await supabase.auth.verifyOtp({
           token_hash: tokenHash,
           type: type as 'signup' | 'magiclink' | 'recovery',
@@ -37,6 +45,14 @@ export default function AuthCallback() {
         if (verifyError) {
           setStatus('error');
           setErrorMessage(toSafeAuthMessage(verifyError.message));
+          return;
+        }
+
+        // A recovery link grants a session purely to set a new password —
+        // route it to the reset form instead of the dashboard, or the user
+        // silently skips choosing a new password.
+        if (type === 'recovery') {
+          void navigate('/reset-password', { replace: true });
           return;
         }
       }

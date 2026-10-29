@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, verify as verifySignature } from 'node:crypto';
 import {
   getGitHubJWT,
   clearGitHubJWTCache,
@@ -57,6 +57,28 @@ describe('getGitHubJWT', () => {
       privateKey: otherKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
     });
     expect(other).not.toBe(a);
+  });
+
+  // Independent verification of the audit fix (2026-10-26): GitHub-generated
+  // .pem files are PKCS#1 ("BEGIN RSA PRIVATE KEY"), which WebCrypto cannot
+  // import directly. The JWT module must convert them — a GitHub App
+  // configured exactly per docs/GITHUB_APP_SETUP.md previously failed every
+  // call with an opaque WebCrypto error.
+  it('accepts GitHub-format PKCS#1 PEM and produces a verifiable RS256 signature', async () => {
+    clearGitHubJWTCache();
+    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const pkcs1Pem = privateKey.export({ type: 'pkcs1', format: 'pem' }).toString();
+    expect(pkcs1Pem).toContain('BEGIN RSA PRIVATE KEY');
+
+    const token = await getGitHubJWT({ appId: '55555', privateKey: pkcs1Pem });
+    const [h, p, s] = token.split('.');
+    const signedInput = Buffer.from(`${h}.${p}`, 'utf8');
+    const signature = Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    const valid = verifySignature('sha256', signedInput, publicKey, signature);
+    expect(valid).toBe(true);
+
+    const payload = JSON.parse(Buffer.from(p, 'base64url').toString('utf8')) as { iss: string };
+    expect(payload.iss).toBe('55555');
   });
 });
 

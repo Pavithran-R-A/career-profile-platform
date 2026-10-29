@@ -8,11 +8,12 @@ import {
   type WebhookDeps,
 } from '../../lib/billing/webhooks';
 import { verifyWebhookSignature } from '../../lib/billing/razorpay';
+import { FAKE_WEBHOOK_SECRET } from '../fixtures/fake-values';
 
 // ─── Realistic fixtures (documented Razorpay webhook shapes) ─────────────
 // https://razorpay.com/docs/webhooks/payloads/payment & /order
 
-const WEBHOOK_SECRET = 'whsec_test_123';
+const WEBHOOK_SECRET = FAKE_WEBHOOK_SECRET;
 
 function paymentCapturedBody(
   orderId = 'order_QxpGkAPCbWToEx',

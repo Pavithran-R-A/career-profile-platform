@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleRequest } from '../../workers/handler';
 import { createServerClient } from '../../lib/supabase/server';
+import { FAKE_SUPABASE_SERVER_KEY } from '../fixtures/fake-values';
 
 // The handler imports its Supabase clients from lib/supabase/server; mock the
 // module so recruiter-ask ordering tests can stand in for a live backend.
@@ -255,6 +256,9 @@ describe('Worker API handler', () => {
       // existed. The Cloudflare contract is limit({ key }) → { success }.
       const limiterCalls: string[] = [];
       const env = {
+        // The flag gates the ask endpoint itself, so every recruiter test
+        // opts in explicitly.
+        RECRUITER_AI_ENABLED: 'true',
         RECRUITER_RATE_LIMITER: {
           limit: async (opts: { key: string }) => {
             limiterCalls.push(opts.key);
@@ -275,6 +279,7 @@ describe('Worker API handler', () => {
 
     it('returns 429 TOO_MANY_REQUESTS with Retry-After only when success is false', async () => {
       const env = {
+        RECRUITER_AI_ENABLED: 'true',
         RECRUITER_RATE_LIMITER: {
           limit: async () => ({ success: false }),
         },
@@ -288,6 +293,7 @@ describe('Worker API handler', () => {
 
     it('does not take the feature down if the limiter throws', async () => {
       const env = {
+        RECRUITER_AI_ENABLED: 'true',
         RECRUITER_RATE_LIMITER: {
           limit: async () => {
             throw new Error('limiter unavailable');
@@ -324,7 +330,8 @@ describe('Worker API handler', () => {
     const backendEnv = (extra: Record<string, string> = {}) => ({
       SUPABASE_URL: 'https://supabase.example.com',
       SUPABASE_PUBLISHABLE_KEY: 'anon-key',
-      SUPABASE_SECRET_KEY: 'test-only-server-secret',
+      SUPABASE_SECRET_KEY: FAKE_SUPABASE_SERVER_KEY,
+      RECRUITER_AI_ENABLED: 'true',
       ...extra,
     });
 
@@ -351,6 +358,75 @@ describe('Worker API handler', () => {
       const res = await handleRequest(askRequest(), env, {} as ExecutionContext);
       expect(res.status).toBe(429);
       expect(client.from).not.toHaveBeenCalled();
+    });
+  });
+
+  // Independent verification of the CSRF hardening (audit 2026-10-26): a
+  // cross-site page can send a "simple request" with no preflight, so the
+  // Authorization-header protection that covers authenticated routes does
+  // not extend to unauthenticated POSTs. Any state-changing request that
+  // DECLARES a disallowed Origin must be rejected; Origin-less callers
+  // (provider webhooks, curl) are unaffected, and GETs stay open.
+  describe('cross-site origin gate on state-changing routes', () => {
+    const askRequestWithOrigin = (origin: string | null): Request =>
+      new Request('https://example.com/api/recruiter/ask', {
+        method: 'POST',
+        headers: new Headers({
+          'Content-Type': 'application/json',
+          'cf-connecting-ip': '203.0.113.5',
+          ...(origin ? { Origin: origin } : {}),
+        }),
+        body: JSON.stringify({ username: 'some-user', question: 'What did they build?' }),
+      });
+
+    const prodEnv = {
+      ENVIRONMENT: 'production',
+      ALLOWED_ORIGINS: 'https://app.example.com',
+      RECRUITER_AI_ENABLED: 'true',
+    };
+
+    it('rejects a cross-site POST declaring a disallowed Origin (403 ORIGIN_NOT_ALLOWED)', async () => {
+      const res = await handleRequest(
+        askRequestWithOrigin('https://evil.example'),
+        prodEnv as never,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe('ORIGIN_NOT_ALLOWED');
+    });
+
+    it('lets an allowed origin proceed past the gate into route handling', async () => {
+      const res = await handleRequest(
+        askRequestWithOrigin('https://app.example.com'),
+        prodEnv as never,
+        {} as ExecutionContext
+      );
+      // Gate passed: the recruiter route continues to its own disabled state
+      // (no Supabase configured here) instead of the origin 403.
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe('SERVER_NOT_CONFIGURED');
+    });
+
+    it('does not block GETs even from disallowed origins', async () => {
+      const res = await handleRequest(
+        makeRequest('/api/github/config', 'GET', 'https://evil.example'),
+        prodEnv as never,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('leaves Origin-less callers (provider webhooks, curl) unaffected', async () => {
+      const res = await handleRequest(
+        askRequestWithOrigin(null),
+        prodEnv as never,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe('SERVER_NOT_CONFIGURED');
     });
   });
 });

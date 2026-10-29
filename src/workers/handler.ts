@@ -90,11 +90,16 @@ export interface Env {
     // resolves to { success: boolean } (true = allowed).
     limit: (options: { key: string }) => Promise<{ success: boolean }>;
   };
+  PUBLIC_READ_RATE_LIMITER?: {
+    // Same binding contract, applied to anonymous public-read API routes.
+    limit: (options: { key: string }) => Promise<{ success: boolean }>;
+  };
 }
 
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
+  | 'ORIGIN_NOT_ALLOWED'
   | 'BAD_REQUEST'
   | 'NOT_FOUND'
   | 'INTERNAL'
@@ -126,7 +131,7 @@ export type ApiErrorCode =
   | 'DELETE_FAILED'
   | 'DELETE_PARTIAL';
 
-type EnvStringKey = Exclude<keyof Env, 'RECRUITER_RATE_LIMITER'>;
+type EnvStringKey = Exclude<keyof Env, 'RECRUITER_RATE_LIMITER' | 'PUBLIC_READ_RATE_LIMITER'>;
 
 function getEnvValue(env: Env, key: EnvStringKey): string {
   return env[key] || '';
@@ -148,6 +153,19 @@ function featureEnabled(
 ): boolean {
   const raw = getEnvValue(env, flag).toLowerCase();
   return raw === 'true' || raw === '1';
+}
+
+/**
+ * True when the declared Content-Length exceeds maxBytes. Validation would
+ * otherwise run only AFTER the full body is buffered, letting one request
+ * amplify worker memory/latency. Non-browser clients that omit the header
+ * are only caught by zod/field validation downstream.
+ */
+function isBodyTooLarge(request: Request, maxBytes: number): boolean {
+  const raw = request.headers.get('content-length');
+  if (!raw) return false;
+  const len = Number.parseInt(raw, 10);
+  return Number.isFinite(len) && len > maxBytes;
 }
 
 /**
@@ -274,10 +292,23 @@ async function verifyAuth(
     return null;
   }
 
+  // Parse and validate the auth-server base URL once: only an https origin
+  // with a fixed path is acceptable, so neither a misconfigured env value nor
+  // anything request-influenced can redirect the credential check elsewhere.
+  let authUserUrl: URL;
+  try {
+    authUserUrl = new URL('/auth/v1/user', supabaseUrl);
+  } catch {
+    return null;
+  }
+  if (authUserUrl.protocol !== 'https:' || authUserUrl.pathname !== '/auth/v1/user') {
+    return null;
+  }
+
   // Fail closed: any auth-server error (non-2xx or network failure) denies
   // the request rather than throwing a 500 with half-verified state.
   try {
-    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    const response = await fetch(authUserUrl, {
       headers: {
         Authorization: `Bearer ${token}`,
         apikey: publishableKey,
@@ -288,7 +319,12 @@ async function verifyAuth(
       return null;
     }
 
-    const user = (await response.json()) as { id: string };
+    const user = (await response.json()) as { id?: unknown };
+    if (typeof user?.id !== 'string' || user.id.length === 0) {
+      // A malformed 2xx auth response must fail closed, not propagate an
+      // undefined userId into ownership queries.
+      return null;
+    }
     return { userId: user.id, token };
   } catch {
     return null;
@@ -1250,6 +1286,15 @@ async function handleCreateVariant(
   if (!auth)
     return json({ error: 'Unauthorized' }, 401, origin, env, { code: 'UNAUTHORIZED', requestId });
 
+  // A pasted job description is at most tens of KB; the variant insert is
+  // stored as jsonb verbatim, so cap the body before parsing it.
+  if (isBodyTooLarge(request, 512_000)) {
+    return json({ error: 'Request body too large' }, 413, origin, env, {
+      code: 'BAD_REQUEST',
+      requestId,
+    });
+  }
+
   try {
     const body = (await request.json()) as {
       name?: string;
@@ -1416,11 +1461,33 @@ function toRecruiterProfileData(row: Record<string, unknown>): RecruiterProfileD
 }
 
 async function handlePublicProfile(
+  request: Request,
   usernameInput: string,
   origin: string | null,
   env: Env,
   requestId: string
 ): Promise<Response> {
+  // Anonymous GETs execute a service-role DB query per hit; bound them per
+  // client IP so one client cannot hammer the public projection. The native
+  // binding is ephemeral (no stored keys), so a raw-IP key is acceptable here
+  // — unlike the recruiter limiter, nothing persists. Fail-open keeps the
+  // public endpoint available if the binding is absent (local dev) or errors.
+  const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+  if (env.PUBLIC_READ_RATE_LIMITER) {
+    try {
+      const rate = await env.PUBLIC_READ_RATE_LIMITER.limit({ key: `public-read:${clientIp}` });
+      if (!rate.success) {
+        return json({ error: 'Too many requests. Please try again later.' }, 429, origin, env, {
+          code: 'TOO_MANY_REQUESTS',
+          requestId,
+          headers: { 'Retry-After': '60' },
+        });
+      }
+    } catch {
+      // Availability over strictness for anonymous reads.
+    }
+  }
+
   const username = normalizeUsername(usernameInput);
   const usernameCheck = validateUsername(username);
   if (!usernameCheck.valid) {
@@ -1465,6 +1532,23 @@ async function handleRecruiterAsk(
   env: Env,
   requestId: string
 ): Promise<Response> {
+  // The flag gates the API, not just the panel: hiding the UI while the ask
+  // endpoint stays live would let any client consume the owner's AI quota.
+  if (!featureEnabled(env, 'RECRUITER_AI_ENABLED')) {
+    return json({ error: 'Recruiter AI is not available in this environment.' }, 503, origin, env, {
+      code: 'FEATURE_DISABLED',
+      requestId,
+    });
+  }
+
+  // username ≤63 + question ≤400 — anything beyond this is abuse-shaped.
+  if (isBodyTooLarge(request, 16_000)) {
+    return json({ error: 'Request body too large' }, 413, origin, env, {
+      code: 'BAD_REQUEST',
+      requestId,
+    });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -1749,9 +1833,11 @@ async function handleAccountDelete(
       .eq('user_id', userId as never)
       .maybeSingle();
     const prior = existingMarker as (Record<string, unknown> & { attempts?: number }) | null;
-    const marker = recordAttempt(
-      prior
-        ? {
+    // newDeletionRequest already counts this call as attempt 1; recordAttempt
+    // must only advance EXISTING rows, or a fresh row is double-counted.
+    const marker = prior
+      ? recordAttempt(
+          {
             user_id: userId,
             stage: (typeof prior.stage === 'string' ? prior.stage : 'requested') as DeletionStage,
             requested_at:
@@ -1763,19 +1849,28 @@ async function handleAccountDelete(
             completed_at: typeof prior.completed_at === 'string' ? prior.completed_at : null,
             last_error: typeof prior.last_error === 'string' ? prior.last_error : null,
             attempts: typeof prior.attempts === 'number' ? prior.attempts : 1,
-          }
-        : newDeletionRequest(userId),
-      new Date()
-    );
-    await supabase.from('account_deletion_requests' as never).upsert({
-      user_id: userId,
-      stage: marker.stage,
-      attempts: marker.attempts,
-      requested_at: marker.requested_at,
-      updated_at: marker.updated_at,
-      completed_at: marker.completed_at,
-      last_error: null,
-    } as never);
+          },
+          new Date()
+        )
+      : newDeletionRequest(userId);
+    const { error: markerError } = await supabase
+      .from('account_deletion_requests' as never)
+      .upsert({
+        user_id: userId,
+        stage: marker.stage,
+        attempts: marker.attempts,
+        requested_at: marker.requested_at,
+        updated_at: marker.updated_at,
+        completed_at: marker.completed_at,
+        last_error: null,
+      } as never);
+    if (markerError) {
+      // The marker is observability, not a gate — deletion proceeds, but the
+      // lost attempt count must be visible in structured logs.
+      console.error(
+        JSON.stringify({ t: 'deletion_marker_upsert_failed', id: requestId, code: 'INTERNAL' })
+      );
+    }
 
     // 4. Storage: remove owned objects while the user still exists. Enumerate
     // the user's own Storage prefix ({userId}/) with pagination so orphaned
@@ -2187,7 +2282,8 @@ async function handleCreateOrder(
     }
 
     const currency = getEnvValue(env, 'CURRENCY') || 'INR';
-    const receipt = `user_${auth.userId}_${Date.now()}`;
+    // Razorpay caps receipts at 40 chars; the full user id rides in `notes`.
+    const receipt = `user_${auth.userId.slice(0, 8)}_${Date.now()}`.slice(0, 40);
 
     const razorpayOrder = await createRazorpayOrder(razorpayConfig, {
       amount: amountPaise,
@@ -2265,6 +2361,15 @@ async function handleWebhook(
       });
     }
 
+    // Signature HMAC requires the whole raw body in memory; real Razorpay
+    // payloads are a few KB, so anything near this cap is hostile.
+    if (isBodyTooLarge(request, 256_000)) {
+      return json({ error: 'Request body too large' }, 413, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId,
+      });
+    }
+
     const rawBody = await request.text();
     const signature = request.headers.get('x-razorpay-signature') || '';
     // Real Razorpay webhooks carry the event id in this header; it is the
@@ -2309,8 +2414,9 @@ async function handleWebhook(
           if (prior === 'processed') return false;
           if (prior === 'processing') {
             // A stale 'processing' row (worker died mid-flight) must not block
-            // the provider retry forever. Treat it as retryable after a
-            // generous grace period.
+            // the provider retry forever: reprocess immediately. Double-apply
+            // is impossible — the activation RPC is transactional with an
+            // order lock and an already-paid gate.
             return true;
           }
           // Pre-mark the attempt so concurrent duplicates are observable.
@@ -2532,13 +2638,14 @@ async function handleAddCustomDomain(
     // Provider lifecycle: pending row → create → save provider id + the
     // provider's OWN validation record → on failure mark failed (slot freed).
     let verification: { method: string; record: Record<string, unknown> | null } | null = null;
+    let provisionedStatus: 'pending' | 'pending_validation' | 'active' = 'pending';
     if (provisioning) {
       try {
         const hostnameResult = await createCustomHostname(cloudflareConfig, {
           hostname: validation.hostname,
           originHost: platformOrigin,
         });
-        await supabase
+        const { error: persistError } = await supabase
           .from('custom_domains' as never)
           .update({
             cloudflare_hostname_id: hostnameResult.id,
@@ -2550,6 +2657,39 @@ async function handleAddCustomDomain(
             ssl_validation_records: hostnameResult.sslValidationRecords ?? null,
           } as never)
           .eq('id', domainId as never);
+        if (persistError) {
+          // A real (billable) provider resource now exists with no local
+          // owner: compensate — delete it provider-side and free the slot —
+          // so the next add does not orphan it.
+          console.error(
+            JSON.stringify({ t: 'domain_persist_error', id: requestId, code: 'INTERNAL' })
+          );
+          try {
+            await deleteCustomHostname(cloudflareConfig, hostnameResult.id);
+          } catch {
+            // Best effort: the orphan is logged for manual cleanup either way.
+          }
+          await supabase.rpc(
+            'release_custom_domain_slot' as never,
+            {
+              p_domain_id: domainId,
+              p_safe_error: 'provider_persist_failed',
+            } as never
+          );
+          return json(
+            {
+              id: domainId,
+              hostname: validation.hostname,
+              status: 'failed',
+              error: 'Could not save the domain. Please retry.',
+            },
+            502,
+            origin,
+            env,
+            { requestId }
+          );
+        }
+        provisionedStatus = hostnameResult.status === 'active' ? 'active' : 'pending_validation';
         verification = {
           method: hostnameResult.ownership_verification_http
             ? 'http'
@@ -2591,7 +2731,7 @@ async function handleAddCustomDomain(
       {
         id: domainId,
         hostname: validation.hostname,
-        status: provisioning ? 'pending_validation' : 'pending',
+        status: provisionedStatus,
         verification,
       },
       201,
@@ -2606,6 +2746,20 @@ async function handleAddCustomDomain(
       requestId,
     });
   }
+}
+
+/**
+ * Maps a Cloudflare custom-hostname status onto the row's status vocabulary.
+ * Unknown statuses stay pending_validation (still working, e.g. moving states)
+ * — only ACTIVE and explicitly terminal states are final.
+ */
+function providerAdminStatusToRowStatus(
+  providerStatus: string,
+  terminalStatuses: Set<string>
+): 'active' | 'failed' | 'pending_validation' {
+  if (providerStatus === 'active') return 'active';
+  if (terminalStatuses.has(providerStatus)) return 'failed';
+  return 'pending_validation';
 }
 
 /**
@@ -2696,19 +2850,40 @@ async function handleRefreshCustomDomain(
 
     const provider = await getCustomHostname(cloudflareConfig, domain.cloudflare_hostname_id);
     if (!provider) {
-      return json({ error: 'Provider lookup failed' }, 502, origin, env, {
-        code: 'DOWNLOAD_FAILED' as ApiErrorCode,
-        requestId,
-      });
+      // Includes the provider-returning-404 case: the hostname may no longer
+      // exist at Cloudflare (deleted in the dashboard, zone cleanup). Mark
+      // the row failed so the user can remove it and re-add, instead of
+      // polling "waiting for DNS verification" forever.
+      const { error: missingError } = await supabase
+        .from('custom_domains' as never)
+        .update({ status: 'failed' } as never)
+        .eq('id', domain.id as never)
+        .eq('profile_id', ownedProfileId as never);
+      if (missingError) {
+        console.error(
+          JSON.stringify({ t: 'domain_refresh_persist_error', id: requestId, code: 'INTERNAL' })
+        );
+      }
+      return json(
+        {
+          id: domain.id,
+          hostname: domain.hostname,
+          status: 'failed',
+          error:
+            'Provider status could not be confirmed (the hostname may have been deleted). Retry in a moment, or remove and re-add the domain.',
+        },
+        200,
+        origin,
+        env,
+        { requestId }
+      );
     }
 
-    const nextStatus =
-      provider.status === 'active'
-        ? 'active'
-        : provider.status === 'moved'
-          ? 'failed'
-          : 'pending_validation';
-    await supabase
+    // Terminal provider states must surface as failed (with a Retry affordance
+    // in the UI), not loop on "pending validation" forever.
+    const PROVIDER_TERMINAL_STATUSES = new Set(['moved', 'deleted', 'blocked', 'errored']);
+    const nextStatus = providerAdminStatusToRowStatus(provider.status, PROVIDER_TERMINAL_STATUSES);
+    const { error: persistError } = await supabase
       .from('custom_domains' as never)
       .update({
         status: nextStatus,
@@ -2717,7 +2892,21 @@ async function handleRefreshCustomDomain(
         ssl_status: provider.sslStatus,
         ssl_validation_records: provider.sslValidationRecords ?? null,
       } as never)
-      .eq('id', domain.id as never);
+      .eq('id', domain.id as never)
+      .eq('profile_id', ownedProfileId as never);
+    if (persistError) {
+      console.error(
+        JSON.stringify({
+          t: 'domain_refresh_persist_error',
+          id: requestId,
+          code: (persistError as { code?: string })?.code || 'INTERNAL',
+        })
+      );
+      return json({ error: 'Failed to refresh domain' }, 502, origin, env, {
+        code: 'INTERNAL' as ApiErrorCode,
+        requestId,
+      });
+    }
 
     return json(
       {
@@ -2933,6 +3122,37 @@ export async function handleRequest(
     return new Response(null, { status: 204, headers: corsHeaders(origin, env) });
   }
 
+  // CSRF defense-in-depth for unauthenticated state-changing routes: a
+  // cross-site page can send a "simple request" (JSON body as text/plain)
+  // with no preflight, so authenticated-only protection (Authorization
+  // header → forced preflight) does not cover them. Reject any state-changing
+  // request that DECLARES a disallowed Origin; non-browser callers (provider
+  // webhooks, curl) send no Origin header and are unaffected.
+  if (
+    request.method !== 'GET' &&
+    request.method !== 'HEAD' &&
+    origin &&
+    !isOriginAllowed(origin, env)
+  ) {
+    return json({ error: 'Origin not allowed' }, 403, origin, env, {
+      code: 'ORIGIN_NOT_ALLOWED',
+      requestId: id,
+    });
+  }
+
+  // Platform-level bound for JSON routes: every legitimate API body here is
+  // far below 1 MB (the largest is the tailoring variant). Route-specific
+  // caps tighten this further where payloads are naturally tiny.
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    const len = Number.parseInt(request.headers.get('content-length') ?? '', 10);
+    if (Number.isFinite(len) && len > 1_000_000) {
+      return json({ error: 'Request body too large' }, 413, origin, env, {
+        code: 'BAD_REQUEST',
+        requestId: id,
+      });
+    }
+  }
+
   if (url.pathname === '/api/health') {
     return json(
       { status: 'ok', timestamp: new Date().toISOString(), buildSha: buildCommitSha() },
@@ -3045,7 +3265,7 @@ export async function handleRequest(
         requestId: id || undefined,
       });
     }
-    return handlePublicProfile(username, origin, env, id);
+    return handlePublicProfile(request, username, origin, env, id);
   }
 
   if (url.pathname === '/api/recruiter/config' && request.method === 'GET') {

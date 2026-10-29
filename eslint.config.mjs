@@ -1,6 +1,7 @@
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import prettier from 'eslint-config-prettier';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
   {
@@ -20,6 +21,16 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommendedTypeChecked,
   prettier,
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      // The plugins were installed but never wired into the flat config, so
+      // rules-of-hooks / exhaustive-deps were unenforced anywhere.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+    },
+  },
   {
     languageOptions: {
       globals: {

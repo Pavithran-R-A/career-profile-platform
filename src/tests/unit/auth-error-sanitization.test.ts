@@ -23,11 +23,21 @@ describe('auth provider errors are safe to display', () => {
     ['Invalid login credentials', 'Invalid email or password.'],
     ['Email not confirmed', 'Please verify your email before signing in.'],
     ['rate limit exceeded', 'Too many attempts. Please wait a moment and try again.'],
-    ['Invalid JWT: pgrst-000', 'This password-reset link is invalid or has expired.'],
+    ['Invalid JWT: pgrst-000', 'Your session has expired. Please sign in again.'],
     ['Weak password', 'Your password does not meet the security requirements.'],
     ['Your link has expired', 'This link is invalid or has expired.'],
   ])('maps known auth error "%s" to fixed safe copy', (providerMessage, expected) => {
     expect(toSafeAuthMessage(providerMessage)).toBe(expected);
+  });
+
+  it('uses reset-link copy for token errors only on reset surfaces', () => {
+    expect(toSafeAuthMessage('Auth session missing!', 'reset')).toBe(
+      'This password-reset link is invalid or has expired.'
+    );
+    // A dropped session on verify-email must NOT claim to be a reset link.
+    expect(toSafeAuthMessage('Auth session missing!', 'generic')).toBe(
+      'Your session has expired. Please sign in again.'
+    );
   });
 
   it('never includes appended provider diagnostics even after a known phrase', () => {

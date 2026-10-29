@@ -25,6 +25,7 @@ function navClass({ isActive }: { isActive: boolean }) {
 function AccountMenu({ onSignOut, initial }: { onSignOut: () => void; initial: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const location = useLocation();
 
   useEffect(() => {
@@ -37,7 +38,11 @@ function AccountMenu({ onSignOut, initial }: { onSignOut: () => void; initial: s
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        setOpen(false);
+        // Keyboard focus must return to the toggle, not fall to <body>.
+        toggleRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKey);
@@ -50,6 +55,7 @@ function AccountMenu({ onSignOut, initial }: { onSignOut: () => void; initial: s
   return (
     <div ref={ref} className="relative">
       <button
+        ref={toggleRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -129,6 +135,20 @@ export default function Layout() {
   const [scrolled, setScrolled] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const isAuthed = auth.status === 'authenticated';
+  const routeLocation = useLocation();
+
+  // BrowserRouter never performs fragment scrolling on pushState navigation,
+  // so header/footer links like /#features did nothing. Scroll after render
+  // (a frame later, so lazily-rendered sections exist). Direct loads of a
+  // hash URL are also covered: the element only exists once React commits.
+  useEffect(() => {
+    if (!routeLocation.hash) return;
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(decodeURIComponent(routeLocation.hash.slice(1)));
+      target?.scrollIntoView();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [routeLocation.pathname, routeLocation.hash]);
 
   // Mobile disclosure hygiene: Escape closes the drawer and returns focus to
   // its toggle, and crossing the lg breakpoint (1024px) closes the drawer so

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import ResumeImport from '../../pages/ResumeImport';
+import type * as ProfilesServiceModule from '../../lib/profiles/service';
 
 const stableAuth = {
   status: 'authenticated',
@@ -18,14 +19,31 @@ vi.mock('../../lib/supabase/client', () => ({
       getSession: () =>
         Promise.resolve({ data: { session: { user: { id: 'user-1' }, access_token: 'tok-123' } } }),
     },
+    // loadPendingReview probes resume_sources on mount; without a from()
+    // chain the probe throws and the page now (correctly) surfaces it as a
+    // load error instead of silently rendering the upload slot.
+    from: () => {
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      };
+      return chain;
+    },
   }),
 }));
 
-vi.mock('../../lib/profiles/service', () => ({
-  ProfileService: class {
-    getProfile = vi.fn().mockResolvedValue({ id: 'profile-id' });
-  },
-}));
+vi.mock('../../lib/profiles/service', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as typeof ProfilesServiceModule),
+    ProfileService: class {
+      getProfile = vi.fn().mockResolvedValue({ id: 'profile-id' });
+    },
+  };
+});
 
 vi.mock('../../lib/resume/service', () => ({
   ResumeService: class {

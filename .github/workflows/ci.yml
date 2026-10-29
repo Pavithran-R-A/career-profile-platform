@@ -53,7 +53,10 @@ jobs:
         run: pnpm build
 
       - name: Bundle budget
-        run: pnpm bundle:scan --budget
+        # Eager entry chunk measured at 336 kB (2026-10-26); 400 kB leaves
+        # headroom while still gating accidental eager growth. The heavy PDF
+        # chunks are lazy-loaded and intentionally not budgeted here.
+        run: pnpm bundle:scan --budget 400
 
   e2e:
     name: E2E (Playwright, desktop + mobile)
