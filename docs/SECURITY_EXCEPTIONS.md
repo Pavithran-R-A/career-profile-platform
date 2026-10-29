@@ -69,3 +69,38 @@ Re-review this boundary if any of the following changes:
 - a new direct browser Data API path is introduced.
 
 Any such change requires another live anonymous-boundary test before release.
+
+## Static SSRF taint advisories — accepted (reviewed 2026-10-26 and 2026-10-27)
+
+The workspace static analyzer (Mimosa) reports 7 high/medium server-side
+request-forgery taint advisories on this codebase. They are static dataflow
+heuristics, not findings of exploitable behavior. Each was reviewed
+individually — twice, including a sealed deep scan
+(`scan-2026-10-26T18-17-19.212Z-98b3b83c7f44`, seal `sha256:e431a2fa…`,
+"verdictEffect: none") — and all share the same disposition:
+
+| Site | Call | Why it is not SSRF |
+| --- | --- | --- |
+| `src/workers/handler.ts` verifyAuth | `fetch(authUserUrl)` | Base URL is deployment env, parsed via `new URL` and fail-closed to `https:` + the fixed `/auth/v1/user` path; no request data enters the origin or path |
+| `src/workers/handler.ts` resolveInstallationForUser → verifyInstallationForAccount | GitHub API | Fixed `https://api.github.com` base; user influence only over encoded query/body values, never the origin |
+| `src/workers/handler.ts` verifyInstallationOnApp | GitHub API | Same fixed base |
+| `src/workers/handler.ts` extractProfile / complete | AI provider | Base URL is `BHARATCODE_BASE_URL` env (deployment constant) with a fixed default; user input only in the JSON body |
+| `src/pages/GitHubCallback.tsx` ×2 | `fetch('/api/github/…')` | Same-origin RELATIVE URLs — structurally incapable of SSRF |
+
+Dispositions and conditions:
+
+- The advisory class is accepted, not "fixed": removing or restructuring
+  these calls would mean removing the product's actual provider integrations
+  or hard-coding deployment values into source (worse security posture).
+- The accepted form is: fixed or env-configured origins only; user input
+  exclusively as encoded query/body parameters; no user-supplied URL is ever
+  dereferenced server-side (verified by the 2026-10-26 audit's SSRF pass).
+- Re-review triggers: any new server-side `fetch` with a request-derived
+  origin, any change to the env-configured base URLs, or any new provider
+  integration must be added to this table with its own review before release.
+- The workspace commit gate still enforces these as blocking findings; the
+  vendor has not shipped a narrowly-scoped exception mechanism for static
+  taint advisories. Until one exists, releases are gated on human review of
+  exactly this table (see also the fixture accommodation in
+  `src/tests/fixtures/fake-values.ts`, which resolved the credential-literal
+  findings class the supported way).
